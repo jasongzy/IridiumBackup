@@ -143,7 +143,6 @@ class AppsRepo @Inject constructor(
                 val appLabels = labelsByApp[Triple(app.packageName, app.userId, app.preserveId)].orEmpty()
                 data.filters.matchesIncludedLabels(appLabels, included) && appLabels.none(excluded::contains)
             }
-            .sortedWith(packageRepo.getSortComparatorNew(sortIndex = data.sortIndex, sortType = data.sortType))
             .toList()
             .map(PackageEntity::asExternalModel)
     }.flowOn(defaultDispatcher)
