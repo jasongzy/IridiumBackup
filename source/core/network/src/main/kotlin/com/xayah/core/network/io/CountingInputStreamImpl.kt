@@ -8,13 +8,12 @@ import java.util.TimerTask
 class CountingInputStreamImpl(
     `in`: InputStream,
     private val fileSize: Long,
-    inline val onProgress: (read: Long, total: Long) -> Unit
+    private val onProgress: (read: Long, total: Long) -> Unit
 ) : CountingInputStream(`in`) {
-    private var totalRead: Long = 0
     private val timer = Timer()
     private val task = object : TimerTask() {
         override fun run() {
-            onProgress(totalRead, fileSize)
+            onProgress(byteCount, fileSize)
         }
     }
 
@@ -22,13 +21,8 @@ class CountingInputStreamImpl(
         timer.schedule(task, 0, 1000)
     }
 
-    override fun beforeRead(n: Int) {
-        super.beforeRead(n)
-        totalRead += n
-    }
-
     override fun close() {
-        super.close()
         timer.cancel()
+        super.close()
     }
 }

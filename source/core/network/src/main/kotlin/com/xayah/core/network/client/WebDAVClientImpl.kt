@@ -5,6 +5,7 @@ import com.xayah.core.common.util.toPathString
 import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.WebDAVExtra
 import com.xayah.core.network.R
+import com.xayah.core.network.io.CountingOutputStreamImpl
 import com.xayah.core.network.util.getExtraEntity
 import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.util.GsonUtil
@@ -19,6 +20,11 @@ import com.xayah.libpickyou.ui.model.PickerType
 import com.xayah.libsardine.DavResource
 import com.xayah.libsardine.impl.OkHttpSardine
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.buffer
 import java.io.File
 import java.util.concurrent.TimeUnit
 import java.security.SecureRandom
@@ -29,6 +35,7 @@ import javax.net.ssl.X509TrustManager
 
 class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDAVExtra) : CloudClient {
     private var client: OkHttpSardine? = null
+    private var uploadProgress: ((Long, Long) -> Unit)? = null
 
     private fun log(msg: () -> String): String = run {
         LogUtil.log { "WebDAVClientImpl" to msg() }
@@ -47,6 +54,33 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
             .connectTimeout(0, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.SECONDS)
             .writeTimeout(0, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                var request = chain.request()
+                val requestBody = request.body
+                val onUpload = uploadProgress
+                if (request.method == "PUT" && requestBody != null && onUpload != null) {
+                    request = request.newBuilder().method("PUT", object : RequestBody() {
+                        override fun contentType() = requestBody.contentType()
+                        override fun contentLength() = requestBody.contentLength()
+
+                        override fun writeTo(sink: BufferedSink) {
+                            val total = contentLength()
+                            var written = 0L
+                            onUpload(0, total)
+                            val counting = object : ForwardingSink(sink) {
+                                override fun write(source: Buffer, byteCount: Long) {
+                                    super.write(source, byteCount)
+                                    written += byteCount
+                                    onUpload(written, total)
+                                }
+                            }.buffer()
+                            requestBody.writeTo(counting)
+                            counting.flush()
+                        }
+                    }).build()
+                }
+                chain.proceed(request)
+            }
         if (extra.insecure) {
             try {
                 val trustAllCerts = arrayOf<TrustManager>(
@@ -102,18 +136,25 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         val dstPath = "${getPath(dst)}/$name"
         log { "upload: $src to $dstPath" }
         val srcFile = File(src)
-        client.put(dstPath, srcFile, null)
+        uploadProgress = onUploading
+        try {
+            client.put(dstPath, srcFile, null)
+            onUploading(srcFile.length(), srcFile.length())
+        } finally {
+            uploadProgress = null
+        }
     }
 
     override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
         val name = PathUtil.getFileName(src)
         val dstPath = "${dst}/$name"
         log { "download: ${getPath(src)} to $dstPath" }
-        val dstOutputStream = File(dstPath).outputStream()
-        val srcInputStream = client.get(getPath(src))
-        srcInputStream.copyTo(dstOutputStream)
-        srcInputStream.close()
-        dstOutputStream.close()
+        val bytes = client.get(getPath(src)).use { input ->
+            CountingOutputStreamImpl(File(dstPath).outputStream(), -1, onDownloading).use { output ->
+                input.copyTo(output)
+            }
+        }
+        onDownloading(bytes, bytes)
     }
 
     override fun deleteFile(src: String) = withClient { client ->
@@ -256,10 +297,13 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
             rootPathList = listOf(prefix),
             defaultPathList = listOf(prefix),
         )
-        withMainContext {
-            val pathString = pickYou.awaitLaunch(context)
-            onSet(handleOriginalPath(pathString), GsonUtil().toJson(extra))
+        try {
+            withMainContext {
+                val pathString = pickYou.awaitLaunch(context)
+                onSet(handleOriginalPath(pathString), GsonUtil().toJson(extra))
+            }
+        } finally {
+            disconnect()
         }
-        disconnect()
     }
 }

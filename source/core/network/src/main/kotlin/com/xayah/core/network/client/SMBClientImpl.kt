@@ -31,7 +31,6 @@ import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.toPathList
-import com.xayah.core.util.withLog
 import com.xayah.core.util.withMainContext
 import com.xayah.libpickyou.PickYouLauncher
 import com.xayah.libpickyou.parcelables.DirChildrenParcelable
@@ -45,7 +44,6 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
     private var client: SMBClient? = null
     private var session: Session? = null
     private var share: Share? = null
-    private var shareName: String = ""
     private var availableShares = listOf<String>()
 
     private fun log(msg: () -> String): String = run {
@@ -56,11 +54,6 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
     companion object {
         // Ref: https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-srvs/6069f8c0-c93f-43a0-a5b4-7ed447eb4b84
         private const val STYPE_SPECIAL: Int = (0x80000000).toInt()
-    }
-
-    private fun withClient(block: (client: SMBClient) -> Unit) = run {
-        if (client == null) throw NullPointerException("Client is null.")
-        block(client!!)
     }
 
     private fun withSession(block: (session: Session) -> Unit) = run {
@@ -76,10 +69,8 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
     private fun setShare(share: String?) = withSession { session ->
         if (share == null) {
             this.share = null
-            this.shareName = ""
         } else {
             this.share = session.connectShare(share)
-            this.shareName = share
         }
     }
 
@@ -96,8 +87,10 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         val config = SmbConfig.builder()
             .withDialects(dialects)
             .build()
-        client = SMBClient(config).apply {
-            connect(entity.host, extra.port).also { connection ->
+        val smbClient = SMBClient(config)
+        client = smbClient
+        try {
+            smbClient.connect(entity.host, extra.port).also { connection ->
                 log { "Dialect: ${connection.connectionContext.negotiatedProtocol.dialect.name}" }
                 log { "Mode: ${extra.mode}" }
 
@@ -116,20 +109,23 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
                     availableShares = shares.filter { (it.type and STYPE_SPECIAL == STYPE_SPECIAL).not() }.map { it.netName }
                 }
             }
+        } catch (error: Exception) {
+            runCatching { disconnect() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
         }
     }
 
     override fun disconnect() {
-        runCatching {
-            withDiskShare { diskShare ->
-                diskShare.close()
-            }
-            withClient { client ->
-                client.close()
-            }
-        }.withLog()
+        val disk = share
+        val connection = client
         share = null
         client = null
+        session = null
+        try {
+            disk?.close()
+        } finally {
+            connection?.close()
+        }
     }
 
     override fun exists(src: String): Boolean {
@@ -179,7 +175,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
             setOf(AccessMask.FILE_READ_DATA, AccessMask.FILE_READ_ATTRIBUTES, AccessMask.FILE_READ_EA),
             setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
             SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OPEN_IF,
+            SMB2CreateDisposition.FILE_OPEN,
             setOf(SMB2CreateOptions.FILE_RANDOM_ACCESS)
         )
     }
@@ -211,32 +207,29 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         val dstPath = "$dst/$name"
         log { "upload: $src to $dstPath" }
         deleteFile(dstPath)
-        val dstFile = openFileOnWrite(dstPath)
-        val dstStream = dstFile.outputStream
         val srcFile = File(src)
         val srcFileSize = srcFile.length()
-        val srcInputStream = srcFile.inputStream()
-        val countingStream = CountingOutputStreamImpl(dstStream, srcFileSize, onUploading)
-        srcInputStream.copyTo(countingStream)
-        srcInputStream.close()
-        countingStream.close()
-        dstFile.close()
-        if (countingStream.byteCount == 0L) throw IOException("Failed to write remote file: 0 byte.")
-        onUploading(countingStream.byteCount, countingStream.byteCount)
+        val bytes = srcFile.inputStream().use { input ->
+            openFileOnWrite(dstPath).use { remote ->
+                CountingOutputStreamImpl(remote.outputStream, srcFileSize, onUploading).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        onUploading(bytes, bytes)
     }
 
     override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = run {
         val name = PathUtil.getFileName(src)
         val dstPath = "$dst/$name"
         log { "download: $src to $dstPath" }
-        val dstOutputStream = File(dstPath).outputStream()
-        val srcFile = openFileOnRead(src)
-        val countingStream = CountingOutputStreamImpl(dstOutputStream, -1) { written, total -> onDownloading(written, total) }
-        srcFile.read(countingStream)
-        srcFile.close()
-        dstOutputStream.close()
-        countingStream.close()
-        onDownloading(countingStream.byteCount, countingStream.byteCount)
+        val bytes = openFileOnRead(src).use { remote ->
+            CountingOutputStreamImpl(File(dstPath).outputStream(), -1, onDownloading).use { output ->
+                remote.read(output)
+                output.byteCount
+            }
+        }
+        onDownloading(bytes, bytes)
     }
 
     override fun deleteFile(src: String) = withDiskShare { diskShare ->
@@ -256,7 +249,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
 
         withDiskShare { diskShare ->
             if (diskShare.folderExists(src)) {
-                val files = listFiles("/${shareName}/$src")
+                val files = listFiles(src)
                 if (files.files.isNotEmpty()) {
                     isEmpty = false
                 }
@@ -284,50 +277,38 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         else throw IOException("$src not found.")
     }
 
-    /**
-     * @param src "$shareName/path"
-     */
-    override fun listFiles(src: String): DirChildrenParcelable {
+    private fun listPickerFiles(src: String): DirChildrenParcelable {
         if (src.isEmpty()) {
             setShare(null)
-        } else {
-            val sharePrefix = src.split("/").getOrNull(1) ?: ""
-            withSession {
-                setShare(sharePrefix)
+            if (availableShares.isEmpty()) {
+                throw SMBRuntimeException("Share is null and there are no other available shares.")
             }
+            return DirChildrenParcelable(files = emptyList(), directories = availableShares.sorted().map { FileParcelable(it, 0L) })
         }
+        val shareName = src.removePrefix("/").substringBefore('/')
+        setShare(shareName)
+        return listFiles(src.removePrefix("/$shareName"))
+    }
 
+    override fun listFiles(src: String): DirChildrenParcelable = withDiskShare { diskShare ->
         val files = mutableListOf<FileParcelable>()
         val directories = mutableListOf<FileParcelable>()
-        if (share != null) {
-            withDiskShare { diskShare ->
-                // Remove share name
-                val srcPath = src.replaceFirst("/${shareName}", "")
-                val clientFiles = diskShare.list(srcPath)
-                for (file in clientFiles) {
-                    if (file.fileName == "." || file.fileName == "..") continue
-                    val path = if (srcPath.isEmpty()) file.fileName else "${srcPath.trimEnd('/')}/${file.fileName}"
-                    val creationTime = file.creationTime.toEpochMillis()
-                    val fileParcelable = FileParcelable(file.fileName, creationTime)
-                    if (diskShare.folderExists(path)) directories.add(fileParcelable)
-                    else files.add(fileParcelable)
-                }
-            }
-        } else if (availableShares.isEmpty()) {
-            throw SMBRuntimeException("Share is null and there are no other available shares.")
-        } else {
-            directories.addAll(availableShares.map { FileParcelable(it, 0L) })
+        for (file in diskShare.list(src)) {
+            if (file.fileName == "." || file.fileName == "..") continue
+            val fileParcelable = FileParcelable(file.fileName, file.creationTime.toEpochMillis())
+            if (file.fileAttributes and FileAttributes.FILE_ATTRIBUTE_DIRECTORY.value != 0L) directories.add(fileParcelable)
+            else files.add(fileParcelable)
         }
         files.sortBy { it.name }
         directories.sortBy { it.name }
-        return DirChildrenParcelable(files = files, directories = directories)
+        DirChildrenParcelable(files = files, directories = directories)
     }
 
     override fun walkFileTree(src: String): List<PathParcelable> {
         val pathParcelableList = mutableListOf<PathParcelable>()
         withDiskShare { diskShare ->
             if (diskShare.folderExists(src)) {
-                val files = listFiles("/${shareName}/$src")
+                val files = listFiles(src)
                 for (i in files.files) {
                     pathParcelableList.add(PathParcelable("${src}/${i.name}"))
                 }
@@ -341,14 +322,11 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         return pathParcelableList
     }
 
-    /**
-     * @param src "path" without "$shareName"
-     */
     override fun size(src: String): Long {
         var size = 0L
         withDiskShare { diskShare ->
             if (diskShare.folderExists(src)) {
-                val files = listFiles("/${shareName}/$src")
+                val files = listFiles(src)
                 for (i in files.files) {
                     size += diskShare.getFileInformation("${src}/${i.name}").standardInformation.endOfFile
                 }
@@ -384,7 +362,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         val prefix = "${context.getString(R.string.cloud)}:"
         val pickYou = PickYouLauncher(
             checkPermission = false,
-            traverseBackend = { listFiles(it.replaceFirst(prefix, "")) },
+            traverseBackend = { listPickerFiles(it.removePrefix(prefix)) },
             mkdirsBackend = { parent, child ->
                 val (_, target) = handleOriginalPath("$parent/$child")
                 runCatching { mkdirRecursively(target) }.isSuccess
@@ -394,11 +372,14 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
             rootPathList = listOf(prefix),
             defaultPathList = if (extra.share.isNotEmpty()) listOf(prefix, extra.share) else listOf(prefix),
         )
-        withMainContext {
-            val pathString = pickYou.awaitLaunch(context)
-            val (share, remote) = handleOriginalPath(pathString)
-            onSet(remote, GsonUtil().toJson(extra.copy(share = share)))
+        try {
+            withMainContext {
+                val pathString = pickYou.awaitLaunch(context)
+                val (share, remote) = handleOriginalPath(pathString)
+                onSet(remote, GsonUtil().toJson(extra.copy(share = share)))
+            }
+        } finally {
+            disconnect()
         }
-        disconnect()
     }
 }

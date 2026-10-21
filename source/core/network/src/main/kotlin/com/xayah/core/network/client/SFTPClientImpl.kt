@@ -21,14 +21,11 @@ import com.xayah.libpickyou.ui.model.PickerType
 import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
-import net.schmizz.sshj.sftp.RemoteFile
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.password.PasswordFinder
 import net.schmizz.sshj.userauth.password.Resource
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
 
 
 class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExtra) : CloudClient {
@@ -40,54 +37,62 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         msg()
     }
 
-    private fun <T> withSSHClient(block: (client: SSHClient) -> T) = run {
-        if (sshClient == null) throw NullPointerException("SSHClient is null.")
-        block(sshClient!!)
-    }
-
     private fun <T> withSFTPClient(block: (client: SFTPClient) -> T) = run {
         if (sftpClient == null) throw NullPointerException("SFTPClient is null.")
         block(sftpClient!!)
     }
 
     override fun connect() {
-        sshClient = SSHClient().apply {
-            addHostKeyVerifier(PromiscuousVerifier())
-            connect(entity.host, extra.port)
+        val connection = SSHClient()
+        sshClient = connection
+        try {
+            connection.apply {
+                addHostKeyVerifier(PromiscuousVerifier())
+                connect(entity.host, extra.port)
 
-            when (extra.mode) {
-                SFTPAuthMode.PASSWORD -> {
-                    authPassword(entity.user, entity.pass)
-                }
-
-                SFTPAuthMode.PUBLIC_KEY -> {
-                    val passwordFinder = object : PasswordFinder {
-                        var retryCount = 0
-
-                        override fun reqPassword(resource: Resource<*>?): CharArray {
-                            return entity.pass.toCharArray()
-                        }
-
-                        override fun shouldRetry(resource: Resource<*>?): Boolean {
-                            return ++retryCount < 3
-                        }
+                when (extra.mode) {
+                    SFTPAuthMode.PASSWORD -> {
+                        authPassword(entity.user, entity.pass)
                     }
-                    log { "Authenticating with public key..." }
-                    val keyProvider = loadKeys(extra.privateKey, null, passwordFinder)
-                    log { "Loaded keys!" }
-                    authPublickey(entity.user, keyProvider)
-                    log { "Authenticated with public key!" }
-                }
-            }
 
-            sftpClient = newSFTPClient()
+                    SFTPAuthMode.PUBLIC_KEY -> {
+                        val passwordFinder = object : PasswordFinder {
+                            var retryCount = 0
+
+                            override fun reqPassword(resource: Resource<*>?): CharArray {
+                                return entity.pass.toCharArray()
+                            }
+
+                            override fun shouldRetry(resource: Resource<*>?): Boolean {
+                                return ++retryCount < 3
+                            }
+                        }
+                        log { "Authenticating with public key..." }
+                        val keyProvider = loadKeys(extra.privateKey, null, passwordFinder)
+                        log { "Loaded keys!" }
+                        authPublickey(entity.user, keyProvider)
+                        log { "Authenticated with public key!" }
+                    }
+                }
+
+                sftpClient = newSFTPClient()
+            }
+        } catch (error: Exception) {
+            runCatching { disconnect() }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
         }
     }
 
     override fun disconnect() {
-        withSSHClient { it.disconnect() }
+        val sftp = sftpClient
+        val ssh = sshClient
         sshClient = null
         sftpClient = null
+        try {
+            sftp?.close()
+        } finally {
+            ssh?.disconnect()
+        }
     }
 
     override fun mkdir(dst: String) {
@@ -99,10 +104,6 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         withSFTPClient { it.mkdirs(dst) }
     }
 
-    private fun openFile(src: String): RemoteFile {
-        return withSFTPClient { it.open(src, setOf(OpenMode.READ, OpenMode.WRITE, OpenMode.CREAT)) }
-    }
-
     override fun renameTo(src: String, dst: String) {
         log { "Rename $src to $dst" }
         withSFTPClient { it.rename(src, dst) }
@@ -112,33 +113,30 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         val name = PathUtil.getFileName(src)
         val dstPath = "$dst/$name"
         log { "upload: $src to $dstPath" }
-        val dstFile = openFile(dstPath)
-        val dstStream = dstFile.RemoteFileOutputStream()
         val srcFile = File(src)
         val srcFileSize = srcFile.length()
-        val srcInputStream = srcFile.inputStream()
-        val countingStream = CountingOutputStreamImpl(dstStream, srcFileSize, onUploading)
-        srcInputStream.copyTo(countingStream)
-        srcInputStream.close()
-        countingStream.close()
-        dstFile.close()
-        if (countingStream.byteCount == 0L) throw IOException("Failed to write remote file: 0 byte.")
-        onUploading(countingStream.byteCount, countingStream.byteCount)
+        val bytes = srcFile.inputStream().use { input ->
+            withSFTPClient { it.open(dstPath, setOf(OpenMode.WRITE, OpenMode.CREAT, OpenMode.TRUNC)) }.use { remote ->
+                CountingOutputStreamImpl(remote.RemoteFileOutputStream(), srcFileSize, onUploading).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        onUploading(bytes, bytes)
     }
 
     override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) {
         val name = PathUtil.getFileName(src)
         val dstPath = "${dst}/$name"
         log { "download: $src to $dstPath" }
-        val dstFile = File(dstPath)
-        val dstStream = FileOutputStream(dstFile)
-        val srcFile = openFile(src)
-        val srcFileSize = srcFile.length()
-        val srcFileStream = srcFile.RemoteFileInputStream()
-        val countingStream = CountingOutputStreamImpl(dstStream, srcFileSize, onDownloading)
-        srcFileStream.copyTo(countingStream)
-        srcFileStream.close()
-        dstStream.close()
+        val bytes = withSFTPClient { it.open(src, setOf(OpenMode.READ)) }.use { remote ->
+            remote.RemoteFileInputStream().use { input ->
+                CountingOutputStreamImpl(File(dstPath).outputStream(), remote.length(), onDownloading).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        onDownloading(bytes, bytes)
     }
 
     override fun deleteFile(src: String) {
@@ -255,10 +253,13 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
             rootPathList = listOf(prefix),
             defaultPathList = listOf(prefix),
         )
-        withMainContext {
-            val pathString = pickYou.awaitLaunch(context)
-            onSet(handleOriginalPath(pathString), GsonUtil().toJson(extra))
+        try {
+            withMainContext {
+                val pathString = pickYou.awaitLaunch(context)
+                onSet(handleOriginalPath(pathString), GsonUtil().toJson(extra))
+            }
+        } finally {
+            disconnect()
         }
-        disconnect()
     }
 }

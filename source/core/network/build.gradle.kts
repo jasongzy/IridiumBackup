@@ -5,6 +5,7 @@ plugins {
 
 android {
     namespace = "com.xayah.core.network"
+    testOptions.unitTests.isReturnDefaultValues = true
 }
 
 dependencies {
@@ -40,4 +41,7 @@ dependencies {
 
     // PickYou
     implementation(libs.pickyou)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }
