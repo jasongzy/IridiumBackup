@@ -38,6 +38,16 @@ class PathUtil @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     companion object {
+        private val packageNamePattern = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
+
+        fun isValidPackageName(packageName: String?): Boolean =
+            packageName != null && packageNamePattern.matches(packageName)
+
+        fun getPackageArchiveRelativeDir(packageName: String?, userId: Int, preserveId: Long): String? {
+            if (!isValidPackageName(packageName) || userId < 0 || preserveId < 0) return null
+            return "$packageName/user_$userId${if (preserveId == 0L) "" else "@$preserveId"}"
+        }
+
         /**
          * Returns the parent path, or empty string if this path does not have a parent.
          */

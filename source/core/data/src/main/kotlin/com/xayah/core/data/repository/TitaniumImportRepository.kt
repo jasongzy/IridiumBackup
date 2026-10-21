@@ -109,7 +109,6 @@ class TitaniumImportRepository @Inject constructor(
         const val DEFAULT_LABEL_DB = "/storage/emulated/0/data/com.keramidas.TitaniumBackup/settings/databases~custom"
         const val IMPORT_NOTE = "from Titanium Backup"
         private val metadataPattern = Regex("^(.+)-(\\d{8})-(\\d{6})\\.properties$")
-        private val packageNamePattern = Regex("^[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)*$")
     }
 
     suspend fun detectBackupDir(): String? = DEFAULT_BACKUP_DIR.takeIf { rootService.exists(it) }
@@ -184,7 +183,7 @@ class TitaniumImportRepository @Inject constructor(
     ): List<BackupResult> {
         val results = mutableListOf<BackupResult>()
         val packageNames = candidates.map(BackupCandidate::packageName)
-            .filter(packageNamePattern::matches)
+            .filter(PathUtil::isValidPackageName)
             .toSet()
         onProgress(0, candidates.size, null)
         try {
@@ -255,7 +254,7 @@ class TitaniumImportRepository @Inject constructor(
         val fileName = PathUtil.getFileName(metadataPath)
         val match = checkNotNull(metadataPattern.matchEntire(fileName))
         val packageName = match.groupValues[1]
-        check(packageNamePattern.matches(packageName)) { "Invalid package name" }
+        check(PathUtil.isValidPackageName(packageName)) { "Invalid package name" }
         val createdAt = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
             .parse("${match.groupValues[2]}-${match.groupValues[3]}")?.time
             ?: error("Invalid backup timestamp")
@@ -321,7 +320,7 @@ class TitaniumImportRepository @Inject constructor(
         val fileName = PathUtil.getFileName(metadataPath)
         val match = checkNotNull(metadataPattern.matchEntire(fileName))
         val packageName = match.groupValues[1]
-        check(packageNamePattern.matches(packageName)) { "Invalid package name" }
+        check(PathUtil.isValidPackageName(packageName)) { "Invalid package name" }
         val createdAt = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
             .parse("${match.groupValues[2]}-${match.groupValues[3]}")?.time
             ?: error("Invalid backup timestamp")

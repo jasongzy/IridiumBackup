@@ -25,6 +25,7 @@ import com.xayah.core.model.findRetentionRevisions
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.ConfigsPackageRestoreName
+import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -350,6 +351,12 @@ class AppBackupRepository @Inject constructor(
             BackupVerificationStatus.DAMAGED,
             listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
         )
+        if (!hasValidManifestFiles(manifest.files)) return VerificationResult(
+            revision,
+            appLabel,
+            BackupVerificationStatus.DAMAGED,
+            listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
+        )
         val issues = mutableListOf<VerificationIssue>()
         if (
             manifest.schemaVersion != BACKUP_MANIFEST_SCHEMA_VERSION ||
@@ -359,8 +366,7 @@ class AppBackupRepository @Inject constructor(
             manifest.versionName != revision.appVersionName ||
             manifest.versionCode != revision.appVersionCode ||
             manifest.contentMask != revision.contentMask ||
-            manifest.note.orEmpty() != revision.note ||
-            manifest.files.isNullOrEmpty()
+            manifest.note.orEmpty() != revision.note
         ) issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH)
         manifest.files.orEmpty().forEach { file ->
             val path = "$revisionDir/${file.name}"
@@ -424,20 +430,24 @@ class AppBackupRepository @Inject constructor(
         revisionDirs.forEachIndexed { index, revisionDir ->
             val config = rootService.readJson<PackageRestoreConfig>(PathUtil.getPackageRestoreConfigDst(revisionDir))
             val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir))
-            if (
-                config != null &&
-                manifest != null &&
-                config.schemaVersion == PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION &&
-                manifest.schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION &&
-                config.packageName == manifest.packageName &&
-                config.userId == manifest.userId &&
-                config.createdAt == manifest.createdAt &&
-                config.versionName == manifest.versionName &&
-                config.versionCode == manifest.versionCode &&
-                manifest.files.isNullOrEmpty().not()
-            ) {
-                val app = config.toPackageEntity(cloud = "", backupDir = backupDir)
-                detectXposedModule(config.packageName, config.userId, revisionDir)?.let {
+            val app = runCatching {
+                if (
+                    config != null &&
+                    manifest != null &&
+                    config.schemaVersion == PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION &&
+                    manifest.schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION &&
+                    config.packageName == manifest.packageName &&
+                    config.userId == manifest.userId &&
+                    config.createdAt == manifest.createdAt &&
+                    config.versionName == manifest.versionName &&
+                    config.versionCode == manifest.versionCode &&
+                    hasValidManifestFiles(manifest.files) &&
+                    PathUtil.getPackageArchiveRelativeDir(config.packageName, config.userId, config.createdAt)
+                        ?.let { FileUtil.normalizeAbsolutePath("$appsDir/$it") } == FileUtil.normalizeAbsolutePath(revisionDir)
+                ) config.toPackageEntity(cloud = "", backupDir = backupDir) else null
+            }.getOrNull()
+            if (app != null && manifest != null) {
+                detectXposedModule(app.packageName, app.userId, revisionDir)?.let {
                     app.packageInfo.isXposedModule = it
                 }
                 rebuilt += app to manifest
@@ -471,6 +481,7 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun deleteRevision(revision: BackupRevisionEntity): Boolean {
+        if (!hasValidArtifactId(revision)) return false
         val packageEntity = findLegacyRevision(revision)
         val deleted = if (packageEntity != null) {
             packageRepository.delete(packageEntity)
@@ -484,12 +495,11 @@ class AppBackupRepository @Inject constructor(
         _verificationResults.value -= revision.id
         getLocalRevisionDir(revision)?.let { revisionDir ->
             val packageDir = PathUtil.getParentPath(revisionDir)
-            val remaining = rootService.listFilePaths(packageDir)
-            if (
-                rootService.exists(packageDir) &&
-                remaining.none { it != PathUtil.getAppIconPath(PathUtil.getParentPath(packageDir), revision.packageName) }
-            ) {
-                rootService.deleteRecursively(packageDir)
+            val iconPath = PathUtil.getAppIconPath(PathUtil.getParentPath(packageDir), revision.packageName)
+            val remaining = rootService.listFilePathsChecked(packageDir).getOrNull()
+            if (remaining != null && remaining.all { it == iconPath }) {
+                rootService.deleteRecursively(iconPath)
+                rootService.clearEmptyDirectoriesRecursively(packageDir)
             }
         }
         dao.deleteUninstalledAppsWithoutRevisions(revision.userId)
@@ -546,7 +556,7 @@ class AppBackupRepository @Inject constructor(
     }
 
     private suspend fun findLegacyRevision(revision: BackupRevisionEntity): PackageEntity? {
-        if (revision.engine != BackupEngine.LEGACY) return null
+        if (revision.engine != BackupEngine.LEGACY || !hasValidArtifactId(revision)) return null
         val preserveId = revision.artifactId.substringAfterLast('@').toLongOrNull() ?: return null
         return packageRepository
             .getRevisions(revision.packageName, revision.userId, preserveId)
@@ -554,12 +564,23 @@ class AppBackupRepository @Inject constructor(
     }
 
     private fun getLocalRevisionDir(revision: BackupRevisionEntity): String? {
-        if (revision.engine != BackupEngine.LEGACY) return null
+        if (revision.engine != BackupEngine.LEGACY || !hasValidArtifactId(revision)) return null
         val cloud = revision.repositoryId.substringBefore(':')
         if (cloud.isNotEmpty()) return null
         val backupDir = revision.repositoryId.substringAfter(':')
-        return "$backupDir/${PathUtil.getAppsRelativeDir()}/${revision.artifactId}"
+        val normalized = FileUtil.normalizeAbsolutePath(backupDir) ?: return null
+        return "$normalized/${PathUtil.getAppsRelativeDir()}/${revision.artifactId}"
     }
+
+    private fun hasValidArtifactId(revision: BackupRevisionEntity): Boolean =
+        PathUtil.getPackageArchiveRelativeDir(revision.packageName, revision.userId, revision.createdAt)
+            ?.let { it == revision.artifactId } == true
+
+    private fun hasValidManifestFiles(files: List<BackupManifestFile?>?): Boolean =
+        !files.isNullOrEmpty() && files.all { file ->
+            val name = file?.name
+            !name.isNullOrEmpty() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
+        }
 
     private fun Int.toDataStates() = PackageDataStates(
         apkState = if (this and 1 != 0) DataState.Selected else DataState.NotSelected,

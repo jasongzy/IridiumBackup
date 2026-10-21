@@ -25,6 +25,7 @@ import com.xayah.core.model.database.PackageStorageStats
 import com.xayah.core.model.util.suffixOf
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.DateUtil
+import com.xayah.core.util.FileUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
@@ -234,13 +235,15 @@ class PackageRepository @Inject constructor(
     }
 
     suspend fun delete(p: PackageEntity) {
-        val appsDir = pathUtil.getLocalBackupAppsDir()
+        val relativeDir = PathUtil.getPackageArchiveRelativeDir(p.packageName, p.userId, p.preserveId) ?: return
         val isSuccess = if (p.indexInfo.cloud.isEmpty()) {
-            val src = "${appsDir}/${p.archivesRelativeDir}"
+            val backupDir = FileUtil.normalizeAbsolutePath(p.indexInfo.backupDir) ?: return
+            val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
+            val src = "$appsDir/$relativeDir"
             rootService.deleteRecursively(src).also { deleted ->
                 val packageDir = "${appsDir}/${p.packageName}"
-                if (deleted && rootService.exists(packageDir) && rootService.listFilePaths(packageDir).isEmpty()) {
-                    rootService.deleteRecursively(packageDir)
+                if (deleted && rootService.listFilePathsChecked(packageDir).getOrNull()?.isEmpty() == true) {
+                    rootService.clearEmptyDirectoriesRecursively(packageDir)
                 }
             }
         } else {
@@ -248,7 +251,7 @@ class PackageRepository @Inject constructor(
                 cloudRepository.withClient(p.indexInfo.cloud) { client, entity ->
                     val remote = entity.remote
                     val remoteArchivesPackagesDir = pathUtil.getCloudRemoteAppsDir(remote)
-                    val src = "${remoteArchivesPackagesDir}/${p.archivesRelativeDir}"
+                    val src = "$remoteArchivesPackagesDir/$relativeDir"
                     if (client.exists(src)) client.deleteRecursively(src)
                     val packageDir = "${remoteArchivesPackagesDir}/${p.packageName}"
                     if (client.exists(packageDir)) {
