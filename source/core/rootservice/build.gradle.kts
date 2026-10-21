@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.library.common)
     alias(libs.plugins.library.protobuf)
+    alias(libs.plugins.library.androidTest)
     alias(libs.plugins.refine)
 }
 

@@ -244,26 +244,17 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun renameTo(src: String, dst: String): Boolean = runCatching { getService().renameTo(src, dst) }.onFailure(onFailure).getOrElse { false }
 
-    suspend fun writeText(text: String, dst: String): Boolean = runCatching {
-        var isSuccess = true
-        val tmpFilePath = "${context.cacheDir.path}/tmp"
-        val tmpFile = File(tmpFilePath)
-        tmpFile.writeText(text)
-        if (getService().mkdirs(PathUtil.getParentPath(dst)).not()) isSuccess = false
-        if (getService().copyTo(tmpFilePath, dst, true).not()) isSuccess = false
-        FileUtil.deleteRecursively(tmpFile.path)
-        isSuccess
-    }.onFailure(onFailure).getOrElse { false }
+    suspend fun writeText(text: String, dst: String): Boolean = writeBytes(text.toByteArray(), dst)
 
     suspend fun writeBytes(bytes: ByteArray, dst: String): Boolean = runCatching {
-        var isSuccess = true
-        val tmpFilePath = "${context.cacheDir.path}/tmp"
-        val tmpFile = File(tmpFilePath)
-        tmpFile.writeBytes(bytes)
-        getService().mkdirs(PathUtil.getParentPath(dst))
-        isSuccess = isSuccess and getService().copyTo(tmpFilePath, dst, true)
-        FileUtil.deleteRecursively(tmpFile.path)
-        isSuccess
+        val tmpFile = File.createTempFile("write-", null, context.cacheDir)
+        try {
+            tmpFile.writeBytes(bytes)
+            val service = getService()
+            service.mkdirs(PathUtil.getParentPath(dst)) && service.copyTo(tmpFile.path, dst, true)
+        } finally {
+            tmpFile.delete()
+        }
     }.onFailure(onFailure).getOrElse { false }
 
     suspend fun exists(path: String): Boolean = runCatching { getService().exists(path) }.onFailure(onFailure).getOrElse { false }
@@ -284,13 +275,15 @@ class RemoteRootService(private val context: Context) {
         }.onFailure(onFailure)
 
     private fun readFromParcel(pfd: ParcelFileDescriptor, block: (Parcel) -> Unit) = run {
-        val stream = ParcelFileDescriptor.AutoCloseInputStream(pfd)
-        val bytes = stream.readBytes()
+        val bytes = ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }
         val parcel = Parcel.obtain()
-        parcel.unmarshall(bytes, 0, bytes.size)
-        parcel.setDataPosition(0)
-        block(parcel)
-        parcel.recycle()
+        try {
+            parcel.unmarshall(bytes, 0, bytes.size)
+            parcel.setDataPosition(0)
+            block(parcel)
+        } finally {
+            parcel.recycle()
+        }
     }
 
     suspend fun readText(path: String): String = runCatching {

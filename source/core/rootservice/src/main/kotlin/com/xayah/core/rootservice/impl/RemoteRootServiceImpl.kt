@@ -315,16 +315,18 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
 
     private fun writeToParcel(block: (Parcel) -> Unit): ParcelFileDescriptor {
         val parcel = Parcel.obtain()
-        parcel.setDataPosition(0)
-        block(parcel)
-        val tmpFile = File.createTempFile("databackup-parcel-", ".tmp", context.cacheDir)
-        tmpFile.delete()
-        tmpFile.createNewFile()
-        tmpFile.writeBytes(parcel.marshall())
-        val pfd = ParcelFileDescriptor.open(tmpFile, ParcelFileDescriptor.MODE_READ_WRITE)
-        tmpFile.delete()
-        parcel.recycle()
-        return pfd
+        try {
+            block(parcel)
+            val tmpFile = File.createTempFile("databackup-parcel-", ".tmp", context.cacheDir)
+            try {
+                tmpFile.writeBytes(parcel.marshall())
+                return ParcelFileDescriptor.open(tmpFile, ParcelFileDescriptor.MODE_READ_ONLY)
+            } finally {
+                tmpFile.delete()
+            }
+        } finally {
+            parcel.recycle()
+        }
     }
 
     override fun readText(path: String): ParcelFileDescriptor = synchronized(lock) {
