@@ -2,13 +2,14 @@ plugins {
     alias(libs.plugins.library.common)
     alias(libs.plugins.library.hilt)
     alias(libs.plugins.library.protobuf)
-    alias(libs.plugins.library.androidTest)
     alias(libs.plugins.library.compose)
+    alias(libs.plugins.library.androidTest)
     alias(libs.plugins.refine)
 }
 
 android {
     namespace = "com.xayah.core.data"
+    packaging.resources.excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
 }
 
 dependencies {
@@ -37,4 +38,6 @@ dependencies {
 
     // Work manager
     implementation(libs.androidx.work.runtime.ktx)
+
+    androidTestImplementation(libs.androidx.room.runtime)
 }

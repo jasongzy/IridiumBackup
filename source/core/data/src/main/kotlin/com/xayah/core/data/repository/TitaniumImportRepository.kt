@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
-import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.BackupManifest
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
@@ -157,7 +156,9 @@ class TitaniumImportRepository @Inject constructor(
         return try {
             val labels = labelsRepo.getLabels().mapTo(mutableSetOf(), LabelEntity::label)
             val colors = labelsRepo.getLabelColors()
-            val refs = labelsRepo.getAppRefs().groupBy { it.label }
+            val refs = labelsRepo.getAppRefs()
+                .filter { it.userId == 0 && it.preserveId == 0L }
+                .groupBy { it.label }
                 .mapValues { (_, values) -> values.mapTo(mutableSetOf()) { it.packageName } }
             readLabels(localDb).map { group ->
                 LabelCandidate(
@@ -229,9 +230,6 @@ class TitaniumImportRepository @Inject constructor(
                     withContext(NonCancellable) {
                         labelsRepo.addLabels(listOf(LabelEntity(group.name)))
                         labelsRepo.setLabelColor(group.name, group.color)
-                        appBackupRepository.upsertImportedApps(
-                            group.packages.map { packageName -> placeholderApp(packageName, packageName) }
-                        )
                         labelsRepo.addLabelAppCrossRefs(
                             group.packages.map { packageName ->
                                 LabelAppCrossRefEntity(group.name, packageName, 0, 0)
@@ -552,18 +550,6 @@ class TitaniumImportRepository @Inject constructor(
         storageStats = PackageStorageStats(),
         dataStats = PackageDataStats(),
         displayStats = PackageDataStats(),
-    )
-
-    private fun placeholderApp(packageName: String, label: String) = BackupAppEntity(
-        packageName = packageName,
-        userId = 0,
-        label = label,
-        versionName = "",
-        versionCode = 0,
-        firstInstallTime = 0,
-        lastUpdateTime = 0,
-        isSystem = false,
-        isInstalled = false,
     )
 
     private data class LabelGroup(val name: String, val color: Long, val packages: List<String>)

@@ -5,6 +5,11 @@ import androidx.room.Delete
 import androidx.room.Query
 import androidx.room.Upsert
 import androidx.room.Transaction
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import com.xayah.core.model.AppKey
+import com.xayah.core.model.BackupAppEntity
+import com.xayah.core.model.toBackupApp
 import com.xayah.core.model.database.LabelAppCrossRefEntity
 import com.xayah.core.model.database.LabelEntity
 import com.xayah.core.model.database.LabelFileCrossRefEntity
@@ -19,10 +24,16 @@ interface LabelDao {
     suspend fun upsertLabels(items: List<LabelEntity>)
 
     @Upsert(entity = LabelAppCrossRefEntity::class)
-    suspend fun upsert(item: LabelAppCrossRefEntity): Long
+    suspend fun upsertAppRefRows(items: List<LabelAppCrossRefEntity>)
 
-    @Upsert(entity = LabelAppCrossRefEntity::class)
-    suspend fun upsertAppRefs(items: List<LabelAppCrossRefEntity>)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingApps(items: List<BackupAppEntity>)
+
+    @Transaction
+    suspend fun upsertAppRefs(items: List<LabelAppCrossRefEntity>) {
+        insertMissingApps(items.map { AppKey(it.packageName, it.userId) }.distinct().map(AppKey::toBackupApp))
+        upsertAppRefRows(items)
+    }
 
     @Upsert(entity = LabelFileCrossRefEntity::class)
     suspend fun upsert(item: LabelFileCrossRefEntity): Long

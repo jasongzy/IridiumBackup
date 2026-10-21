@@ -14,6 +14,7 @@ import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.database.LabelAppCrossRefEntity
 import com.xayah.core.model.database.LabelEntity
 import com.xayah.core.model.database.LabelFileCrossRefEntity
+import com.xayah.core.util.PathUtil
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -60,9 +61,12 @@ class LabelsRepo @Inject constructor(
     /**
      * Add a unique label app cross ref
      */
-    suspend fun addLabelAppCrossRef(item: LabelAppCrossRefEntity) = labelDao.upsert(item)
+    suspend fun addLabelAppCrossRef(item: LabelAppCrossRefEntity) = addLabelAppCrossRefs(listOf(item))
 
-    suspend fun addLabelAppCrossRefs(items: List<LabelAppCrossRefEntity>) = labelDao.upsertAppRefs(items)
+    suspend fun addLabelAppCrossRefs(items: List<LabelAppCrossRefEntity>) {
+        require(items.all { PathUtil.isValidPackageName(it.packageName) && it.userId >= 0 && it.preserveId >= 0 })
+        labelDao.upsertAppRefs(items)
+    }
 
     /**
      * Add a unique label file cross ref

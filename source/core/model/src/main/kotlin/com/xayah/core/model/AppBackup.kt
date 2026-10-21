@@ -58,6 +58,18 @@ data class BackupAppEntity(
     val note: String = "",
 )
 
+fun AppKey.toBackupApp() = BackupAppEntity(
+    packageName = packageName,
+    userId = userId,
+    label = packageName,
+    versionName = "",
+    versionCode = 0,
+    firstInstallTime = 0,
+    lastUpdateTime = 0,
+    isSystem = false,
+    isInstalled = false,
+)
+
 @Entity(
     tableName = "backup_revisions",
     foreignKeys = [

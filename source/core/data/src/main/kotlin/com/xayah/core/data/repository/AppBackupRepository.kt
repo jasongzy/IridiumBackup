@@ -24,6 +24,7 @@ import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.findRetentionRevisions
 import com.xayah.core.model.toPackageEntity
+import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.ConfigsPackageRestoreName
 import com.xayah.core.util.FileUtil
@@ -107,14 +108,6 @@ class AppBackupRepository @Inject constructor(
     suspend fun getRevisionSizeBytes(repositoryId: String, artifactIds: List<String>): Long =
         if (artifactIds.isEmpty()) 0 else dao.getRevisionSizeBytes(repositoryId, artifactIds)
 
-    suspend fun upsertImportedApps(apps: List<BackupAppEntity>) {
-        val merged = apps.map { imported ->
-            dao.getApp(imported.packageName, imported.userId)
-                ?: imported
-        }
-        dao.upsertApps(merged)
-    }
-
     suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) {
         val indexedApps = apps.map { app ->
             app.toBackupApp(note = dao.getApp(app.packageName, app.userId)?.note.orEmpty())
@@ -139,18 +132,7 @@ class AppBackupRepository @Inject constructor(
             } else if (item.note.isNotBlank()) {
                 dao.upsertApps(
                     listOf(
-                        BackupAppEntity(
-                            packageName = item.packageName,
-                            userId = item.userId,
-                            label = item.packageName,
-                            versionName = "",
-                            versionCode = 0,
-                            firstInstallTime = 0,
-                            lastUpdateTime = 0,
-                            isSystem = false,
-                            isInstalled = false,
-                            note = item.note.trim(),
-                        )
+                        AppKey(item.packageName, item.userId).toBackupApp().copy(note = item.note.trim())
                     )
                 )
             }
