@@ -23,6 +23,7 @@
     <item name="dump_apk" type="string" />
     <item name="dump_apk_desc" type="string" />
     <item name="idle" type="string" />
+    <item name="failed" type="string" />
     <item name="finished" type="string" />
     <item name="rebuild_finished" type="string" />
     <item name="rebuild_progress" type="string" />

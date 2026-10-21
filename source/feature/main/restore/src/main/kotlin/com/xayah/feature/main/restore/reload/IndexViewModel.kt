@@ -12,6 +12,7 @@ import com.xayah.feature.main.restore.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -46,19 +47,25 @@ class IndexViewModel @Inject constructor(
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
             IndexUiIntent.Rebuild -> {
-                emitState(state.copy(isLoading = true, completed = 0, total = 0, indexed = 0, results = emptyList()))
-                val report = appBackupRepository.rebuildLocalIndex { completed, total, indexed ->
-                    emitState(uiState.value.copy(completed = completed, total = total, indexed = indexed))
-                }
-                emitState(
-                    uiState.value.copy(
-                        isLoading = false,
-                        text = context.getString(R.string.rebuild_finished, report.results.size),
-                        results = report.results,
-                    )
-                )
-                withContext(Dispatchers.Main.immediate) {
-                    Toast.makeText(context, context.getString(R.string.rebuild_finished, report.results.size), Toast.LENGTH_SHORT).show()
+                if (uiState.value.isLoading) return
+                updateState { it.copy(isLoading = true, completed = 0, total = 0, indexed = 0, results = emptyList()) }
+                try {
+                    val report = withContext(Dispatchers.IO) {
+                        appBackupRepository.rebuildLocalIndex { completed, total, indexed ->
+                            updateState { it.copy(completed = completed, total = total, indexed = indexed) }
+                        }
+                    }
+                    updateState {
+                        it.copy(text = context.getString(R.string.rebuild_finished, report.results.size), results = report.results)
+                    }
+                    Toast.makeText(context, uiState.value.text, Toast.LENGTH_SHORT).show()
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    updateState {
+                        it.copy(text = "${context.getString(R.string.failed)}: ${error.localizedMessage ?: error.javaClass.simpleName}")
+                    }
+                } finally {
+                    updateState { it.copy(isLoading = false) }
                 }
             }
         }

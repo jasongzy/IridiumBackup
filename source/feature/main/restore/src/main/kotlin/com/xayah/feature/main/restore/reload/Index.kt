@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -72,7 +73,7 @@ fun PageReload() {
                 modifier = Modifier.fillMaxWidth(),
                 enabled = uiState.isLoading.not(),
                 onClick = {
-                    viewModel.emitIntentOnIO(IndexUiIntent.Rebuild)
+                    viewModel.emitIntentOnMain(IndexUiIntent.Rebuild)
                 },
             ) {
                 Text(stringResource(R.string.reload))
@@ -107,7 +108,7 @@ fun PageReload() {
                                 modifier = Modifier.paddingTop(SizeTokens.Level16),
                             )
                         } else if (uiState.results.isEmpty()) {
-                            Text(uiState.text)
+                            SelectionContainer { Text(uiState.text) }
                         }
                     }
                 }
