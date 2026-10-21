@@ -15,6 +15,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.withContext
 
 data class TitaniumImportUiState(
@@ -82,38 +83,43 @@ class TitaniumImportViewModel @Inject constructor(
 
     init {
         launchOnIO {
-            emitState(
-                uiState.value.copy(
-                    backupPath = repository.detectBackupDir().orEmpty(),
-                    labelPath = repository.detectLabelDatabase().orEmpty(),
+            val backupPath = repository.detectBackupDir().orEmpty()
+            val labelPath = repository.detectLabelDatabase().orEmpty()
+            updateState {
+                it.copy(
+                    backupPath = it.backupPath.ifEmpty { backupPath },
+                    labelPath = it.labelPath.ifEmpty { labelPath },
                 )
-            )
+            }
         }
     }
 
-    override suspend fun onEvent(state: TitaniumImportUiState, intent: TitaniumImportIntent) {
+    override suspend fun onEvent(state: TitaniumImportUiState, intent: TitaniumImportIntent) = withMainContext {
+        val current = uiState.value
+        if ((current.isBusy || current.cancelling) && intent !is TitaniumImportIntent.SetSearchQuery) return@withMainContext
         when (intent) {
-            is TitaniumImportIntent.SetMode -> setMode(state, intent.mode)
+            is TitaniumImportIntent.SetMode -> setMode(current, intent.mode)
             is TitaniumImportIntent.SelectBackupPath -> selectPath(intent.activity, PickerType.DIRECTORY) { path ->
-                resetCurrent(uiState.value.copy(backupPath = path))
+                resetCurrent { it.copy(backupPath = path) }
             }
             is TitaniumImportIntent.SelectLabelPath -> selectPath(intent.activity, PickerType.FILE) { path ->
-                resetCurrent(uiState.value.copy(labelPath = path))
+                resetCurrent { it.copy(labelPath = path) }
             }
-            is TitaniumImportIntent.ToggleBackup -> toggleBackup(state, intent.id)
-            is TitaniumImportIntent.ToggleBackupGroup -> toggleBackupGroup(state, intent.packageName)
-            is TitaniumImportIntent.ToggleLabel -> toggleLabel(state, intent.label)
-            is TitaniumImportIntent.SelectAll -> selectAll(state, intent.selected)
-            is TitaniumImportIntent.SetSearchQuery -> emitState(state.copy(searchQuery = intent.value))
-            TitaniumImportIntent.Scan -> startScan(state)
-            TitaniumImportIntent.Import -> startImport(state)
+            is TitaniumImportIntent.ToggleBackup -> toggleBackup(current, intent.id)
+            is TitaniumImportIntent.ToggleBackupGroup -> toggleBackupGroup(current, intent.packageName)
+            is TitaniumImportIntent.ToggleLabel -> toggleLabel(intent.label)
+            is TitaniumImportIntent.SelectAll -> selectAll(current, intent.selected)
+            is TitaniumImportIntent.SetSearchQuery -> updateState { it.copy(searchQuery = intent.value) }
+            TitaniumImportIntent.Scan -> startScan(current)
+            TitaniumImportIntent.Import -> startImport(current)
         }
     }
 
     fun cancelImport() {
-        launchOnIO {
-            emitState(uiState.value.copy(cancelling = true))
-            operationJob?.cancel()
+        launchOnMain {
+            updateState { it.copy(cancelling = true) }
+            operationJob?.cancelAndJoin()
+            updateState { it.copy(cancelling = false) }
         }
     }
 
@@ -121,7 +127,7 @@ class TitaniumImportViewModel @Inject constructor(
         repository.clearPreviewCache()
     }
 
-    private suspend fun setMode(state: TitaniumImportUiState, mode: ImportMode) {
+    private fun setMode(state: TitaniumImportUiState, mode: ImportMode) {
         if (mode == state.mode) return
         modeStates[state.mode] = state
         val restored = modeStates[mode] ?: state.copy(
@@ -139,14 +145,13 @@ class TitaniumImportViewModel @Inject constructor(
             labelResults = emptyList(),
             error = null,
         )
-        emitState(restored)
+        updateState { restored.copy(backupPath = it.backupPath, labelPath = it.labelPath) }
     }
 
-    private suspend fun resetCurrent(state: TitaniumImportUiState) {
-        if (state.mode == ImportMode.BACKUPS) repository.clearPreviewCache()
-        modeStates.remove(state.mode)
-        emitState(
-            state.copy(
+    private fun resetCurrent(selectPath: (TitaniumImportUiState) -> TitaniumImportUiState) {
+        modeStates.remove(uiState.value.mode)
+        updateState {
+            selectPath(it).copy(
                 stage = ImportStage.IDLE,
                 cancelling = false,
                 completed = 0,
@@ -160,122 +165,121 @@ class TitaniumImportViewModel @Inject constructor(
                 labelResults = emptyList(),
                 error = null,
             )
-        )
+        }
     }
 
     private fun startScan(state: TitaniumImportUiState) {
         if (operationJob?.isActive == true) return
+        updateState { it.copy(stage = ImportStage.SCANNING, cancelling = false, completed = 0, total = 0, error = null) }
         operationJob = launchOnIO {
-            emitState(state.copy(stage = ImportStage.SCANNING, cancelling = false, completed = 0, total = 0, error = null))
             try {
                 when (state.mode) {
                     ImportMode.BACKUPS -> {
                         val candidates = repository.scanBackups(state.backupPath) { completed, total ->
-                            emitState(uiState.value.copy(completed = completed, total = total))
+                            updateState { it.copy(completed = completed, total = total) }
                         }
-                        emitState(
-                            uiState.value.copy(
+                        updateState {
+                            it.copy(
                                 stage = ImportStage.PREVIEW,
                                 backupCandidates = candidates,
                                 selectedBackupIds = candidates.filter { it.isComplete && !it.imported }.mapTo(mutableSetOf()) { it.id },
                             )
-                        )
+                        }
                     }
                     ImportMode.LABELS -> {
                         val candidates = repository.scanLabels(state.labelPath)
-                        emitState(
-                            uiState.value.copy(
+                        updateState {
+                            it.copy(
                                 stage = ImportStage.PREVIEW,
                                 completed = candidates.size,
                                 total = candidates.size,
                                 labelCandidates = candidates,
                                 selectedLabels = candidates.filterNot { it.imported }.mapTo(mutableSetOf()) { it.name },
                             )
-                        )
+                        }
                     }
                 }
             } catch (error: CancellationException) {
                 withContext(NonCancellable) {
                     if (state.mode == ImportMode.BACKUPS) repository.clearPreviewCache()
-                    emitState(uiState.value.copy(stage = ImportStage.IDLE))
+                    updateState { it.copy(stage = ImportStage.IDLE) }
                 }
             } catch (error: Throwable) {
                 if (state.mode == ImportMode.BACKUPS) repository.clearPreviewCache()
-                emitState(uiState.value.copy(stage = ImportStage.IDLE, error = error.message.orEmpty()))
-            } finally {
-                withContext(NonCancellable) { emitState(uiState.value.copy(cancelling = false)) }
+                updateState { it.copy(stage = ImportStage.IDLE, error = error.message.orEmpty()) }
             }
         }
     }
 
     private fun startImport(state: TitaniumImportUiState) {
         if (operationJob?.isActive == true || state.stage != ImportStage.PREVIEW) return
+        updateState { it.copy(stage = ImportStage.IMPORTING, cancelling = false, completed = 0, total = 0, backupResults = emptyList(), labelResults = emptyList(), error = null) }
         operationJob = launchOnIO {
-            emitState(state.copy(stage = ImportStage.IMPORTING, cancelling = false, completed = 0, total = 0, backupResults = emptyList(), labelResults = emptyList(), error = null))
             try {
                 when (state.mode) {
                     ImportMode.BACKUPS -> repository.importBackups(
                         state.backupCandidates.filter { it.id in state.selectedBackupIds }
                     ) { completed, total, result ->
-                        emitState(
-                            uiState.value.copy(
+                        updateState {
+                            it.copy(
                                 completed = completed,
                                 total = total,
-                                backupResults = result?.let { uiState.value.backupResults + it } ?: uiState.value.backupResults,
+                                backupResults = if (result == null) it.backupResults else it.backupResults + result,
                             )
-                        )
+                        }
                     }
                     ImportMode.LABELS -> repository.importLabels(
                         state.labelCandidates.filter { it.name in state.selectedLabels }
                     ) { completed, total, result ->
-                        emitState(
-                            uiState.value.copy(
+                        updateState {
+                            it.copy(
                                 completed = completed,
                                 total = total,
-                                labelResults = result?.let { uiState.value.labelResults + it } ?: uiState.value.labelResults,
+                                labelResults = if (result == null) it.labelResults else it.labelResults + result,
                             )
-                        )
+                        }
                     }
                 }
             } catch (_: CancellationException) {
             } catch (error: Throwable) {
-                emitState(uiState.value.copy(error = error.message.orEmpty()))
+                updateState { it.copy(error = error.message.orEmpty()) }
             } finally {
                 withContext(NonCancellable) {
                     if (state.mode == ImportMode.BACKUPS) repository.clearPreviewCache()
-                    emitState(uiState.value.copy(stage = ImportStage.COMPLETE, cancelling = false))
+                    updateState { it.copy(stage = ImportStage.COMPLETE) }
                 }
             }
         }
     }
 
-    private suspend fun toggleBackup(state: TitaniumImportUiState, id: String) {
+    private fun toggleBackup(state: TitaniumImportUiState, id: String) {
         val candidate = state.backupCandidates.firstOrNull { it.id == id } ?: return
         if (!candidate.isComplete) return
-        emitState(state.copy(selectedBackupIds = state.selectedBackupIds.toggle(id)))
+        updateState { it.copy(selectedBackupIds = it.selectedBackupIds.toggle(id)) }
     }
 
-    private suspend fun toggleBackupGroup(state: TitaniumImportUiState, packageName: String) {
+    private fun toggleBackupGroup(state: TitaniumImportUiState, packageName: String) {
         val ids = state.backupCandidates.filter { it.packageName == packageName && it.isComplete }.mapTo(mutableSetOf()) { it.id }
-        val selected = if (ids.all(state.selectedBackupIds::contains)) state.selectedBackupIds - ids else state.selectedBackupIds + ids
-        emitState(state.copy(selectedBackupIds = selected))
+        updateState {
+            it.copy(selectedBackupIds = if (ids.all(it.selectedBackupIds::contains)) it.selectedBackupIds - ids else it.selectedBackupIds + ids)
+        }
     }
 
-    private suspend fun toggleLabel(state: TitaniumImportUiState, label: String) {
-        emitState(state.copy(selectedLabels = state.selectedLabels.toggle(label)))
+    private fun toggleLabel(label: String) {
+        updateState { it.copy(selectedLabels = it.selectedLabels.toggle(label)) }
     }
 
-    private suspend fun selectAll(state: TitaniumImportUiState, selected: Boolean) {
-        emitState(
+    private fun selectAll(state: TitaniumImportUiState, selected: Boolean) {
+        updateState {
             when (state.mode) {
-                ImportMode.BACKUPS -> state.copy(
+                ImportMode.BACKUPS -> it.copy(
                     selectedBackupIds = if (selected) state.backupCandidates.filter { it.isComplete }.mapTo(mutableSetOf()) { it.id } else emptySet()
                 )
-                ImportMode.LABELS -> state.copy(
+                ImportMode.LABELS -> it.copy(
                     selectedLabels = if (selected) state.labelCandidates.mapTo(mutableSetOf()) { it.name } else emptySet()
                 )
             }
-        )
+        }
     }
 
     private fun Set<String>.toggle(value: String) = if (value in this) this - value else this + value
@@ -293,7 +297,12 @@ class TitaniumImportViewModel @Inject constructor(
                 pickerType = pickerType,
                 permissionType = PermissionType.ROOT,
             ).apply {
-                launch(activity) { path -> launchOnIO { onSelected(path) } }
+                launch(activity) { path ->
+                    launchOnIO {
+                        if (pickerType == PickerType.DIRECTORY) repository.clearPreviewCache()
+                        withMainContext { onSelected(path) }
+                    }
+                }
             }
         }
     }

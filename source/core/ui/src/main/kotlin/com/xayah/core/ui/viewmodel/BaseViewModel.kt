@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -72,11 +73,15 @@ abstract class BaseViewModel<S : UiState, I : UiIntent, E : IndexUiEffect>(state
 
     suspend fun emitState(state: S) = withMainContext { _uiState.emit(state) }
 
+    protected fun updateState(transform: (S) -> S) = _uiState.update(transform)
+
     fun emitStateOnMain(state: S) = launchOnMain { emitState(state) }
 
     suspend fun emitIntent(intent: I) = onEvent(state = uiState.value, intent = intent)
 
     fun emitIntentOnIO(intent: I) = launchOnIO { emitIntent(intent) }
+
+    fun emitIntentOnMain(intent: I) = launchOnMain { emitIntent(intent) }
 
     suspend fun emitEffect(effect: E) = onEffect(effect = effect)
 

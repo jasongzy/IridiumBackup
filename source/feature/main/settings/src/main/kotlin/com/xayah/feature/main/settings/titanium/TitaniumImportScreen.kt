@@ -85,8 +85,8 @@ fun PageTitaniumImport() {
         }
     }
     BackHandler { requestBack() }
-    LaunchedEffect(state.isBusy, state.cancelling) {
-        if (leaveAfterCancel && !state.isBusy && !state.cancelling) {
+    LaunchedEffect(state.isBusy, state.cancelling, showCancelConfirmation) {
+        if (leaveAfterCancel && !showCancelConfirmation && !state.isBusy && !state.cancelling) {
             leaveAfterCancel = false
             viewModel.discardPreview()
             navController.popBackStack()
@@ -108,16 +108,16 @@ fun PageTitaniumImport() {
             ) {
                 ModeButton(
                     selected = state.mode == ImportMode.BACKUPS,
-                    enabled = !state.isBusy,
+                    enabled = !state.isBusy && !state.cancelling,
                     text = stringResource(R.string.titanium_backups),
                     modifier = Modifier.weight(1f),
-                ) { viewModel.emitIntentOnIO(TitaniumImportIntent.SetMode(ImportMode.BACKUPS)) }
+                ) { viewModel.emitIntentOnMain(TitaniumImportIntent.SetMode(ImportMode.BACKUPS)) }
                 ModeButton(
                     selected = state.mode == ImportMode.LABELS,
-                    enabled = !state.isBusy,
+                    enabled = !state.isBusy && !state.cancelling,
                     text = stringResource(R.string.titanium_labels),
                     modifier = Modifier.weight(1f),
-                ) { viewModel.emitIntentOnIO(TitaniumImportIntent.SetMode(ImportMode.LABELS)) }
+                ) { viewModel.emitIntentOnMain(TitaniumImportIntent.SetMode(ImportMode.LABELS)) }
             }
             Text(
                 text = selectedPath.ifEmpty { stringResource(R.string.source_not_found) },
@@ -128,9 +128,9 @@ fun PageTitaniumImport() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = SizeTokens.Level16),
-                enabled = !state.isBusy,
+                enabled = !state.isBusy && !state.cancelling,
                 onClick = {
-                    viewModel.emitIntentOnIO(
+                    viewModel.emitIntentOnMain(
                         if (state.mode == ImportMode.BACKUPS) TitaniumImportIntent.SelectBackupPath(context.getActivity())
                         else TitaniumImportIntent.SelectLabelPath(context.getActivity())
                     )
@@ -162,8 +162,8 @@ fun PageTitaniumImport() {
             if (state.stage == ImportStage.PREVIEW) {
                 SelectionActions(
                     selectedCount = selectedCount,
-                    onSelectAll = { viewModel.emitIntentOnIO(TitaniumImportIntent.SelectAll(true)) },
-                    onUnselectAll = { viewModel.emitIntentOnIO(TitaniumImportIntent.SelectAll(false)) },
+                    onSelectAll = { viewModel.emitIntentOnMain(TitaniumImportIntent.SelectAll(true)) },
+                    onUnselectAll = { viewModel.emitIntentOnMain(TitaniumImportIntent.SelectAll(false)) },
                 )
             }
             if (state.mode == ImportMode.BACKUPS &&
@@ -171,7 +171,7 @@ fun PageTitaniumImport() {
             ) {
                 OutlinedTextField(
                     value = state.searchQuery,
-                    onValueChange = { viewModel.emitIntentOnIO(TitaniumImportIntent.SetSearchQuery(it)) },
+                    onValueChange = { viewModel.emitIntentOnMain(TitaniumImportIntent.SetSearchQuery(it)) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = SizeTokens.Level16, vertical = SizeTokens.Level8),
@@ -193,11 +193,11 @@ fun PageTitaniumImport() {
                                 candidates = candidates,
                                 selectedIds = state.selectedBackupIds,
                                 expanded = packageName in expandedPackages,
-                                onToggleGroup = { viewModel.emitIntentOnIO(TitaniumImportIntent.ToggleBackupGroup(packageName)) },
+                                onToggleGroup = { viewModel.emitIntentOnMain(TitaniumImportIntent.ToggleBackupGroup(packageName)) },
                                 onToggleExpanded = {
                                     expandedPackages = if (packageName in expandedPackages) expandedPackages - packageName else expandedPackages + packageName
                                 },
-                                onToggleBackup = { viewModel.emitIntentOnIO(TitaniumImportIntent.ToggleBackup(it)) },
+                                onToggleBackup = { viewModel.emitIntentOnMain(TitaniumImportIntent.ToggleBackup(it)) },
                             )
                             HorizontalDivider()
                         }
@@ -207,7 +207,7 @@ fun PageTitaniumImport() {
                             LabelCandidateItem(
                                 candidate = candidate,
                                 selected = candidate.name in state.selectedLabels,
-                                onToggle = { viewModel.emitIntentOnIO(TitaniumImportIntent.ToggleLabel(candidate.name)) },
+                                onToggle = { viewModel.emitIntentOnMain(TitaniumImportIntent.ToggleLabel(candidate.name)) },
                             )
                             HorizontalDivider()
                         }
@@ -251,8 +251,8 @@ fun PageTitaniumImport() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(SizeTokens.Level16),
-                enabled = when (state.stage) {
-                    ImportStage.SCANNING, ImportStage.IMPORTING -> !state.cancelling
+                enabled = !state.cancelling && when (state.stage) {
+                    ImportStage.SCANNING, ImportStage.IMPORTING -> true
                     ImportStage.PREVIEW -> selectedCount > 0
                     else -> selectedPath.isNotEmpty()
                 },
@@ -262,8 +262,8 @@ fun PageTitaniumImport() {
                             leaveAfterCancel = false
                             showCancelConfirmation = true
                         }
-                        ImportStage.PREVIEW -> viewModel.emitIntentOnIO(TitaniumImportIntent.Import)
-                        else -> viewModel.emitIntentOnIO(TitaniumImportIntent.Scan)
+                        ImportStage.PREVIEW -> viewModel.emitIntentOnMain(TitaniumImportIntent.Import)
+                        else -> viewModel.emitIntentOnMain(TitaniumImportIntent.Scan)
                     }
                 },
             ) {
