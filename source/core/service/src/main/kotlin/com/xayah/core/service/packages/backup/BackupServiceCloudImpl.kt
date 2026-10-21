@@ -8,6 +8,7 @@ import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
+import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.TaskType
@@ -32,6 +33,7 @@ import kotlin.coroutines.coroutineContext
 @AndroidEntryPoint
 internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupService() {
     override val mTAG: String = "BackupServiceCloudImpl"
+    override val uploadedManifestFiles = mutableListOf<BackupManifestFile>()
 
     @Inject
     override lateinit var mRootService: RemoteRootService
@@ -80,6 +82,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"
 
     override suspend fun onAppDirCreated(archivesRelativeDir: String): Boolean = runCatchingOnService {
+        uploadedManifestFiles.clear()
         mClient.mkdirRecursively(getRemoteAppDir(archivesRelativeDir))
     }
 
@@ -91,14 +94,25 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
             mPackagesBackupUtil.backupData(p = p, t = t, r = previous, dataType = type, dstDir = dstDir)
         }
         if (result.isSuccess && t.get(type).state != OperationState.SKIP) {
-            mPackagesBackupUtil.upload(client = mClient, p = p, t = t, dataType = type, srcDir = dstDir, dstDir = remoteAppDir)
+            val path = mPackageRepo.getArchiveDst(dstDir, type, p.indexInfo.compressionType)
+            val file = mAppBackupRepository.getManifestFile(path)
+            if (file == null) {
+                t.update(dataType = type, state = OperationState.ERROR, log = "Unable to read backup file metadata: $path")
+            } else {
+                mPackagesBackupUtil.upload(client = mClient, p = p, t = t, dataType = type, srcDir = dstDir, dstDir = remoteAppDir)
+                if (t.get(type).state == OperationState.DONE) uploadedManifestFiles += file
+            }
         }
         t.update(dataType = type, progress = 1f)
         t.update(processingIndex = t.processingIndex + 1)
     }
 
-    override suspend fun onConfigSaved(path: String, archivesRelativeDir: String) =
-        mCloudRepo.upload(client = mClient, src = path, dstDir = getRemoteAppDir(archivesRelativeDir)).isSuccess
+    override suspend fun onConfigSaved(path: String, archivesRelativeDir: String): Boolean {
+        val file = mAppBackupRepository.getManifestFile(path) ?: return false
+        val uploaded = mCloudRepo.upload(client = mClient, src = path, dstDir = getRemoteAppDir(archivesRelativeDir)).isSuccess
+        if (uploaded) uploadedManifestFiles += file
+        return uploaded
+    }
 
     override suspend fun onManifestSaved(path: String, archivesRelativeDir: String) =
         mCloudRepo.upload(client = mClient, src = path, dstDir = getRemoteAppDir(archivesRelativeDir)).isSuccess

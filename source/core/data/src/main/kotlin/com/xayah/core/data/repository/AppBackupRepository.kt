@@ -191,19 +191,23 @@ class AppBackupRepository @Inject constructor(
         return findLegacyRevision(revision)
     }
 
-    suspend fun writeManifest(app: PackageEntity, createdAt: Long, revisionDir: String, note: String = ""): BackupManifest? {
+    suspend fun getManifestFile(path: String): BackupManifestFile? {
+        val digest = rootService.calculateSHA256(path) ?: return null
+        return BackupManifestFile(PathUtil.getFileName(path), rootService.calculateSize(path), digest)
+    }
+
+    suspend fun writeManifest(
+        app: PackageEntity,
+        createdAt: Long,
+        revisionDir: String,
+        note: String = "",
+        uploadedFiles: List<BackupManifestFile> = emptyList(),
+    ): BackupManifest? {
         val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        val files = rootService.listFilePaths(revisionDir, listFiles = true, listDirs = false)
+        val localFiles = rootService.listFilePaths(revisionDir, listFiles = true, listDirs = false)
             .filterNot { it == manifestPath }
-            .sorted()
-            .map { path ->
-                val digest = rootService.calculateSHA256(path) ?: return null
-                BackupManifestFile(
-                    name = PathUtil.getFileName(path),
-                    sizeBytes = rootService.calculateSize(path),
-                    sha256 = digest,
-                )
-            }
+            .map { path -> getManifestFile(path) ?: return null }
+        val files = (uploadedFiles + localFiles).sortedBy(BackupManifestFile::name)
         if (files.isEmpty()) return null
         val contentMask = files.fold(0) { mask, file ->
             mask or when (file.name.substringBefore('.')) {

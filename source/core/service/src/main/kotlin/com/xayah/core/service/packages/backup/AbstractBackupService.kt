@@ -9,6 +9,7 @@ import com.xayah.core.datastore.readBackupItself
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.saveLastBackupTime
 import com.xayah.core.model.DataType
+import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
@@ -102,6 +103,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     protected open suspend fun onManifestSaved(path: String, archivesRelativeDir: String): Boolean = true
     protected open suspend fun onAppIconSaved(path: String, packageName: String): Boolean = true
     protected open suspend fun onBackupFailed(archivesRelativeDir: String) {}
+    protected open val uploadedManifestFiles: List<BackupManifestFile> get() = emptyList()
     protected open suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) {}
     protected open suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) {}
     protected open suspend fun clear() {}
@@ -211,7 +213,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         val configSaved = mRootService.writeJson(data = restoreEntity.toRestoreConfig(), dst = configDst).isSuccess &&
                             onConfigSaved(path = configDst, archivesRelativeDir = revisionApp.archivesRelativeDir)
                         val manifest = if (configSaved) {
-                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir)
+                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir, uploadedFiles = uploadedManifestFiles)
                         } else {
                             null
                         }
