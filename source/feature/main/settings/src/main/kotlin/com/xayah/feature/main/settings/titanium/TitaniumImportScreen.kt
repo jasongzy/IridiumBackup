@@ -27,7 +27,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,6 +52,7 @@ import coil.compose.AsyncImage
 import com.xayah.core.data.repository.TitaniumImportRepository
 import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.component.PackageIconImage
+import com.xayah.core.ui.component.TooltipIconButton
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
@@ -415,8 +415,14 @@ private fun BackupGroupItem(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TriStateCheckbox(state = toggleState, enabled = selectableIds.isNotEmpty(), onClick = onToggleGroup)
-                IconButton(onClick = onToggleExpanded) {
-                    Icon(if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore, contentDescription = null)
+                TooltipIconButton(
+                    tooltip = stringResource(if (expanded) R.string.collapse_backups else R.string.expand_backups),
+                    onClick = onToggleExpanded,
+                ) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = stringResource(if (expanded) R.string.collapse_backups else R.string.expand_backups),
+                    )
                 }
             }
         },

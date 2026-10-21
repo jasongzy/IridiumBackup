@@ -263,7 +263,7 @@ private fun AppHeader(
                 ) {
                     Icon(
                         imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                        contentDescription = null,
+                        contentDescription = stringResource(if (expanded) R.string.collapse_backups else R.string.expand_backups),
                     )
                 }
             }
