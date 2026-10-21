@@ -30,6 +30,8 @@ import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.PreparationUtil
+import com.xayah.core.util.withLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -137,10 +139,16 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
                 log { "Trying to create: $mAppsDir." }
                 log { "Trying to create: $mConfigsDir." }
-                val isSuccess = createDirectory(mAppsDir) &&
-                    createDirectory(mConfigsDir) &&
-                    runCatchingOnService { onTargetDirsCreated() }
-                entity.update(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR)
+                val result = runCatching {
+                    check(createDirectory(mAppsDir)) { "Unable to create $mAppsDir" }
+                    check(createDirectory(mConfigsDir)) { "Unable to create $mConfigsDir" }
+                    onTargetDirsCreated()
+                }.onFailure { if (it is CancellationException) throw it }.withLog()
+                entity.update(
+                    progress = 1f,
+                    state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR,
+                    log = result.exceptionOrNull()?.message,
+                )
             }
 
             else -> {}
@@ -273,6 +281,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     pkg.update(dataType = DataType.PACKAGE_DATA, state = OperationState.ERROR)
                     pkg.update(dataType = DataType.PACKAGE_OBB, state = OperationState.ERROR)
                     pkg.update(dataType = DataType.PACKAGE_MEDIA, state = OperationState.ERROR)
+                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                 }
                 pkg.update(state = if (pkg.isSuccess) OperationState.DONE else OperationState.ERROR)
             }
@@ -322,6 +331,10 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         out.add(result.outString)
                         if (result.isSuccess) {
                             onConfigsSaved(path = mCommonBackupUtil.getConfigsDst(mConfigsDir), entity = entity)
+                            if (entity.state == OperationState.ERROR) {
+                                isSuccess = false
+                                out.add(entity.log)
+                            }
                         }
                     }
                 }

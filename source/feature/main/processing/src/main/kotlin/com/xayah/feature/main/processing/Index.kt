@@ -24,9 +24,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -164,8 +169,8 @@ fun PageProcessing(
     ProcessingSetupScaffold(
         scrollBehavior = null,
         snackbarHostState = viewModel.snackbarHostState,
-        title = stringResource(id = topBarTitleId.invoke(uiState.state)),
-        progress = progress,
+        title = stringResource(id = if (uiState.state == OperationState.ERROR) R.string.failed else topBarTitleId.invoke(uiState.state)),
+        progress = if (uiState.state == OperationState.ERROR) -1f else progress,
         actions = {
             Column(
                 modifier = Modifier
@@ -175,16 +180,13 @@ fun PageProcessing(
             ) {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = (uiState.state == OperationState.IDLE && !autoStart) || uiState.state == OperationState.DONE,
+                    enabled = (uiState.state == OperationState.IDLE && !autoStart) || uiState.state == OperationState.DONE || uiState.state == OperationState.ERROR,
                     onClick = {
                         if (uiState.state == OperationState.IDLE) viewModel.emitIntentOnIO(ProcessingUiIntent.Process)
-                        else {
-                            viewModel.emitIntentOnIO(ProcessingUiIntent.ClearTask)
-                            navController.popBackStack()
-                        }
+                        else onBack()
                     },
                 ) {
-                    AnimatedTextContainer(targetState = if (uiState.state == OperationState.DONE) stringResource(id = R.string.finish) else stringResource(id = R.string._continue)) { text ->
+                    AnimatedTextContainer(targetState = if (uiState.state == OperationState.DONE || uiState.state == OperationState.ERROR) stringResource(id = R.string.finish) else stringResource(id = R.string._continue)) { text ->
                         Text(text = text)
                     }
                 }
@@ -336,5 +338,19 @@ fun PageProcessing(
                 }
             }
         }
+    }
+    uiState.failure?.let { failure ->
+        AlertDialog(
+            onDismissRequest = onBack,
+            title = { Text(stringResource(R.string.failed)) },
+            text = {
+                SelectionContainer {
+                    Text(failure, modifier = Modifier.verticalScroll(rememberScrollState()))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onBack) { Text(stringResource(R.string.finish)) }
+            },
+        )
     }
 }

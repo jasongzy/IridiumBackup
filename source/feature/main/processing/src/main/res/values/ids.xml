@@ -11,6 +11,7 @@
     <item name="post_processing" type="string" />
     <item name="details" type="string" />
     <item name="processing" type="string" />
+    <item name="failed" type="string" />
     <item name="restore" type="string" />
     <item name="backup_completed" type="string" />
     <item name="uid" type="string" />

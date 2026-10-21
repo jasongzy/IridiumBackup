@@ -31,6 +31,7 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.withLog
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -39,6 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.IOException
 
 internal abstract class AbstractProcessingService : Service() {
     override fun onBind(intent: Intent): IBinder {
@@ -75,7 +77,10 @@ internal abstract class AbstractProcessingService : Service() {
         "$time, ${mTaskEntity.successCount} ${mContext.getString(R.string.succeed)}" +
             if (mTaskEntity.failureCount > 0) ", ${mTaskEntity.failureCount} ${mContext.getString(R.string.failed)}" else ""
 
-    protected suspend fun runCatchingOnService(block: suspend () -> Unit): Boolean = runCatching { block() }.onFailure { mRootService.onFailure(it) }.withLog().isSuccess
+    protected suspend fun runCatchingOnService(block: suspend () -> Unit): Boolean = runCatching { block() }.onFailure {
+        if (it is CancellationException) throw it
+        mRootService.onFailure(it)
+    }.withLog().isSuccess
 
     protected suspend fun ProcessingInfoEntity.update(
         bytes: Long? = null,
@@ -178,9 +183,14 @@ internal abstract class AbstractProcessingService : Service() {
                     mTaskEntity.id = this
                 }
 
-                onInitializingPreprocessingEntities(mPreprocessingEntities)
-                onInitializingPostProcessingEntities(mPostProcessingEntities)
-                onInitializing()
+                try {
+                    onInitializingPreprocessingEntities(mPreprocessingEntities)
+                    onInitializingPostProcessingEntities(mPostProcessingEntities)
+                    onInitializing()
+                } catch (error: Exception) {
+                    withContext(NonCancellable) { mTaskDao.deleteTask(mTaskEntity.id) }
+                    throw error
+                }
 
                 mIsInitialized = true
             }
@@ -205,6 +215,7 @@ internal abstract class AbstractProcessingService : Service() {
                 executeAtLeast {
                     onPreprocessing(it)
                 }
+                if (it.state == OperationState.ERROR) throw IOException(it.log.ifBlank { it.title })
                 mTaskEntity.update(preprocessingIndex = mTaskEntity.preprocessingIndex + 1)
             }
 

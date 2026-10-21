@@ -19,8 +19,10 @@ import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
+import com.xayah.core.util.LogUtil
 import com.xayah.core.util.command.BaseUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -40,6 +42,7 @@ data class IndexUiState(
     val storageType: StorageMode,
     val cloudEntity: CloudEntity?,
     val backupDir: String? = null,
+    val failure: String? = null,
 ) : UiState
 
 open class ProcessingUiIntent : UiIntent {
@@ -74,9 +77,29 @@ abstract class AbstractProcessingViewModel(
         initializationJob = launchOnIO {
             val state = uiState.value
             val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
-            _taskId.value = service.initialize(state.cloudEntity?.name, state.backupDir)
+            try {
+                _taskId.value = service.initialize(state.cloudEntity?.name, state.backupDir)
+            } catch (error: Exception) {
+                releaseService(service)
+                if (error is CancellationException) throw error
+                fail(error)
+                return@launchOnIO
+            }
             if (autoStart) emitIntent(ProcessingUiIntent.Process)
         }
+    }
+
+    private suspend fun releaseService(service: AbstractProcessingServiceProxy) = withContext(NonCancellable) {
+        try {
+            service.cleanup()
+        } finally {
+            withMainContext { service.destroyService() }
+        }
+    }
+
+    private suspend fun fail(error: Exception) {
+        LogUtil.log { "Processing" to error.stackTraceToString() }
+        emitState(uiState.value.copy(state = OperationState.ERROR, failure = error.localizedMessage ?: error.javaClass.simpleName))
     }
 
     open suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {}
@@ -102,20 +125,21 @@ abstract class AbstractProcessingViewModel(
                 emitState(state.copy(state = OperationState.PROCESSING))
                 val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
                 try {
-                    service.preprocessing()
-                    service.processing()
-                    service.postProcessing()
-                } finally {
-                    withContext(NonCancellable) {
-                        try {
-                            service.cleanup()
-                        } finally {
-                            withMainContext { service.destroyService() }
-                            processingJob.compareAndSet(job, null)
-                        }
+                    try {
+                        service.preprocessing()
+                        service.processing()
+                        service.postProcessing()
+                    } finally {
+                        releaseService(service)
                     }
+                    emitState(uiState.value.copy(state = OperationState.DONE))
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    fail(error)
+                } finally {
+                    processingJob.compareAndSet(job, null)
                 }
-                emitState(state.copy(state = OperationState.DONE))
             }
 
             is ProcessingUiIntent.Cancel -> {

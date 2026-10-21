@@ -145,7 +145,8 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
                         mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                     }
                 } else {
-                    media.update(state = OperationState.ERROR)
+                    media.update(progress = 1f, state = OperationState.ERROR)
+                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                 }
                 media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
             }
@@ -195,6 +196,10 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
                         out.add(result.outString)
                         if (result.isSuccess) {
                             onConfigsSaved(path = mCommonBackupUtil.getConfigsDst(mConfigsDir), entity = entity)
+                            if (entity.state == OperationState.ERROR) {
+                                isSuccess = false
+                                out.add(entity.log)
+                            }
                         }
                     }
                 }
