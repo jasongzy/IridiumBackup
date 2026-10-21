@@ -187,7 +187,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 )
                 val dstDir = "${mAppsDir}/${revisionApp.archivesRelativeDir}"
                 val repositoryId = "${mTaskEntity.cloud}:${mTaskEntity.backupDir}"
-                val previousRevision = mAppBackupRepository.getLatestVerifiedLegacyRevision(revisionApp, repositoryId)
+                val previousRevision = mAppBackupRepository.getLatestReusableLegacyRevision(revisionApp, repositoryId)
                 if (createDirectory(dstDir) && onAppDirCreated(archivesRelativeDir = revisionApp.archivesRelativeDir)) {
                     backup(type = DataType.PACKAGE_APK, p = revisionApp, previous = previousRevision, t = pkg, dstDir = dstDir)
                     backup(type = DataType.PACKAGE_USER, p = revisionApp, previous = previousRevision, t = pkg, dstDir = dstDir)

@@ -276,6 +276,11 @@ data class PackageEntity(
     val archivesRelativeDir: String
         get() = "${packageName}/user_${userId}${if (preserveId == 0L) "" else "@$preserveId"}"
 
+    fun canReuseApkFrom(previous: PackageEntity): Boolean =
+        apkSelected && previous.apkSelected && packageName == previous.packageName && userId == previous.userId &&
+            packageInfo.versionName == previous.packageInfo.versionName && packageInfo.versionCode == previous.packageInfo.versionCode &&
+            indexInfo.compressionType == previous.indexInfo.compressionType
+
     val pkgUserKey: String
         get() = "${packageName}-${userId}"
 }

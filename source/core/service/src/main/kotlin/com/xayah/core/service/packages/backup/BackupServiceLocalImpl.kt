@@ -57,9 +57,9 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
             val previousArchive = previous?.let {
                 mPackageRepo.getArchiveDst("$mAppsDir/${it.archivesRelativeDir}", type, it.indexInfo.compressionType)
             }
-            mPackagesBackupUtil.backupApk(p, previous, previousArchive, t, dstDir)
+            mPackagesBackupUtil.backupApk(p, previousArchive, t, dstDir)
         } else {
-            mPackagesBackupUtil.backupData(p = p, t = t, r = previous, dataType = type, dstDir = dstDir)
+            mPackagesBackupUtil.backupData(p = p, t = t, dataType = type, dstDir = dstDir)
         }
         t.update(dataType = type, progress = 1f)
         t.update(processingIndex = t.processingIndex + 1)

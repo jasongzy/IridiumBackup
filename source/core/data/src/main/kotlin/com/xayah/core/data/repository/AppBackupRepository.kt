@@ -2,6 +2,7 @@ package com.xayah.core.data.repository
 
 import android.content.Context
 import com.xayah.core.database.dao.AppBackupDao
+import com.xayah.core.datastore.readFastSameVersionBackup
 import com.xayah.core.model.AppBackupOverview
 import com.xayah.core.model.AppNoteItem
 import com.xayah.core.model.AppKey
@@ -32,6 +33,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -187,10 +189,17 @@ class AppBackupRepository @Inject constructor(
         )
     }
 
-    suspend fun getLatestVerifiedLegacyRevision(app: PackageEntity, repositoryId: String): PackageEntity? {
+    suspend fun getLatestReusableLegacyRevision(app: PackageEntity, repositoryId: String): PackageEntity? {
+        if (!app.apkSelected || !context.readFastSameVersionBackup().first()) return null
         val revision = dao.getLatestRevision(app.packageName, app.userId, repositoryId) ?: return null
-        if (verifyRevision(revision) != BackupVerificationStatus.VALID) return null
-        return findLegacyRevision(revision)
+        val previous = findLegacyRevision(revision) ?: return null
+        if (!app.canReuseApkFrom(previous)) return null
+        val revisionDir = getLocalRevisionDir(revision) ?: return null
+        val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir)) ?: return null
+        if (!matchesManifest(revision, manifest) || !hasValidManifestFiles(manifest.files)) return null
+        val file = manifest.files.orEmpty().firstOrNull { it.name == "apk.${app.indexInfo.compressionType.suffix}" } ?: return null
+        if (getManifestFile("$revisionDir/${file.name}") != file) return null
+        return previous
     }
 
     suspend fun getManifestFile(path: String): BackupManifestFile? {
@@ -234,9 +243,6 @@ class AppBackupRepository @Inject constructor(
         )
         return manifest.takeIf { rootService.writeJson(data = it, dst = manifestPath).isSuccess }
     }
-
-    suspend fun verifyRevision(revision: BackupRevisionEntity): BackupVerificationStatus =
-        inspectRevision(revision).status
 
     fun rememberVerification(result: VerificationResult) {
         if (result.status != BackupVerificationStatus.NOT_VERIFIED) {
@@ -364,16 +370,7 @@ class AppBackupRepository @Inject constructor(
             listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
         )
         val issues = mutableListOf<VerificationIssue>()
-        if (
-            manifest.schemaVersion != BACKUP_MANIFEST_SCHEMA_VERSION ||
-            manifest.packageName != revision.packageName ||
-            manifest.userId != revision.userId ||
-            manifest.createdAt != revision.createdAt ||
-            manifest.versionName != revision.appVersionName ||
-            manifest.versionCode != revision.appVersionCode ||
-            manifest.contentMask != revision.contentMask ||
-            manifest.note.orEmpty() != revision.note
-        ) issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH)
+        if (!matchesManifest(revision, manifest)) issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH)
         manifest.files.orEmpty().forEach { file ->
             val path = "$revisionDir/${file.name}"
             when {
@@ -581,6 +578,12 @@ class AppBackupRepository @Inject constructor(
     private fun hasValidArtifactId(revision: BackupRevisionEntity): Boolean =
         PathUtil.getPackageArchiveRelativeDir(revision.packageName, revision.userId, revision.createdAt)
             ?.let { it == revision.artifactId } == true
+
+    private fun matchesManifest(revision: BackupRevisionEntity, manifest: BackupManifest): Boolean =
+        manifest.schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION && manifest.packageName == revision.packageName &&
+            manifest.userId == revision.userId && manifest.createdAt == revision.createdAt &&
+            manifest.versionName == revision.appVersionName && manifest.versionCode == revision.appVersionCode &&
+            manifest.contentMask == revision.contentMask && manifest.note.orEmpty() == revision.note
 
     private fun hasValidManifestFiles(files: List<BackupManifestFile?>?): Boolean =
         !files.isNullOrEmpty() && files.all { file ->

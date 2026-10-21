@@ -89,9 +89,9 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     override suspend fun backup(type: DataType, p: PackageEntity, previous: PackageEntity?, t: TaskDetailPackageEntity, dstDir: String) {
         val remoteAppDir = getRemoteAppDir(p.archivesRelativeDir)
         val result = if (type == DataType.PACKAGE_APK) {
-            mPackagesBackupUtil.backupApk(p, previous, null, t, dstDir)
+            mPackagesBackupUtil.backupApk(p, null, t, dstDir)
         } else {
-            mPackagesBackupUtil.backupData(p = p, t = t, r = previous, dataType = type, dstDir = dstDir)
+            mPackagesBackupUtil.backupData(p = p, t = t, dataType = type, dstDir = dstDir)
         }
         if (result.isSuccess && t.get(type).state != OperationState.SKIP) {
             val path = mPackageRepo.getArchiveDst(dstDir, type, p.indexInfo.compressionType)

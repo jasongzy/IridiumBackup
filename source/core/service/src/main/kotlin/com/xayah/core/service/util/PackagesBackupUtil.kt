@@ -8,7 +8,6 @@ import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.readCompressionLevel
 import com.xayah.core.datastore.readFollowSymlinks
-import com.xayah.core.datastore.readFastSameVersionBackup
 import com.xayah.core.datastore.readSelectionType
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataType
@@ -222,7 +221,6 @@ class PackagesBackupUtil @Inject constructor(
 
     suspend fun backupApk(
         p: PackageEntity,
-        previous: PackageEntity?,
         previousArchive: String?,
         t: TaskDetailPackageEntity,
         dstDir: String,
@@ -245,16 +243,9 @@ class PackagesBackupUtil @Inject constructor(
             if (srcDir.isNotEmpty()) {
                 val sizeBytes = rootService.calculateSize(srcDir)
                 t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = sizeBytes)
-                val canReuse = context.readFastSameVersionBackup().first() &&
-                    previous != null &&
-                    previous.packageInfo.versionName == p.packageInfo.versionName &&
-                    previous.packageInfo.versionCode == p.packageInfo.versionCode &&
-                    previous.indexInfo.compressionType == p.indexInfo.compressionType &&
-                    previousArchive != null &&
-                    rootService.exists(previousArchive)
-                val previousArchiveValid = canReuse && commonBackupUtil.testArchive(
-                    src = previousArchive!!,
-                    ct = previous.indexInfo.compressionType,
+                val previousArchiveValid = previousArchive != null && commonBackupUtil.testArchive(
+                    src = previousArchive,
+                    ct = ct,
                 ).isSuccess
                 val reusedArchive = if (previousArchiveValid) {
                     val archive = checkNotNull(previousArchive)
@@ -296,7 +287,7 @@ class PackagesBackupUtil @Inject constructor(
     /**
      * Package data: USER, USER_DE, DATA, OBB, MEDIA
      */
-    suspend fun backupData(p: PackageEntity, t: TaskDetailPackageEntity, r: PackageEntity?, dataType: DataType, dstDir: String): ShellResult = run {
+    suspend fun backupData(p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, dstDir: String): ShellResult = run {
         log { "Backing up ${dataType.type}..." }
 
         val packageName = p.packageName
