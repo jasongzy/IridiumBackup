@@ -42,9 +42,12 @@ class PathUtil @Inject constructor(
          * Returns the parent path, or empty string if this path does not have a parent.
          */
         fun getParentPath(path: String): String {
-            if (path.contains('/').not() || path == "/") return ""
-            val child = path.substring(path.lastIndexOf('/'))
-            return path.replace(child, "")
+            val separator = path.trimEnd('/').lastIndexOf('/')
+            return when {
+                separator < 0 -> ""
+                separator == 0 -> "/"
+                else -> path.substring(0, separator)
+            }
         }
 
         /**
