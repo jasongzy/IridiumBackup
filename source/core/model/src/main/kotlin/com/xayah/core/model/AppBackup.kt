@@ -39,6 +39,14 @@ data class BackupManifestFile(
     val sha256: String,
 )
 
+fun BackupManifest.hasValidFileEntries(): Boolean {
+    val entries: List<BackupManifestFile?> = files ?: return false
+    return entries.isNotEmpty() && entries.all { file ->
+        val name = file?.name
+        !name.isNullOrEmpty() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
+    }
+}
+
 @Entity(
     tableName = "backup_apps",
     primaryKeys = ["packageName", "userId"],

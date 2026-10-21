@@ -23,6 +23,7 @@ import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.findRetentionRevisions
+import com.xayah.core.model.hasValidFileEntries
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.service.RemoteRootService
@@ -178,7 +179,7 @@ class AppBackupRepository @Inject constructor(
         if (!app.canReuseApkFrom(previous)) return null
         val revisionDir = getLocalRevisionDir(revision) ?: return null
         val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir)) ?: return null
-        if (!matchesManifest(revision, manifest) || !hasValidManifestFiles(manifest.files)) return null
+        if (!matchesManifest(revision, manifest) || !manifest.hasValidFileEntries()) return null
         val file = manifest.files.orEmpty().firstOrNull { it.name == "apk.${app.indexInfo.compressionType.suffix}" } ?: return null
         if (getManifestFile("$revisionDir/${file.name}") != file) return null
         return previous
@@ -345,7 +346,7 @@ class AppBackupRepository @Inject constructor(
             BackupVerificationStatus.DAMAGED,
             listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
         )
-        if (!hasValidManifestFiles(manifest.files)) return VerificationResult(
+        if (!manifest.hasValidFileEntries()) return VerificationResult(
             revision,
             appLabel,
             BackupVerificationStatus.DAMAGED,
@@ -426,7 +427,7 @@ class AppBackupRepository @Inject constructor(
                     config.createdAt == manifest.createdAt &&
                     config.versionName == manifest.versionName &&
                     config.versionCode == manifest.versionCode &&
-                    hasValidManifestFiles(manifest.files) &&
+                    manifest.hasValidFileEntries() &&
                     PathUtil.getPackageArchiveRelativeDir(config.packageName, config.userId, config.createdAt)
                         ?.let { FileUtil.normalizeAbsolutePath("$appsDir/$it") } == FileUtil.normalizeAbsolutePath(revisionDir)
                 ) config.toPackageEntity(cloud = "", backupDir = backupDir) else null
@@ -566,12 +567,6 @@ class AppBackupRepository @Inject constructor(
             manifest.userId == revision.userId && manifest.createdAt == revision.createdAt &&
             manifest.versionName == revision.appVersionName && manifest.versionCode == revision.appVersionCode &&
             manifest.contentMask == revision.contentMask && manifest.note.orEmpty() == revision.note
-
-    private fun hasValidManifestFiles(files: List<BackupManifestFile?>?): Boolean =
-        !files.isNullOrEmpty() && files.all { file ->
-            val name = file?.name
-            !name.isNullOrEmpty() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' }
-        }
 
     private fun Int.toDataStates() = PackageDataStates(
         apkState = if (this and 1 != 0) DataState.Selected else DataState.NotSelected,

@@ -5,6 +5,8 @@ import android.content.pm.ApplicationInfo
 import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
 import com.xayah.core.model.BackupManifest
+import com.xayah.core.model.BACKUP_MANIFEST_SCHEMA_VERSION
+import com.xayah.core.model.hasValidFileEntries
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
@@ -24,6 +26,7 @@ import com.xayah.core.datastore.readCompressionType
 import com.xayah.core.model.util.getCompressPara
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.FileUtil
+import com.xayah.core.util.ConfigsPackageRestoreName
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.BaseUtil
 import com.xayah.core.util.command.Tar
@@ -34,6 +37,7 @@ import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Properties
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -150,10 +154,9 @@ class TitaniumImportRepository @Inject constructor(
     }
 
     suspend fun scanLabels(databasePath: String): List<LabelCandidate> {
-        val localDb = File(context.cacheDir, "titanium-labels.db")
-        localDb.delete()
-        check(rootService.copyTo(databasePath, localDb.path, overwrite = true)) { "Unable to read the Titanium Backup label database" }
+        val localDb = File.createTempFile("titanium-labels-", ".db", context.cacheDir)
         return try {
+            check(rootService.copyTo(databasePath, localDb.path, overwrite = true)) { "Unable to read the Titanium Backup label database" }
             val labels = labelsRepo.getLabels().mapTo(mutableSetOf(), LabelEntity::label)
             val colors = labelsRepo.getLabelColors()
             val refs = labelsRepo.getAppRefs()
@@ -209,10 +212,13 @@ class TitaniumImportRepository @Inject constructor(
             }
         } finally {
             withContext(NonCancellable) {
-                deleteEmptyImportWorkspace()
-                cleanupBackupDirectories(packageNames)
-                appBackupRepository.rebuildLocalIndex { _, _, _ -> }
-                clearPreviewCache()
+                try {
+                    deleteEmptyImportWorkspace()
+                    cleanupBackupDirectories(packageNames)
+                    appBackupRepository.rebuildLocalIndex { _, _, _ -> }
+                } finally {
+                    clearPreviewCache()
+                }
             }
         }
         return results
@@ -289,16 +295,21 @@ class TitaniumImportRepository @Inject constructor(
 
     private suspend fun isImported(destination: String): Boolean {
         val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(destination)) ?: return false
-        return manifest.files.orEmpty().isNotEmpty() && manifest.files.orEmpty().all { file ->
+        val relativeDir = PathUtil.getPackageArchiveRelativeDir(manifest.packageName, manifest.userId, manifest.createdAt) ?: return false
+        if (
+            manifest.schemaVersion != BACKUP_MANIFEST_SCHEMA_VERSION || !manifest.hasValidFileEntries() ||
+            !destination.endsWith("/$relativeDir") || manifest.files.orEmpty().none { it.name == ConfigsPackageRestoreName }
+        ) return false
+        return manifest.files.orEmpty().all { file ->
             val path = "$destination/${file.name}"
             rootService.exists(path) && rootService.calculateSize(path) == file.sizeBytes
         }
     }
 
     private suspend fun readProperties(path: String): Properties {
-        val file = File(context.cacheDir, "titanium.properties")
-        check(rootService.copyTo(path, file.path, overwrite = true)) { "Unable to read metadata" }
+        val file = File.createTempFile("titanium-", ".properties", context.cacheDir)
         return try {
+            check(rootService.copyTo(path, file.path, overwrite = true)) { "Unable to read metadata" }
             Properties().apply { FileInputStream(file).use(::load) }
         } finally {
             file.delete()
@@ -310,7 +321,7 @@ class TitaniumImportRepository @Inject constructor(
         val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return null
         val normalized = appIconRepository.normalize(bytes) ?: return null
         val dir = File(context.cacheDir, "titanium-preview").apply { mkdirs() }
-        val key = properties.getProperty("app_version_code").orEmpty()
+        val key = properties.getProperty("app_version_code")?.toLongOrNull() ?: 0
         return runCatching { File(dir, "${packageName}_$key.png").apply { writeBytes(normalized) }.path }.getOrNull()
     }
 
@@ -322,10 +333,7 @@ class TitaniumImportRepository @Inject constructor(
         val createdAt = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US)
             .parse("${match.groupValues[2]}-${match.groupValues[3]}")?.time
             ?: error("Invalid backup timestamp")
-        val tempMetadata = File(context.cacheDir, "titanium.properties")
-        check(rootService.copyTo(metadataPath, tempMetadata.path, overwrite = true)) { "Unable to read metadata" }
-        val properties = Properties().apply { FileInputStream(tempMetadata).use(::load) }
-        tempMetadata.delete()
+        val properties = readProperties(metadataPath)
 
         val label = properties.getProperty("app_label")
             ?: properties.getProperty("app_gui_label")
@@ -341,8 +349,7 @@ class TitaniumImportRepository @Inject constructor(
         val destination = "$appsDir/$packageName/user_0@$createdAt"
         check(FileUtil.isDescendant(backupRoot, destination)) { "Invalid import destination" }
         check(rootService.mkdirs(destination)) { "Unable to create import destination" }
-        if (rootService.exists(PathUtil.getBackupManifestDst(destination))) {
-            updateImportedNote(destination, note)
+        if (isImported(destination)) {
             if (!importIcon(properties, packageName)) {
                 appIconRepository.repairFromBackup(
                     destination,
@@ -353,13 +360,18 @@ class TitaniumImportRepository @Inject constructor(
             }
             return BackupResult(packageName, label, versionName, createdAt, Status.SKIPPED)
         }
-        check(rootService.listFilePathsChecked(destination).getOrThrow().isEmpty()) { "Import destination is not empty" }
+        val repairing = rootService.listFilePathsChecked(destination).getOrThrow().isNotEmpty()
+        val backupNote = if (repairing) {
+            rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(destination))?.note ?: note
+        } else note
 
         val stage = "${context.cacheDir}/titanium-import/${packageName}_$createdAt"
         check(FileUtil.isDescendant(context.cacheDir.path, stage)) { "Invalid import workspace" }
         check(rootService.deleteRecursively(stage)) { "Unable to clear the import workspace" }
         check(rootService.mkdirsWithin(context.cacheDir.path, stage)) { "Unable to create the import workspace" }
+        val output = if (repairing) "$stage/revision" else destination
         return try {
+            check(rootService.mkdirs(output)) { "Unable to create import destination" }
             val states = mutableMapOf<DataType, DataState>().withDefault { DataState.NotSelected }
             val compression = context.readCompressionType().first()
             val compressionArgs = compression.getCompressPara(context.readCompressionLevel().first())
@@ -367,13 +379,13 @@ class TitaniumImportRepository @Inject constructor(
             val apkSource = apkMd5?.let { "$sourceDir/$packageName-$it.apk.gz" }
             var importedApk: String? = null
             if (apkSource != null && rootService.exists(apkSource)) {
-                importedApk = importApk(apkSource, apkMd5, stage, destination, compression, compressionArgs)
+                importedApk = importApk(apkSource, apkMd5, stage, output, compression, compressionArgs)
                 states[DataType.PACKAGE_APK] = DataState.Selected
             }
 
             val dataSource = "$sourceDir/${fileName.removeSuffix(".properties")}.tar.gz"
             val importedData = if (rootService.exists(dataSource)) {
-                importData(dataSource, packageName, stage, destination, compression, compressionArgs)
+                importData(dataSource, packageName, stage, output, compression, compressionArgs)
             } else {
                 ImportedData(emptySet(), 0)
             }
@@ -391,11 +403,12 @@ class TitaniumImportRepository @Inject constructor(
                 xposedModule = importedApk?.let { xposedModuleDetector.isModule(it) } == true,
                 states = states,
             )
-            app.displayStats = appBackupRepository.calculateDisplayStats(destination, compression, app.dataStates)
-            check(rootService.writeJson(app.toRestoreConfig(), PathUtil.getPackageRestoreConfigDst(destination)).isSuccess) {
+            app.displayStats = appBackupRepository.calculateDisplayStats(output, compression, app.dataStates)
+            check(rootService.writeJson(app.toRestoreConfig(), PathUtil.getPackageRestoreConfigDst(output)).isSuccess) {
                 "Unable to write app metadata"
             }
-            checkNotNull(appBackupRepository.writeManifest(app, createdAt, destination, note)) { "Unable to write the backup manifest" }
+            val manifest = checkNotNull(appBackupRepository.writeManifest(app, createdAt, output, backupNote)) { "Unable to write the backup manifest" }
+            if (repairing) publishRepair(output, destination, manifest)
             if (!importIcon(properties, packageName) && importedApk != null) {
                 appIconRepository.saveApkIcon(importedApk, pathUtil.getLocalBackupAppsDir(), packageName)
             }
@@ -409,13 +422,28 @@ class TitaniumImportRepository @Inject constructor(
             )
         } catch (error: Throwable) {
             withContext(NonCancellable) {
-                rootService.deleteRecursively(destination)
+                if (!repairing) rootService.deleteRecursively(destination)
             }
             throw error
         } finally {
             withContext(NonCancellable) {
                 rootService.deleteRecursively(stage)
                 deleteEmptyImportWorkspace()
+            }
+        }
+    }
+
+    private suspend fun publishRepair(source: String, destination: String, manifest: BackupManifest) {
+        val manifestFile = checkNotNull(appBackupRepository.getManifestFile(PathUtil.getBackupManifestDst(source)))
+        val files = manifest.files.orEmpty() + manifestFile
+        files.forEach { file ->
+            val temporary = "$destination/.import-${UUID.randomUUID()}"
+            try {
+                check(rootService.copyTo("$source/${file.name}", temporary, overwrite = false)) { "Unable to copy ${file.name}" }
+                check(rootService.calculateSHA256(temporary) == file.sha256) { "Unable to verify ${file.name}" }
+                check(rootService.renameTo(temporary, "$destination/${file.name}")) { "Unable to publish ${file.name}" }
+            } finally {
+                withContext(NonCancellable) { rootService.deleteRecursively(temporary) }
             }
         }
     }
@@ -494,18 +522,6 @@ class TitaniumImportRepository @Inject constructor(
         val encoded = properties.getProperty("app_gui_icon") ?: properties.getProperty("app_icon") ?: return false
         val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return false
         return appIconRepository.saveEncodedIcon(bytes, pathUtil.getLocalBackupAppsDir(), packageName)
-    }
-
-    private suspend fun updateImportedNote(destination: String, note: String) {
-        val normalized = note.trim()
-        if (normalized.isEmpty()) return
-        val manifestPath = PathUtil.getBackupManifestDst(destination)
-        val manifest = rootService.readJson<com.xayah.core.model.BackupManifest>(manifestPath) ?: return
-        if (manifest.note.orEmpty() != normalized) {
-            check(rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) {
-                "Unable to import note"
-            }
-        }
     }
 
     private fun buildImportNote(personalNote: String, isProtected: Boolean): String = buildList {
