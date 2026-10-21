@@ -106,13 +106,19 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     protected open val uploadedManifestFiles: List<BackupManifestFile> get() = emptyList()
     protected open suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) {}
     protected open suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) {}
-    protected open suspend fun clear() {}
 
     protected abstract val mPackagesBackupUtil: PackagesBackupUtil
     protected abstract val mAppBackupRepository: AppBackupRepository
     protected abstract val mBackupRequestStore: BackupRequestStore
 
     private lateinit var necessaryInfo: NecessaryInfo
+
+    override suspend fun clear() {
+        if (::necessaryInfo.isInitialized) {
+            if (necessaryInfo.inputMethods.isNotEmpty()) PreparationUtil.setInputMethods(necessaryInfo.inputMethods)
+            if (necessaryInfo.accessibilityServices.isNotEmpty()) PreparationUtil.setAccessibilityServices(necessaryInfo.accessibilityServices)
+        }
+    }
 
     override suspend fun onPreprocessing(entity: ProcessingInfoEntity) {
         when (entity.infoType) {
@@ -122,7 +128,10 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                  * will be changed after backing up on some devices,
                  * so we restore them manually.
                  */
-                necessaryInfo = NecessaryInfo(inputMethods = PreparationUtil.getInputMethods().outString.trim(), accessibilityServices = PreparationUtil.getAccessibilityServices().outString.trim())
+                necessaryInfo = NecessaryInfo(
+                    inputMethods = PreparationUtil.getInputMethods().outString.trim().takeUnless { it == "null" }.orEmpty(),
+                    accessibilityServices = PreparationUtil.getAccessibilityServices().outString.trim().takeUnless { it == "null" }.orEmpty(),
+                )
                 log { "InputMethods: ${necessaryInfo.inputMethods}." }
                 log { "AccessibilityServices: ${necessaryInfo.accessibilityServices}." }
 
@@ -152,6 +161,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
         log { "Kill app option: $killAppOption" }
 
         mPkgEntities.forEach { pkg ->
+            var pendingArchiveDir: String? = null
             val pausedPids = if (killAppOption == KillAppOption.OPTION_III) {
                 log { "Trying to pause ${pkg.packageEntity.packageName}." }
                 mRootService.pausePackage(pkg.packageEntity.packageName, pkg.packageEntity.userId) ?: run {
@@ -164,8 +174,12 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 intArrayOf()
             }
             executeAtLeast(finalizer = {
-                if (pausedPids.isNotEmpty()) {
-                    withContext(NonCancellable) {
+                withContext(NonCancellable) {
+                    pendingArchiveDir?.let {
+                        runCatchingOnService { onBackupFailed(it) }
+                        mRootService.deleteRecursively("$mAppsDir/$it")
+                    }
+                    if (pausedPids.isNotEmpty()) {
                         log { "Resuming ${pkg.packageEntity.packageName}." }
                         mRootService.resumeProcesses(pausedPids)
                     }
@@ -188,7 +202,12 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 val dstDir = "${mAppsDir}/${revisionApp.archivesRelativeDir}"
                 val repositoryId = "${mTaskEntity.cloud}:${mTaskEntity.backupDir}"
                 val previousRevision = mAppBackupRepository.getLatestReusableLegacyRevision(revisionApp, repositoryId)
-                if (createDirectory(dstDir) && onAppDirCreated(archivesRelativeDir = revisionApp.archivesRelativeDir)) {
+                val directoryCreated = withContext(NonCancellable) {
+                    createDirectory(dstDir).also {
+                        if (it) pendingArchiveDir = revisionApp.archivesRelativeDir
+                    }
+                }
+                if (directoryCreated && onAppDirCreated(archivesRelativeDir = revisionApp.archivesRelativeDir)) {
                     backup(type = DataType.PACKAGE_APK, p = revisionApp, previous = previousRevision, t = pkg, dstDir = dstDir)
                     backup(type = DataType.PACKAGE_USER, p = revisionApp, previous = previousRevision, t = pkg, dstDir = dstDir)
                     backup(type = DataType.PACKAGE_USER_DE, p = revisionApp, previous = previousRevision, t = pkg, dstDir = dstDir)
@@ -226,32 +245,29 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                             mAppBackupRepository.saveBackupIcon(revisionApp.packageName, mAppsDir, dstDir)?.let { iconPath ->
                                 onAppIconSaved(iconPath, revisionApp.packageName)
                             }
-                            mPackageDao.upsert(restoreEntity)
-                            installedApp.extraInfo.lastBackupTime = revisionCreatedAt
-                            mPackageDao.upsert(installedApp)
-                            mAppBackupRepository.recordLegacyRevision(
-                                app = revisionApp,
-                                createdAt = revisionCreatedAt,
-                                repositoryId = repositoryId,
-                                contentMask = manifest.contentMask,
-                                sizeBytes = manifest.files.orEmpty().sumOf { it.sizeBytes },
-                            )
+                            withContext(NonCancellable) {
+                                mPackageDao.upsert(restoreEntity)
+                                installedApp.extraInfo.lastBackupTime = revisionCreatedAt
+                                mPackageDao.upsert(installedApp)
+                                mAppBackupRepository.recordLegacyRevision(
+                                    app = revisionApp,
+                                    createdAt = revisionCreatedAt,
+                                    repositoryId = repositoryId,
+                                    contentMask = manifest.contentMask,
+                                    sizeBytes = manifest.files.orEmpty().sumOf { it.sizeBytes },
+                                )
+                                pendingArchiveDir = null
+                            }
                             pkg.update(packageEntity = installedApp)
                             mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
                         } else {
-                            mRootService.deleteRecursively(dstDir)
-                            onBackupFailed(revisionApp.archivesRelativeDir)
                             pkg.update(dataType = DataType.PACKAGE_APK, state = OperationState.ERROR)
                             mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                         }
                     } else {
-                        mRootService.deleteRecursively(dstDir)
-                        onBackupFailed(revisionApp.archivesRelativeDir)
                         mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                     }
                 } else {
-                    mRootService.deleteRecursively(dstDir)
-                    onBackupFailed(revisionApp.archivesRelativeDir)
                     pkg.update(dataType = DataType.PACKAGE_APK, state = OperationState.ERROR)
                     pkg.update(dataType = DataType.PACKAGE_USER, state = OperationState.ERROR)
                     pkg.update(dataType = DataType.PACKAGE_USER_DE, state = OperationState.ERROR)
@@ -312,20 +328,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 }
                 entity.update(progress = 0.5f)
 
-                // Restore keyboard and services.
-                if (necessaryInfo.inputMethods.isNotEmpty()) {
-                    PreparationUtil.setInputMethods(inputMethods = necessaryInfo.inputMethods)
-                    log { "InputMethods restored: ${necessaryInfo.inputMethods}." }
-                } else {
-                    log { "InputMethods is empty, skip restoring." }
-                }
-                if (necessaryInfo.accessibilityServices.isNotEmpty()) {
-                    PreparationUtil.setAccessibilityServices(accessibilityServices = necessaryInfo.accessibilityServices)
-                    log { "AccessibilityServices restored: ${necessaryInfo.accessibilityServices}." }
-                } else {
-                    log { "AccessibilityServices is empty, skip restoring." }
-                }
-                if (runCatchingOnService { clear() }.not()) {
+                if (!cleanup()) {
                     isSuccess = false
                 }
                 entity.set(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())

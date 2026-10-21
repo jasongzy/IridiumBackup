@@ -4,13 +4,15 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.RemoteException
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.withMainContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 abstract class AbstractProcessingServiceProxy {
     private var mBinder: IBinder? = null
@@ -19,43 +21,45 @@ abstract class AbstractProcessingServiceProxy {
     abstract val context: Context
     abstract val intent: Intent
 
-    private suspend fun bindService(): AbstractProcessingService = suspendCoroutine { continuation ->
-        if (mService == null) {
-            mConnection = object : ServiceConnection {
-                override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                    mBinder = service
+    private suspend fun bindService(): AbstractProcessingService = suspendCancellableCoroutine { continuation ->
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                mBinder = service
 
-                    mService = (mBinder as AbstractProcessingService.OperationLocalBinder).getService()
-                    continuation.resume(mService!!)
-                }
-
-                override fun onServiceDisconnected(name: ComponentName) {
-                    mBinder = null
-                    mService = null
-                    mConnection = null
-                    val msg = "Service disconnected."
-                    continuation.resumeWithException(RemoteException(msg))
-                }
-
-                override fun onBindingDied(name: ComponentName) {
-                    mBinder = null
-                    mService = null
-                    mConnection = null
-                    val msg = "Binding died."
-                    continuation.resumeWithException(RemoteException(msg))
-                }
-
-                override fun onNullBinding(name: ComponentName) {
-                    mBinder = null
-                    mService = null
-                    mConnection = null
-                    val msg = "Null binding."
-                    continuation.resumeWithException(RemoteException(msg))
-                }
+                mService = (mBinder as AbstractProcessingService.OperationLocalBinder).getService()
+                if (continuation.isActive) continuation.resume(mService!!)
             }
-            context.bindService(intent, mConnection!!, Context.BIND_AUTO_CREATE)
-        } else {
-            mService
+
+            override fun onServiceDisconnected(name: ComponentName) {
+                mBinder = null
+                mService = null
+                val msg = "Service disconnected."
+                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
+            }
+
+            override fun onBindingDied(name: ComponentName) {
+                mBinder = null
+                mService = null
+                val msg = "Binding died."
+                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
+            }
+
+            override fun onNullBinding(name: ComponentName) {
+                mBinder = null
+                mService = null
+                val msg = "Null binding."
+                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
+            }
+        }
+        mConnection = connection
+        if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
+            mConnection = null
+            continuation.resumeWithException(RemoteException("Unable to bind processing service."))
+        }
+        continuation.invokeOnCancellation {
+            Handler(Looper.getMainLooper()).post {
+                if (mConnection === connection) destroyService()
+            }
         }
     }
 
@@ -90,4 +94,6 @@ abstract class AbstractProcessingServiceProxy {
     suspend fun processing() = getService().processing()
 
     suspend fun postProcessing() = getService().postProcessing()
+
+    suspend fun cleanup() = mService?.cleanup()
 }

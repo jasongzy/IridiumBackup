@@ -25,9 +25,11 @@ import com.xayah.core.util.command.SELinux
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.coroutines.coroutineContext
@@ -187,53 +189,35 @@ class PackagesRestoreUtil @Inject constructor(
                         isSuccess = result.isSuccess
                         out.addAll(result.out)
                     }
-                } finally {
-                    rootService.deleteRecursively(workspace)
-                }
-
-                // Install apks
-                rootService.listFilePaths(tmpApkPath).also { apksPath ->
-                    when (apksPath.size) {
-                        0 -> {
-                            isSuccess = false
-                            out.add(log { "$tmpApkPath is empty." })
-                        }
-
-                        1 -> {
-                            Pm.install(userId = userId, src = apksPath.first()).also { result ->
-                                isSuccess = isSuccess && result.isSuccess
-                                out.addAll(result.out)
-                            }
-                        }
-
-                        else -> {
-                            var pmSession = ""
-                            Pm.Install.create(userId = userId).also { result ->
-                                if (result.isSuccess) pmSession = result.outString
-                            }
-                            if (pmSession.isNotEmpty()) {
-                                out.add(log { "Install session: $pmSession." })
-
-                            } else {
+                    // Install apks
+                    if (isSuccess) rootService.listFilePaths(tmpApkPath).also { apksPath ->
+                        when (apksPath.size) {
+                            0 -> {
                                 isSuccess = false
-                                out.add(log { "Failed to get install session." })
+                                out.add(log { "$tmpApkPath is empty." })
                             }
 
-                            apksPath.forEach { apkPath ->
-                                Pm.Install.write(session = pmSession, srcName = PathUtil.getFileName(apkPath), src = apkPath).also { result ->
+                            1 -> {
+                                Pm.install(userId = userId, src = apksPath.first()).also { result ->
                                     isSuccess = isSuccess && result.isSuccess
                                     out.addAll(result.out)
                                 }
                             }
 
-                            Pm.Install.commit(pmSession).also { result ->
-                                isSuccess = isSuccess && result.isSuccess
-                                out.addAll(result.out)
+                            else -> {
+                                Pm.Install.install(userId, apksPath).also { result ->
+                                    isSuccess = result.isSuccess
+                                    out.addAll(result.out)
+                                }
                             }
                         }
                     }
+                } finally {
+                    withContext(NonCancellable) {
+                        rootService.deleteRecursively(workspace)
+                        rootService.deleteRecursively(tmpApkPath)
+                    }
                 }
-                rootService.deleteRecursively(tmpApkPath)
 
                 // Check the installation again.
                 rootService.queryInstalled(packageName = packageName, userId = userId).also {
@@ -357,7 +341,7 @@ class PackagesRestoreUtil @Inject constructor(
                             }
                         }
                     } finally {
-                        rootService.deleteRecursively(linkDir)
+                        withContext(NonCancellable) { rootService.deleteRecursively(linkDir) }
                     }
 
                 } else {

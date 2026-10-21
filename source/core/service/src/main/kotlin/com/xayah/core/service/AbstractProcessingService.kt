@@ -31,12 +31,14 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.withLog
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 internal abstract class AbstractProcessingService : Service() {
     override fun onBind(intent: Intent): IBinder {
@@ -139,6 +141,7 @@ internal abstract class AbstractProcessingService : Service() {
     protected open suspend fun afterPostProcessing() {}
     protected open suspend fun observeProcessingProgress() {}
     abstract suspend fun onProcessing()
+    protected open suspend fun clear() {}
 
     private val mBinder = OperationLocalBinder()
     private val mMutex = Mutex()
@@ -155,6 +158,7 @@ internal abstract class AbstractProcessingService : Service() {
     private val mPreprocessingEntities: MutableList<ProcessingInfoEntity> = mutableListOf()
     private val mPostProcessingEntities: MutableList<ProcessingInfoEntity> = mutableListOf()
     private var mIsInitialized: Boolean = false
+    private var cleanupResult: Boolean? = null
     protected var mStartTimestamp: Long = 0
     protected var mEndTimestamp: Long = 0
 
@@ -231,13 +235,25 @@ internal abstract class AbstractProcessingService : Service() {
                 mTaskEntity.update(postProcessingIndex = mTaskEntity.postProcessingIndex + 1)
             }
 
-            mRootService.setScreenOffTimeout(mContext.readScreenOffTimeout().first())
-            mContext.saveScreenOffTimeout(DEFAULT_IDLE_TIMEOUT)
-            mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_NORMAL)
-
             mEndTimestamp = DateUtil.getTimestamp()
             mTaskEntity.update(endTimestamp = mEndTimestamp, isProcessing = false, processingIndex = mTaskEntity.processingIndex + 1)
             afterPostProcessing()
         }
+    }
+
+    suspend fun cleanup(): Boolean = withContext(NonCancellable) {
+        cleanupResult ?: runCatchingOnService {
+            try {
+                clear()
+            } finally {
+                mContext.saveScreenOffCountDown(0)
+                val timeout = mContext.readScreenOffTimeout().first()
+                if (timeout != DEFAULT_IDLE_TIMEOUT) {
+                    mRootService.setScreenOffTimeout(timeout)
+                    mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_NORMAL)
+                    mContext.saveScreenOffTimeout(DEFAULT_IDLE_TIMEOUT)
+                }
+            }
+        }.also { cleanupResult = it }
     }
 }

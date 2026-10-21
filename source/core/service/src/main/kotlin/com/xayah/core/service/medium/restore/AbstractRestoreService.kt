@@ -68,7 +68,6 @@ internal abstract class AbstractRestoreService : AbstractMediumService() {
 
     abstract suspend fun getMedium(): List<MediaEntity>
     abstract suspend fun restore(m: MediaEntity, t: TaskDetailMediaEntity, srcDir: String)
-    protected open suspend fun clear() {}
 
     protected abstract val mMediumRestoreUtil: MediumRestoreUtil
 
@@ -126,7 +125,7 @@ internal abstract class AbstractRestoreService : AbstractMediumService() {
                 )
 
                 mMediaDao.clearActivated(OpType.RESTORE)
-                val isSuccess = runCatchingOnService { clear() }
+                val isSuccess = cleanup()
                 entity.update(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR)
             }
 

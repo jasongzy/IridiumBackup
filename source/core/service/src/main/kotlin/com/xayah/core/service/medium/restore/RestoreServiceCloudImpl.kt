@@ -23,6 +23,11 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreService() {
+    override suspend fun clear() {
+        mRootService.deleteRecursively(mRootDir)
+        if (::mClient.isInitialized) mClient.disconnect()
+    }
+
     override val mTAG: String = "RestoreServiceCloudImpl"
 
     @Inject

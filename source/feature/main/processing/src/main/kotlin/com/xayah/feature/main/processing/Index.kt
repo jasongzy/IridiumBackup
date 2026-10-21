@@ -64,7 +64,6 @@ import com.xayah.core.ui.token.AnimationTokens
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.viewmodel.IndexUiEffect
-import com.xayah.core.util.command.BaseUtil
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -106,35 +105,28 @@ fun PageProcessing(
     val screenOffCountDown by viewModel.screenOffCountDown.collectAsStateWithLifecycle()
 
     LaunchedEffect(viewModel, autoStart) {
-        viewModel.emitIntent(ProcessingUiIntent.Initialize)
-        if (autoStart) viewModel.emitIntent(ProcessingUiIntent.Process)
+        viewModel.initialize(autoStart)
     }
 
     LaunchedEffect(screenOffCountDown, uiState.state) {
-        viewModel.launchOnIO {
-            if (screenOffCountDown != 0) {
-                if (uiState.state != OperationState.PROCESSING) {
-                    context.saveScreenOffCountDown(0)
-                } else {
-                    viewModel.launchOnIO {
-                        viewModel.emitEffect(IndexUiEffect.DismissSnackbar)
-                        viewModel.emitEffect(
-                            IndexUiEffect.ShowSnackbar(
-                                type = SnackbarType.Success,
-                                message = context.getString(R.string.args_screen_off_in_seconds, screenOffCountDown),
-                                duration = SnackbarDuration.Indefinite
-                            )
+        if (screenOffCountDown != 0) {
+            if (uiState.state != OperationState.PROCESSING) {
+                context.saveScreenOffCountDown(0)
+            } else {
+                viewModel.launchOnIO {
+                    viewModel.emitEffect(IndexUiEffect.DismissSnackbar)
+                    viewModel.emitEffect(
+                        IndexUiEffect.ShowSnackbar(
+                            type = SnackbarType.Success,
+                            message = context.getString(R.string.args_screen_off_in_seconds, screenOffCountDown),
+                            duration = SnackbarDuration.Indefinite
                         )
-                    }
-                    var count = screenOffCountDown
-                    while (count != 0) {
-                        delay(1000)
-                        count--
-                    }
-                    viewModel.emitEffectOnIO(IndexUiEffect.DismissSnackbar)
-                    context.saveScreenOffCountDown(count)
-                    viewModel.emitIntent(ProcessingUiIntent.TurnOffScreen)
+                    )
                 }
+                delay(screenOffCountDown * 1000L)
+                viewModel.emitEffectOnIO(IndexUiEffect.DismissSnackbar)
+                context.saveScreenOffCountDown(0)
+                viewModel.emitIntent(ProcessingUiIntent.TurnOffScreen)
             }
         }
     }
@@ -144,8 +136,7 @@ fun PageProcessing(
             if (uiState.state == OperationState.PROCESSING) {
                 viewModel.launchOnIO {
                     if (dialogState.confirm(title = context.getString(R.string.prompt), text = context.getString(R.string.processing_exit_confirmation))) {
-                        BaseUtil.kill(context, "tar", "root")
-                        viewModel.emitIntent(ProcessingUiIntent.DestroyService)
+                        viewModel.emitIntent(ProcessingUiIntent.Cancel)
                         viewModel.emitIntent(ProcessingUiIntent.ClearTask)
                         withMainContext {
                             navController.popBackStack()

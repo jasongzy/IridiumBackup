@@ -15,6 +15,7 @@ import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -102,8 +103,10 @@ class AppIconRepository @Inject constructor(
                 ?: return@withLock false
             saveApkIconUnlocked(apk, appsDir, packageName)
         } finally {
-            rootService.deleteRecursively(extracted)
-            rootService.deleteRecursively(workspace)
+            withContext(NonCancellable) {
+                rootService.deleteRecursively(extracted)
+                rootService.deleteRecursively(workspace)
+            }
         }
     }
 

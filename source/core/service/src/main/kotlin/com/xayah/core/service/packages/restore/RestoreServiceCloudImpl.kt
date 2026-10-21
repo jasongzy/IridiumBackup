@@ -67,6 +67,11 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
 
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"
 
+    override suspend fun clear() {
+        mRootService.deleteRecursively(mRootDir)
+        if (::mClient.isInitialized) mClient.disconnect()
+    }
+
     override suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String) {
         val remoteAppDir = getRemoteAppDir(p.archivesRelativeDir)
         mPackagesRestoreUtil.download(client = mClient, p = p, t = t, dataType = type, srcDir = remoteAppDir, dstDir = srcDir) { mP, mT, _, mPath ->

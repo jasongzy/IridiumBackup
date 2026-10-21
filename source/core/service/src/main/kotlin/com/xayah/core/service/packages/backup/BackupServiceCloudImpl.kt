@@ -162,8 +162,12 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     }
 
     override suspend fun clear() {
-        mRootService.deleteRecursively(mRootDir)
-        mClient.disconnect()
+        try {
+            super.clear()
+        } finally {
+            mRootService.deleteRecursively(mRootDir)
+            if (::mClient.isInitialized) mClient.disconnect()
+        }
     }
 
     @Inject

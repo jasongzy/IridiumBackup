@@ -149,6 +149,23 @@ object BaseUtil {
         }
     }
 
+    suspend fun cancelArchiveCommands(context: Context) {
+        val shell = getNewShell(context) ?: return
+        val bin = context.binDir()
+        val command = """
+            for process in /proc/[0-9]*/exe; do
+                for tool in '$bin/tar' '$bin/zstd'; do
+                    [ ! -L "${USD}tool" ] && [ "${USD}process" -ef "${USD}tool" ] || continue
+                    pid=${USD}{process#/proc/}
+                    pid=${USD}{pid%/exe}
+                    kill -9 "${USD}pid" 2>/dev/null
+                    break
+                done
+            done
+        """.trimIndent()
+        execute(command, shell = shell, timeout = -1)
+    }
+
     suspend fun killPackage(context: Context, userId: Int, packageName: String) {
         val shell = getNewShell(context)
         if (shell != null) {

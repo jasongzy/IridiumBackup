@@ -113,8 +113,11 @@ class CloudRepository @Inject constructor(
 
     suspend fun withClient(name: String? = null, block: suspend (client: CloudClient, entity: CloudEntity) -> Unit) = run {
         val (client, entity) = getClient(name)
-        block(client, entity)
-        client.disconnect()
+        try {
+            block(client, entity)
+        } finally {
+            client.disconnect()
+        }
     }
 
     suspend fun withActivatedClients(block: suspend (clients: List<Pair<CloudClient, CloudEntity>>) -> Unit) = run {

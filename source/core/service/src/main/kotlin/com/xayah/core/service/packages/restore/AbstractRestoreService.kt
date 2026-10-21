@@ -79,7 +79,6 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
     abstract suspend fun getPackages(): List<PackageEntity>
     protected open suspend fun beforeSettingUpEnv() {}
     abstract suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String)
-    protected open suspend fun clear() {}
 
     protected abstract val mPackagesRestoreUtil: PackagesRestoreUtil
 
@@ -157,7 +156,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
                 )
 
                 mPackageDao.clearActivated(OpType.RESTORE)
-                val isSuccess = runCatchingOnService { clear() }
+                val isSuccess = cleanup()
                 entity.update(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR)
             }
 

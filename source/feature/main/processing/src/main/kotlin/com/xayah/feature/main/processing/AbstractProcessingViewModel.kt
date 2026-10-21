@@ -19,13 +19,20 @@ import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
+import com.xayah.core.util.command.BaseUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
 
 data class IndexUiState(
     val state: OperationState,
@@ -36,8 +43,8 @@ data class IndexUiState(
 
 open class ProcessingUiIntent : UiIntent {
     data object Process : ProcessingUiIntent()
-    data object Initialize : ProcessingUiIntent()
     data object DestroyService : ProcessingUiIntent()
+    data object Cancel : ProcessingUiIntent()
     data object TurnOffScreen : ProcessingUiIntent()
     data object ClearTask : ProcessingUiIntent()
 }
@@ -58,6 +65,17 @@ abstract class AbstractProcessingViewModel(
         cloudEntity = null
     )
 ) {
+    private val processingJob = AtomicReference<Job?>()
+    private var initializationJob: Job? = null
+
+    fun initialize(autoStart: Boolean) {
+        if (initializationJob != null) return
+        initializationJob = launchOnIO {
+            _taskId.value = if (uiState.value.storageType == StorageMode.Cloud) mCloudService.initialize() else mLocalService.initialize()
+            if (autoStart) emitIntent(ProcessingUiIntent.Process)
+        }
+    }
+
     open suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {}
 
     init {
@@ -70,11 +88,10 @@ abstract class AbstractProcessingViewModel(
 
     override suspend fun onEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
-            is ProcessingUiIntent.Initialize -> {
-                _taskId.value = if (uiState.value.storageType == StorageMode.Cloud) mCloudService.initialize() else mLocalService.initialize()
-            }
-
             is ProcessingUiIntent.Process -> {
+                if (state.state != OperationState.IDLE || _taskId.value < 0) return
+                val job = currentCoroutineContext().job
+                if (!processingJob.compareAndSet(null, job)) return
                 emitState(state.copy(state = OperationState.PROCESSING))
                 val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
                 try {
@@ -82,18 +99,32 @@ abstract class AbstractProcessingViewModel(
                     service.processing()
                     service.postProcessing()
                 } finally {
-                    service.destroyService()
+                    withContext(NonCancellable) {
+                        try {
+                            service.cleanup()
+                        } finally {
+                            withMainContext { service.destroyService() }
+                            processingJob.compareAndSet(job, null)
+                        }
+                    }
                 }
                 emitState(state.copy(state = OperationState.DONE))
             }
 
+            is ProcessingUiIntent.Cancel -> {
+                processingJob.get()?.let { job ->
+                    job.cancel()
+                    BaseUtil.cancelArchiveCommands(mContext)
+                    job.join()
+                }
+            }
+
             is ProcessingUiIntent.DestroyService -> {
-                if (state.storageType == StorageMode.Cloud) {
-                    // Cloud
-                    mCloudService.destroyService(true)
-                } else {
-                    // Local
-                    mLocalService.destroyService(true)
+                initializationJob?.cancel()
+                initializationJob?.join()
+                withMainContext {
+                    if (state.storageType == StorageMode.Cloud) mCloudService.destroyService(true)
+                    else mLocalService.destroyService(true)
                 }
             }
 
@@ -123,7 +154,7 @@ abstract class AbstractProcessingViewModel(
     private var _preItems: Flow<List<ProcessingCardItem>> = _taskId.flatMapLatest { id ->
         mTaskRepo.queryProcessingInfoFlow(id, ProcessingType.PREPROCESSING)
             .map { infoList ->
-                _preItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size
+                _preItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size.coerceAtLeast(1)
                 val items = mutableListOf<ProcessingCardItem>()
                 infoList.forEach {
                     items.addInfo(it)
@@ -136,7 +167,7 @@ abstract class AbstractProcessingViewModel(
     private val _postItems: Flow<List<ProcessingCardItem>> = _taskId.flatMapLatest { id ->
         mTaskRepo.queryProcessingInfoFlow(id, ProcessingType.POST_PROCESSING)
             .map { infoList ->
-                _postItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size
+                _postItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size.coerceAtLeast(1)
                 val items = mutableListOf<ProcessingCardItem>()
                 infoList.forEach {
                     items.addInfo(it)

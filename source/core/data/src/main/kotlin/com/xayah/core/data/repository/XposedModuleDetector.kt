@@ -10,6 +10,7 @@ import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.PathUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -71,8 +72,10 @@ class XposedModuleDetector @Inject constructor(
             }
             if (inspected) false else null
         } finally {
-            rootService.deleteRecursively(extracted.path)
-            rootService.deleteRecursively(workspace.path)
+            withContext(NonCancellable) {
+                rootService.deleteRecursively(extracted.path)
+                rootService.deleteRecursively(workspace.path)
+            }
         }
     }
 

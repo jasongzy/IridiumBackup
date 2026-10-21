@@ -86,7 +86,6 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
     protected open suspend fun onConfigSaved(path: String, archivesRelativeDir: String) {}
     protected open suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) {}
     protected open suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) {}
-    protected open suspend fun clear() {}
 
     protected abstract val mMediumBackupUtil: MediumBackupUtil
 
@@ -202,7 +201,7 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
                 entity.update(progress = 0.5f)
 
                 mMediaDao.clearActivated(OpType.BACKUP)
-                if (runCatchingOnService { clear() }.not()) {
+                if (!cleanup()) {
                     isSuccess = false
                 }
                 entity.set(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
