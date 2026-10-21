@@ -31,7 +31,7 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
 import com.xayah.core.util.withLog
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -41,7 +41,6 @@ import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlin.coroutines.suspendCoroutine
 
 data class ArchiveExtraction(
     val result: ShellResult,
@@ -61,7 +60,6 @@ class RemoteRootService(private val context: Context) {
     }
     val gsonUtil by lazy { GsonUtil() }
 
-    // TODO: Will this cause memory leak? It needs to test.
     var onFailure: (Throwable) -> Unit = {}
 
     private fun log(msg: () -> String) = LogUtil.log { "RemoteRootService" to msg() }
@@ -77,7 +75,7 @@ class RemoteRootService(private val context: Context) {
 
     private suspend fun bindService(): IRemoteRootService = run {
         delay(1000)
-        suspendCoroutine { continuation ->
+        suspendCancellableCoroutine { continuation ->
             if (mService == null) {
                 retries++
                 destroyService()
@@ -85,7 +83,7 @@ class RemoteRootService(private val context: Context) {
                 mConnection = object : ServiceConnection {
                     override fun onServiceConnected(name: ComponentName, service: IBinder) {
                         mService = IRemoteRootService.Stub.asInterface(service)
-                        if (continuation.context.isActive) continuation.resume(mService!!)
+                        if (continuation.isActive) continuation.resume(mService!!)
                     }
 
                     override fun onServiceDisconnected(name: ComponentName) {
@@ -93,7 +91,7 @@ class RemoteRootService(private val context: Context) {
                         mConnection = null
                         val msg = "Service disconnected."
                         log { msg }
-                        if (continuation.context.isActive) continuation.resumeWithException(RemoteException(msg))
+                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
                     }
 
                     override fun onBindingDied(name: ComponentName) {
@@ -101,7 +99,7 @@ class RemoteRootService(private val context: Context) {
                         mConnection = null
                         val msg = "Binding died."
                         log { msg }
-                        if (continuation.context.isActive) continuation.resumeWithException(RemoteException(msg))
+                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
                     }
 
                     override fun onNullBinding(name: ComponentName) {
@@ -109,13 +107,13 @@ class RemoteRootService(private val context: Context) {
                         mConnection = null
                         val msg = "Null binding."
                         log { msg }
-                        if (continuation.context.isActive) continuation.resumeWithException(RemoteException(msg))
+                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
                     }
                 }
                 RootService.bind(intent, mConnection!!)
             } else {
                 retries = 0
-                mService
+                continuation.resume(mService!!)
             }
         }
     }

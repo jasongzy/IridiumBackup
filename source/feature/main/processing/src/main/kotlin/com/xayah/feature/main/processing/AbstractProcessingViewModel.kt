@@ -79,11 +79,15 @@ abstract class AbstractProcessingViewModel(
     open suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {}
 
     init {
-        mRootService.onFailure = {
+        val onRootFailure: (Throwable) -> Unit = {
             val msg = it.message
             if (msg != null)
                 emitEffectOnIO(IndexUiEffect.ShowSnackbar(message = msg))
         }
+        mRootService.onFailure = onRootFailure
+        addCloseable(AutoCloseable {
+            if (mRootService.onFailure === onRootFailure) mRootService.onFailure = {}
+        })
     }
 
     override suspend fun onEvent(state: IndexUiState, intent: ProcessingUiIntent) {
