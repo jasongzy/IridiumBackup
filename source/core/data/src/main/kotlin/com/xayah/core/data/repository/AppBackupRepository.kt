@@ -32,6 +32,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -248,7 +250,7 @@ class AppBackupRepository @Inject constructor(
         return PathUtil.getAppIconPath(appsDir, packageName).takeIf { rootService.exists(it) }
     }
 
-    suspend fun inspectRevision(revision: BackupRevisionEntity): VerificationResult {
+    suspend fun inspectRevision(revision: BackupRevisionEntity): VerificationResult = withContext(Dispatchers.IO) {
         val result = inspectRevisionFiles(revision)
         val revisionDir = getLocalRevisionDir(revision)
         revisionDir?.let {
@@ -262,7 +264,7 @@ class AppBackupRepository @Inject constructor(
                 packageName = revision.packageName,
             )
         } else false
-        return result.copy(iconRepaired = iconRepaired)
+        result.copy(iconRepaired = iconRepaired)
     }
 
     internal suspend fun calculateDisplayStats(
