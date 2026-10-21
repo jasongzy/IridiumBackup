@@ -254,9 +254,8 @@ class PackageRepository @Inject constructor(
             }
         } else {
             runCatching {
-                cloudRepository.withClient(p.indexInfo.cloud) { client, entity ->
-                    val remote = entity.remote
-                    val remoteArchivesPackagesDir = pathUtil.getCloudRemoteAppsDir(remote)
+                cloudRepository.withClient(p.indexInfo.cloud) { client, _ ->
+                    val remoteArchivesPackagesDir = pathUtil.getCloudRemoteAppsDir(p.indexInfo.backupDir)
                     val src = "$remoteArchivesPackagesDir/$relativeDir"
                     if (client.exists(src)) client.deleteRecursively(src)
                     val packageDir = "${remoteArchivesPackagesDir}/${p.packageName}"

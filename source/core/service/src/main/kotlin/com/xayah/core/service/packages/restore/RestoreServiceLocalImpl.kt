@@ -72,7 +72,7 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     override lateinit var mPackagesRestoreUtil: PackagesRestoreUtil
 
-    override val mRootDir by lazy { mContext.localBackupSaveDir() }
-    override val mAppsDir by lazy { mPathUtil.getLocalBackupAppsDir() }
-    override val mConfigsDir by lazy { mPathUtil.getLocalBackupConfigsDir() }
+    override val mRootDir by lazy { requestedBackupDir ?: mContext.localBackupSaveDir() }
+    override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
+    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 }

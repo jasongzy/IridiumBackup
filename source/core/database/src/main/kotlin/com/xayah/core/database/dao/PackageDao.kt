@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.Flow
 interface PackageDao {
     @Transaction
     suspend fun replaceLocalRestoreIndex(backupDir: String, items: List<PackageEntity>) {
-        delete(backupDir, OpType.RESTORE)
+        delete(backupDir, OpType.RESTORE, cloud = "")
         upsert(items)
     }
 
@@ -266,6 +266,6 @@ interface PackageDao {
     @Query("DELETE FROM PackageEntity WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("DELETE FROM PackageEntity WHERE indexInfo_backupDir = :backupDir AND indexInfo_opType = :opType")
-    suspend fun delete(backupDir: String, opType: OpType)
+    @Query("DELETE FROM PackageEntity WHERE indexInfo_backupDir = :backupDir AND indexInfo_opType = :opType AND indexInfo_cloud = :cloud")
+    suspend fun delete(backupDir: String, opType: OpType, cloud: String)
 }

@@ -161,11 +161,17 @@ internal abstract class AbstractProcessingService : Service() {
     private var cleanupResult: Boolean? = null
     protected var mStartTimestamp: Long = 0
     protected var mEndTimestamp: Long = 0
+    protected var requestedCloudName: String? = null
+        private set
+    protected var requestedBackupDir: String? = null
+        private set
 
     @SuppressLint("StringFormatInvalid")
-    suspend fun initialize(): Long {
+    suspend fun initialize(cloudName: String? = null, backupDir: String? = null): Long {
         mMutex.withLock {
             if (mIsInitialized.not()) {
+                requestedCloudName = cloudName
+                requestedBackupDir = backupDir
                 mTaskDao.deleteAllTasks()
                 mTaskDao.upsert(mTaskEntity).apply {
                     // Initialize task id.

@@ -294,12 +294,7 @@ class AppBackupRepository @Inject constructor(
                 .sortedBy(BackupManifestFile::name)
             if (!rootService.writeJson(manifest.copy(files = files), manifestPath).isSuccess) return
             dao.updateRevisionSize(revision.id, files.sumOf(BackupManifestFile::sizeBytes))
-            packageRepository.getRevisions(revision.packageName, revision.userId, revision.createdAt)
-                .firstOrNull {
-                    it.indexInfo.cloud.isEmpty() &&
-                        it.indexInfo.backupDir == context.localBackupSaveDir()
-                }
-                ?.let { packageRepository.updateDisplayStats(it.id, stats) }
+            findLegacyRevision(revision)?.let { packageRepository.updateDisplayStats(it.id, stats) }
         }
     }
 

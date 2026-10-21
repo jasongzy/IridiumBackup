@@ -52,17 +52,17 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     }
 
     override suspend fun getPackages(): List<PackageEntity> {
-        mCloudRepo.getClient().also { (c, e) ->
+        mCloudRepo.getClient(requestedCloudName).also { (c, e) ->
             mCloudEntity = e
             mClient = c
         }
 
-        mRemotePath = mCloudEntity.remote
+        mRemotePath = requestedBackupDir ?: mCloudEntity.remote
         mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(mRemotePath)
         mRemoteConfigsDir = mPathUtil.getCloudRemoteConfigsDir(mRemotePath)
         mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
 
-        return mPackageRepo.queryActivated(OpType.RESTORE, mCloudEntity.name, mCloudEntity.remote)
+        return mPackageRepo.queryActivated(OpType.RESTORE, mCloudEntity.name, mRemotePath)
     }
 
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"

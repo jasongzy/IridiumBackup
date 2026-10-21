@@ -1,0 +1,7 @@
+<resources>
+    <color name="colorPrimary">#445E91</color>
+    <color name="colorOnPrimary">#FFFFFF</color>
+    <string name="idle">Idle</string>
+    <string name="failed">Failed</string>
+    <string name="rebuild_finished">Rebuilt %1$d backups</string>
+</resources>

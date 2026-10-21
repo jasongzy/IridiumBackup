@@ -11,6 +11,7 @@ import com.xayah.core.data.repository.BackupRequestStore
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.data.repository.ListData
 import com.xayah.core.data.repository.ListDataRepo
+import com.xayah.core.datastore.readBackupSavePath
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.AppKey
 import com.xayah.core.model.BackupEngine
@@ -70,12 +71,13 @@ class ListViewModel @Inject constructor(
         Target.Apps -> combine(
             listDataRepo.getListData(),
             listDataRepo.getAppList(),
-            appBackupRepository.observeRevisions(),
+            combine(appBackupRepository.observeRevisions(), context.readBackupSavePath()) { revisions, path ->
+                revisions.filter { it.repositoryId == ":$path" }
+            },
             listDataRepo.getSelectedAppKeys(),
             isPreparing,
         ) { data, apps, revisions, selectedKeys, preparing ->
             val listData = data.castTo<ListData.Apps>()
-            val repositoryId = ":$backupDir"
             Success.Apps(
                 opType = opType,
                 selected = listData.selected,
@@ -87,7 +89,6 @@ class ListViewModel @Inject constructor(
                 hasSelectedInstalledApps = apps.any { it.selected && it.isInstalled },
                 hasSelectedBackups = revisions.any {
                     it.engine == BackupEngine.LEGACY &&
-                        it.repositoryId == repositoryId &&
                         AppKey(it.packageName, it.userId) in selectedKeys
                 },
             )

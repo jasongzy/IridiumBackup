@@ -65,12 +65,13 @@ class RestoreViewModelImpl @Inject constructor(
             is UpdateApps -> {
                 val cloud: String
                 val backupSaveDir: String
-                if (uiState.value.cloudEntity == null) {
+                if (state.storageType == StorageMode.Local) {
                     cloud = ""
-                    backupSaveDir = mContext.localBackupSaveDir()
+                    backupSaveDir = state.backupDir ?: mContext.localBackupSaveDir()
                 } else {
-                    cloud = uiState.value.cloudEntity!!.name
-                    backupSaveDir = uiState.value.cloudEntity!!.remote
+                    val account = state.cloudEntity ?: return
+                    cloud = account.name
+                    backupSaveDir = state.backupDir ?: account.remote
                 }
                 val packages = mPkgRepo.queryActivated(OpType.RESTORE, cloud, backupSaveDir)
                 LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Query activated apps, cloud: $cloud, backupDir: $backupSaveDir" }
@@ -85,10 +86,11 @@ class RestoreViewModelImpl @Inject constructor(
 
             is SetCloudEntity -> {
                 val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: ""
+                val backupDir = args.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.decodeURL()?.takeIf { it.isNotBlank() }
                 if (name.isNotEmpty()) {
-                    emitState(state.copy(storageIndex = 1, storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name)))
+                    emitState(state.copy(storageIndex = 1, storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name), backupDir = backupDir))
                 } else {
-                    emitState(state.copy(storageIndex = 0, storageType = StorageMode.Local, cloudEntity = null))
+                    emitState(state.copy(storageIndex = 0, storageType = StorageMode.Local, cloudEntity = null, backupDir = backupDir))
                 }
             }
 

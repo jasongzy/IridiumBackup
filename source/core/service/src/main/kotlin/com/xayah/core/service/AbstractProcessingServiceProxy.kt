@@ -87,7 +87,8 @@ abstract class AbstractProcessingServiceProxy {
         }
     }
 
-    suspend fun initialize() = getService().initialize()
+    suspend fun initialize(cloudName: String? = null, backupDir: String? = null) =
+        getService().initialize(cloudName, backupDir)
 
     suspend fun preprocessing() = getService().preprocessing()
 

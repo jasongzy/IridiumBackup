@@ -2,10 +2,12 @@ plugins {
     alias(libs.plugins.library.common)
     alias(libs.plugins.library.hilt)
     alias(libs.plugins.library.compose)
+    alias(libs.plugins.library.androidTest)
 }
 
 android {
     namespace = "com.xayah.feature.main.restore"
+    packaging.resources.excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
 }
 
 dependencies {
@@ -29,4 +31,8 @@ dependencies {
 
     // dotLottie
     implementation(libs.dotlottie.android)
+
+    androidTestImplementation(project(":core:database"))
+    androidTestImplementation(project(":core:rootservice"))
+    androidTestImplementation(libs.androidx.room.runtime)
 }

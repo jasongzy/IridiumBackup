@@ -39,6 +39,7 @@ data class IndexUiState(
     val storageIndex: Int,
     val storageType: StorageMode,
     val cloudEntity: CloudEntity?,
+    val backupDir: String? = null,
 ) : UiState
 
 open class ProcessingUiIntent : UiIntent {
@@ -71,7 +72,9 @@ abstract class AbstractProcessingViewModel(
     fun initialize(autoStart: Boolean) {
         if (initializationJob != null) return
         initializationJob = launchOnIO {
-            _taskId.value = if (uiState.value.storageType == StorageMode.Cloud) mCloudService.initialize() else mLocalService.initialize()
+            val state = uiState.value
+            val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
+            _taskId.value = service.initialize(state.cloudEntity?.name, state.backupDir)
             if (autoStart) emitIntent(ProcessingUiIntent.Process)
         }
     }

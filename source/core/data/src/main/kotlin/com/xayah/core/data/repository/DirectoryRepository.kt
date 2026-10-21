@@ -4,13 +4,10 @@ import android.content.Context
 import com.xayah.core.common.util.toSpaceString
 import com.xayah.core.data.R
 import com.xayah.core.database.dao.DirectoryDao
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.ConstantUtil
 import com.xayah.core.datastore.ConstantUtil.DEFAULT_PATH_PARENT
-import com.xayah.core.datastore.readBackupSavePath
 import com.xayah.core.datastore.saveBackupSavePath
 import com.xayah.core.model.StorageType
-import com.xayah.core.model.OpType
 import com.xayah.core.model.database.DirectoryEntity
 import com.xayah.core.model.database.DirectoryUpsertEntity
 import com.xayah.core.rootservice.service.RemoteRootService
@@ -19,7 +16,6 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.PreparationUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -27,7 +23,6 @@ import javax.inject.Inject
 class DirectoryRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val directoryDao: DirectoryDao,
-    private val packageDao: PackageDao,
     private val rootService: RemoteRootService,
 ) {
     private val updateMutex = Mutex()
@@ -65,10 +60,7 @@ class DirectoryRepository @Inject constructor(
         directoryDao.upsert(customDirList)
     }
 
-    suspend fun selectDir(entity: DirectoryEntity) = run {
-        packageDao.delete(context.readBackupSavePath().first(), OpType.RESTORE)
-        selectDir(entity.path, entity.id)
-    }
+    suspend fun selectDir(entity: DirectoryEntity) = selectDir(entity.path, entity.id)
 
     private suspend fun selectDir(path: String, id: Long?) = run {
         if (id != null) {
