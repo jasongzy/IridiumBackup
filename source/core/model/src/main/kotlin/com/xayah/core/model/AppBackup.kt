@@ -47,6 +47,12 @@ fun BackupManifest.hasValidFileEntries(): Boolean {
     }
 }
 
+fun BackupManifest.matchesRevision(revision: BackupRevisionEntity): Boolean =
+    schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION && packageName == revision.packageName &&
+        userId == revision.userId && createdAt == revision.createdAt &&
+        versionName == revision.appVersionName && versionCode == revision.appVersionCode &&
+        contentMask == revision.contentMask
+
 @Entity(
     tableName = "backup_apps",
     primaryKeys = ["packageName", "userId"],

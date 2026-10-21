@@ -24,6 +24,7 @@ import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.findRetentionRevisions
 import com.xayah.core.model.hasValidFileEntries
+import com.xayah.core.model.matchesRevision
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.service.RemoteRootService
@@ -35,9 +36,12 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -53,6 +57,7 @@ class AppBackupRepository @Inject constructor(
 ) {
     private val _verificationResults = MutableStateFlow<Map<String, VerificationResult>>(emptyMap())
     val verificationResults = _verificationResults.asStateFlow()
+    private val manifestMutex = Mutex()
 
     data class RestoreSelection(val cloudName: String, val backupDir: String)
     data class VerificationReport(
@@ -110,10 +115,7 @@ class AppBackupRepository @Inject constructor(
         if (artifactIds.isEmpty()) 0 else dao.getRevisionSizeBytes(repositoryId, artifactIds)
 
     suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) {
-        val indexedApps = apps.map { app ->
-            app.toBackupApp(note = dao.getApp(app.packageName, app.userId)?.note.orEmpty())
-        }
-        dao.replaceInstalledApps(userId, indexedApps)
+        dao.replaceInstalledApps(userId, apps.map { it.toBackupApp() })
     }
 
     suspend fun updateAppNote(packageName: String, userId: Int, note: String) {
@@ -155,8 +157,8 @@ class AppBackupRepository @Inject constructor(
         contentMask: Int,
         sizeBytes: Long,
     ) {
-        dao.upsertApps(listOf(app.toBackupApp(note = dao.getApp(app.packageName, app.userId)?.note.orEmpty())))
-        dao.upsertRevision(
+        dao.recordRevision(
+            app.toBackupApp(),
             BackupRevisionEntity(
                 packageName = app.packageName,
                 userId = app.userId,
@@ -179,7 +181,7 @@ class AppBackupRepository @Inject constructor(
         if (!app.canReuseApkFrom(previous)) return null
         val revisionDir = getLocalRevisionDir(revision) ?: return null
         val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir)) ?: return null
-        if (!matchesManifest(revision, manifest) || !manifest.hasValidFileEntries()) return null
+        if (!manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return null
         val file = manifest.files.orEmpty().firstOrNull { it.name == "apk.${app.indexInfo.compressionType.suffix}" } ?: return null
         if (getManifestFile("$revisionDir/${file.name}") != file) return null
         return previous
@@ -229,7 +231,7 @@ class AppBackupRepository @Inject constructor(
 
     fun rememberVerification(result: VerificationResult) {
         if (result.status != BackupVerificationStatus.NOT_VERIFIED) {
-            _verificationResults.value += result.revision.id to result
+            _verificationResults.update { it + (result.revision.id to result) }
         }
     }
 
@@ -274,29 +276,31 @@ class AppBackupRepository @Inject constructor(
     }
 
     private suspend fun refreshDisplayStats(revision: BackupRevisionEntity, revisionDir: String) {
-        val configPath = PathUtil.getPackageRestoreConfigDst(revisionDir)
-        val config = rootService.readJson<PackageRestoreConfig>(configPath) ?: return
-        val stats = calculateDisplayStats(revisionDir, config.compressionType, config.dataStates)
-        if (config.displayStats == stats) return
-        val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return
-        if (!rootService.writeJson(config.copy(displayStats = stats), configPath).isSuccess) return
-        val configDigest = rootService.calculateSHA256(configPath) ?: return
-        val configFile = BackupManifestFile(
-            name = ConfigsPackageRestoreName,
-            sizeBytes = rootService.calculateSize(configPath),
-            sha256 = configDigest,
-        )
-        val files = (manifest.files.orEmpty().filterNot { it.name == ConfigsPackageRestoreName } + configFile)
-            .sortedBy(BackupManifestFile::name)
-        if (!rootService.writeJson(manifest.copy(files = files), manifestPath).isSuccess) return
-        dao.upsertRevision(revision.copy(sizeBytes = files.sumOf(BackupManifestFile::sizeBytes)))
-        packageRepository.getRevisions(revision.packageName, revision.userId, revision.createdAt)
-            .firstOrNull {
-                it.indexInfo.cloud.isEmpty() &&
-                    it.indexInfo.backupDir == context.localBackupSaveDir()
-            }
-            ?.let { packageRepository.upsert(it.copy(displayStats = stats)) }
+        manifestMutex.withLock {
+            val configPath = PathUtil.getPackageRestoreConfigDst(revisionDir)
+            val config = rootService.readJson<PackageRestoreConfig>(configPath) ?: return
+            val stats = calculateDisplayStats(revisionDir, config.compressionType, config.dataStates)
+            if (config.displayStats == stats) return
+            val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
+            val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return
+            if (!rootService.writeJson(config.copy(displayStats = stats), configPath).isSuccess) return
+            val configDigest = rootService.calculateSHA256(configPath) ?: return
+            val configFile = BackupManifestFile(
+                name = ConfigsPackageRestoreName,
+                sizeBytes = rootService.calculateSize(configPath),
+                sha256 = configDigest,
+            )
+            val files = (manifest.files.orEmpty().filterNot { it.name == ConfigsPackageRestoreName } + configFile)
+                .sortedBy(BackupManifestFile::name)
+            if (!rootService.writeJson(manifest.copy(files = files), manifestPath).isSuccess) return
+            dao.updateRevisionSize(revision.id, files.sumOf(BackupManifestFile::sizeBytes))
+            packageRepository.getRevisions(revision.packageName, revision.userId, revision.createdAt)
+                .firstOrNull {
+                    it.indexInfo.cloud.isEmpty() &&
+                        it.indexInfo.backupDir == context.localBackupSaveDir()
+                }
+                ?.let { packageRepository.updateDisplayStats(it.id, stats) }
+        }
     }
 
     private suspend fun refreshXposedModule(revision: BackupRevisionEntity, revisionDir: String) {
@@ -304,8 +308,7 @@ class AppBackupRepository @Inject constructor(
             ?: return
         packageRepository.getPackage(revision.packageName, OpType.BACKUP, revision.userId)?.let { app ->
             if (app.packageInfo.isXposedModule != isXposedModule) {
-                app.packageInfo.isXposedModule = isXposedModule
-                packageRepository.upsert(app)
+                packageRepository.updateXposedModule(app.id, isXposedModule)
             }
         }
         val preserveId = revision.artifactId.substringAfterLast('@').toLongOrNull() ?: return
@@ -331,30 +334,9 @@ class AppBackupRepository @Inject constructor(
             status = BackupVerificationStatus.NOT_VERIFIED,
             issues = listOf(VerificationIssue(VerificationIssueType.NOT_LOCAL)),
         )
-        val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        if (!rootService.exists(manifestPath)) {
-            return VerificationResult(
-                revision,
-                appLabel,
-                BackupVerificationStatus.DAMAGED,
-                listOf(VerificationIssue(VerificationIssueType.MANIFEST_MISSING)),
-            )
-        }
-        val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return VerificationResult(
-            revision,
-            appLabel,
-            BackupVerificationStatus.DAMAGED,
-            listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
-        )
-        if (!manifest.hasValidFileEntries()) return VerificationResult(
-            revision,
-            appLabel,
-            BackupVerificationStatus.DAMAGED,
-            listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
-        )
         val issues = mutableListOf<VerificationIssue>()
-        if (!matchesManifest(revision, manifest)) issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH)
-        manifest.files.orEmpty().forEach { file ->
+
+        suspend fun inspectFile(file: BackupManifestFile) {
             val path = "$revisionDir/${file.name}"
             when {
                 !rootService.exists(path) -> issues += VerificationIssue(VerificationIssueType.FILE_MISSING, file.name)
@@ -364,6 +346,27 @@ class AppBackupRepository @Inject constructor(
                     issues += VerificationIssue(VerificationIssueType.FILE_CHECKSUM_MISMATCH, file.name)
             }
         }
+
+        val manifest = manifestMutex.withLock {
+            val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
+            if (!rootService.exists(manifestPath)) return VerificationResult(
+                revision,
+                appLabel,
+                BackupVerificationStatus.DAMAGED,
+                listOf(VerificationIssue(VerificationIssueType.MANIFEST_MISSING)),
+            )
+            val manifest = rootService.readJson<BackupManifest>(manifestPath)
+            if (manifest == null || !manifest.hasValidFileEntries()) return VerificationResult(
+                revision,
+                appLabel,
+                BackupVerificationStatus.DAMAGED,
+                listOf(VerificationIssue(VerificationIssueType.MANIFEST_INVALID)),
+            )
+            if (!manifest.matchesRevision(revision)) issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH)
+            manifest.files.orEmpty().filter { it.name == ConfigsPackageRestoreName }.forEach { inspectFile(it) }
+            manifest
+        }
+        manifest.files.orEmpty().filterNot { it.name == ConfigsPackageRestoreName }.forEach { inspectFile(it) }
         return VerificationResult(
             revision = revision,
             appLabel = appLabel,
@@ -442,11 +445,12 @@ class AppBackupRepository @Inject constructor(
         }
         packageRepository.replaceLocalRestoreIndex(backupDir, rebuilt.map { it.first })
         val apps = rebuilt
+            .sortedByDescending { (app, _) -> app.preserveId }
             .distinctBy { (app, _) -> app.packageName to app.userId }
             .map { (app, _) ->
                 val existing = dao.getApp(app.packageName, app.userId)
                 existing?.takeIf { it.isInstalled }
-                    ?: app.toBackupApp(isInstalled = false, note = existing?.note.orEmpty())
+                    ?: app.toBackupApp(isInstalled = false)
             }
         val revisions = rebuilt.map { (app, manifest) ->
             app.toRevision(
@@ -478,7 +482,7 @@ class AppBackupRepository @Inject constructor(
         }
         if (!deleted) return false
         dao.deleteRevisionAndSync(revision)
-        _verificationResults.value -= revision.id
+        _verificationResults.update { it - revision.id }
         getLocalRevisionDir(revision)?.let { revisionDir ->
             val packageDir = PathUtil.getParentPath(revisionDir)
             val iconPath = PathUtil.getAppIconPath(PathUtil.getParentPath(packageDir), revision.packageName)
@@ -504,14 +508,16 @@ class AppBackupRepository @Inject constructor(
             }
     }
 
-    suspend fun updateRevisionNote(revision: BackupRevisionEntity, note: String): Boolean {
-        val normalized = note.trim()
-        val revisionDir = getLocalRevisionDir(revision) ?: return false
-        val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return false
-        if (!rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) return false
-        dao.updateRevisionNote(revision.id, normalized)
-        return true
+    suspend fun updateRevisionNote(revision: BackupRevisionEntity, note: String): Boolean = withContext(Dispatchers.IO) {
+        manifestMutex.withLock {
+            val normalized = note.trim()
+            val revisionDir = getLocalRevisionDir(revision) ?: return@withLock false
+            val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
+            val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return@withLock false
+            if (!rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) return@withLock false
+            dao.updateRevisionNote(revision.id, normalized)
+            true
+        }
     }
 
     suspend fun selectRevisionForRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): RestoreSelection? {
@@ -562,12 +568,6 @@ class AppBackupRepository @Inject constructor(
         PathUtil.getPackageArchiveRelativeDir(revision.packageName, revision.userId, revision.createdAt)
             ?.let { it == revision.artifactId } == true
 
-    private fun matchesManifest(revision: BackupRevisionEntity, manifest: BackupManifest): Boolean =
-        manifest.schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION && manifest.packageName == revision.packageName &&
-            manifest.userId == revision.userId && manifest.createdAt == revision.createdAt &&
-            manifest.versionName == revision.appVersionName && manifest.versionCode == revision.appVersionCode &&
-            manifest.contentMask == revision.contentMask && manifest.note.orEmpty() == revision.note
-
     private fun Int.toDataStates() = PackageDataStates(
         apkState = if (this and 1 != 0) DataState.Selected else DataState.NotSelected,
         userState = if (this and 2 != 0) DataState.Selected else DataState.NotSelected,
@@ -577,7 +577,7 @@ class AppBackupRepository @Inject constructor(
         mediaState = if (this and 32 != 0) DataState.Selected else DataState.NotSelected,
     )
 
-    private fun PackageEntity.toBackupApp(isInstalled: Boolean = true, note: String = "") = BackupAppEntity(
+    private fun PackageEntity.toBackupApp(isInstalled: Boolean = true) = BackupAppEntity(
         packageName = packageName,
         userId = userId,
         label = packageInfo.label,
@@ -587,7 +587,6 @@ class AppBackupRepository @Inject constructor(
         lastUpdateTime = packageInfo.lastUpdateTime,
         isSystem = isSystemApp,
         isInstalled = isInstalled,
-        note = note,
     )
 
     private fun PackageEntity.toRevision(

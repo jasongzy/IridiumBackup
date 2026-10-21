@@ -248,7 +248,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                             withContext(NonCancellable) {
                                 mPackageDao.upsert(restoreEntity)
                                 installedApp.extraInfo.lastBackupTime = revisionCreatedAt
-                                mPackageDao.upsert(installedApp)
                                 mAppBackupRepository.recordLegacyRevision(
                                     app = revisionApp,
                                     createdAt = revisionCreatedAt,

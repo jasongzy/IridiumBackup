@@ -322,6 +322,11 @@ data class PackageDisplayStatsEntity(
 data class PackageUpdateEntity(
     var id: Long,
     @Embedded(prefix = "packageInfo_") var packageInfo: PackageInfo,
-    @Embedded(prefix = "extraInfo_") var extraInfo: PackageExtraInfo,
     @Embedded(prefix = "storageStats_") var storageStats: PackageStorageStats,
+    @ColumnInfo(name = "extraInfo_uid") var uid: Int,
+    @ColumnInfo(name = "extraInfo_hasKeystore") var hasKeystore: Boolean,
+    @ColumnInfo(name = "extraInfo_permissions") var permissions: List<PackagePermission>,
+    @ColumnInfo(name = "extraInfo_ssaid") var ssaid: String,
+    @ColumnInfo(name = "extraInfo_firstUpdated") var firstUpdated: Boolean,
+    @ColumnInfo(name = "extraInfo_enabled") var enabled: Boolean,
 )

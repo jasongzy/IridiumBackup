@@ -437,43 +437,37 @@ class AppsRepo @Inject constructor(
             PackageManager.GET_PERMISSIONS or PackageManager.GET_META_DATA,
             userId,
         )
-        val updateEntity = PackageUpdateEntity(pkg.id, pkg.packageInfo, pkg.extraInfo, pkg.storageStats)
-        if (info != null) {
-            updateEntity.packageInfo.label = info.applicationInfo?.loadLabel(pm).toString()
-            updateEntity.packageInfo.versionName = info.versionName ?: ""
-            updateEntity.packageInfo.versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.longVersionCode
-            } else {
-                info.versionCode.toLong()
-            }
-            updateEntity.packageInfo.flags = info.applicationInfo?.flags ?: 0
-            updateEntity.packageInfo.firstInstallTime = info.firstInstallTime
-            updateEntity.packageInfo.lastUpdateTime = info.lastUpdateTime
-            updateEntity.packageInfo.isXposedModule = xposedModuleDetector.isModule(info)
-
-            updateEntity.extraInfo.firstUpdated = true
-            val uid = info.applicationInfo?.uid ?: -1
-            updateEntity.extraInfo.uid = uid
-            updateEntity.extraInfo.permissions = rootService.getPermissions(packageInfo = info)
-            updateEntity.extraInfo.hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid)
-            updateEntity.extraInfo.ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = userId)
-            updateEntity.extraInfo.enabled = info.applicationInfo?.enabled ?: false
-
-            if (userHandle != null) {
-                rootService.queryStatsForPackage(info, userHandle).also { stats ->
-                    if (stats != null) {
-                        updateEntity.storageStats.appBytes = stats.appBytes
-                        updateEntity.storageStats.cacheBytes = stats.cacheBytes
-                        updateEntity.storageStats.dataBytes = stats.dataBytes
-                        updateEntity.storageStats.externalCacheBytes = stats.externalCacheBytes
-                    }
-                }
-            }
-            return updateEntity
-        } else {
-            appsDao.delete(updateEntity.id)
+        if (info == null) {
+            appsDao.delete(pkg.id)
             return null
         }
+        val uid = info.applicationInfo?.uid ?: -1
+        val stats = userHandle?.let { rootService.queryStatsForPackage(info, it) }
+        return PackageUpdateEntity(
+            id = pkg.id,
+            packageInfo = PackageInfo(
+                label = info.applicationInfo?.loadLabel(pm).toString(),
+                versionName = info.versionName ?: "",
+                versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    info.longVersionCode
+                } else {
+                    info.versionCode.toLong()
+                },
+                flags = info.applicationInfo?.flags ?: 0,
+                firstInstallTime = info.firstInstallTime,
+                lastUpdateTime = info.lastUpdateTime,
+                isXposedModule = xposedModuleDetector.isModule(info),
+            ),
+            storageStats = stats?.let {
+                PackageStorageStats(it.appBytes, it.cacheBytes, it.dataBytes, it.externalCacheBytes)
+            } ?: pkg.storageStats,
+            uid = uid,
+            permissions = rootService.getPermissions(packageInfo = info),
+            hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid),
+            ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = userId),
+            firstUpdated = true,
+            enabled = info.applicationInfo?.enabled ?: false,
+        )
     }
 
     private suspend fun getInstalledPackages(userId: Int) =

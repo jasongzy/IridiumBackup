@@ -1,10 +1,13 @@
 package com.xayah.core.database.dao
 
 import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
 import com.xayah.core.model.AppBackupOverview
+import com.xayah.core.model.AppKey
 import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.OpType
@@ -15,13 +18,19 @@ interface AppBackupDao {
     @Transaction
     suspend fun replaceInstalledApps(userId: Int, apps: List<BackupAppEntity>) {
         markUserAppsUninstalled(userId)
-        upsertApps(apps)
+        upsertAppMetadata(apps)
         deleteUninstalledAppsWithoutRevisions(userId)
         syncLastBackupTimes(OpType.BACKUP)
     }
 
     @Upsert
     suspend fun upsertApps(apps: List<BackupAppEntity>)
+
+    @Transaction
+    suspend fun upsertAppMetadata(apps: List<BackupAppEntity>) {
+        val notes = getAppsWithNotes().associate { AppKey(it.packageName, it.userId) to it.note }
+        upsertApps(apps.map { it.copy(note = notes[AppKey(it.packageName, it.userId)].orEmpty()) })
+    }
 
     @Query("UPDATE backup_apps SET note = :note WHERE packageName = :packageName AND userId = :userId")
     suspend fun updateAppNote(packageName: String, userId: Int, note: String)
@@ -54,11 +63,24 @@ interface AppBackupDao {
     @Upsert
     suspend fun upsertRevision(revision: BackupRevisionEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingApp(app: BackupAppEntity)
+
+    @Transaction
+    suspend fun recordRevision(app: BackupAppEntity, revision: BackupRevisionEntity) {
+        insertMissingApp(app)
+        upsertRevision(revision)
+        syncLastBackupTime(app.packageName, app.userId, OpType.BACKUP)
+    }
+
     @Upsert
     suspend fun upsertRevisions(revisions: List<BackupRevisionEntity>)
 
     @Query("UPDATE backup_revisions SET note = :note WHERE revisionId = :revisionId")
     suspend fun updateRevisionNote(revisionId: String, note: String)
+
+    @Query("UPDATE backup_revisions SET sizeBytes = :sizeBytes WHERE revisionId = :revisionId")
+    suspend fun updateRevisionSize(revisionId: String, sizeBytes: Long)
 
     @Transaction
     suspend fun replaceRepositoryIndex(
@@ -67,7 +89,7 @@ interface AppBackupDao {
         revisions: List<BackupRevisionEntity>,
     ) {
         deleteRevisions(repositoryId)
-        upsertApps(apps)
+        upsertAppMetadata(apps)
         upsertRevisions(revisions)
         syncLastBackupTimes(OpType.BACKUP)
     }

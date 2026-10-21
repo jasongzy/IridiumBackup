@@ -17,6 +17,7 @@ import com.xayah.core.model.database.MediaIndexInfo
 import com.xayah.core.model.database.MediaInfo
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStats
+import com.xayah.core.model.database.PackageDisplayStatsEntity
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.PackageExtraInfo
 import com.xayah.core.model.database.PackageIndexInfo
@@ -183,6 +184,11 @@ class PackageRepository @Inject constructor(
 
     suspend fun upsert(item: PackageEntity) = packageDao.upsert(item)
     suspend fun upsert(items: List<PackageEntity>) = packageDao.upsert(items)
+
+    suspend fun updateDisplayStats(id: Long, stats: PackageDataStats) =
+        packageDao.updateDisplayStats(PackageDisplayStatsEntity(id, stats))
+
+    suspend fun updateXposedModule(id: Long, isXposedModule: Boolean) = packageDao.updateXposedModule(id, isXposedModule)
 
     suspend fun updateRevisionXposedModule(
         packageName: String,
