@@ -30,7 +30,7 @@ fun DetailsRoute(
     val navController = LocalNavController.current!!
     val uiState: DetailsUiState by viewModel.uiState.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) {
-        viewModel.refresh()
+        viewModel.refresh(initial = true)
     }
     AppDetailsScreen(uiState, viewModel)
     LaunchedEffect(uiState) {

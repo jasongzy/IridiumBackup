@@ -20,7 +20,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,10 +82,6 @@ fun PageFTPSetup() {
         username,
         password
     ) { mutableStateOf(name.isNotEmpty() && url.isNotEmpty() && port.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) }
-
-    LaunchedEffect(null) {
-        viewModel.emitIntentOnIO(IndexUiIntent.Initialize)
-    }
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,

@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -31,7 +32,11 @@ import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
 import com.xayah.core.ui.theme.value
 import com.xayah.core.ui.token.SizeTokens
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
@@ -40,6 +45,7 @@ import kotlin.coroutines.resume
 @Composable
 fun rememberDialogState(): DialogState {
     val state = remember { DialogState() }
+    DisposableEffect(state) { onDispose { state.dispose() } }
     state.Insert()
     return state
 }
@@ -54,20 +60,37 @@ enum class DismissState {
 
 class DialogState {
     private var content: (@Composable () -> Unit)? by mutableStateOf(null)
+    private var pending: CancellableContinuation<*>? = null
+    private var disposed = false
 
     @Composable
     internal fun Insert() = content?.invoke()
 
     private fun dismiss() {
         content = null
+        pending = null
     }
 
-    /**
-     * Return **Pair<Boolean, T>**.
-     *
-     * If user clicks **confirmButton**, then return **Pair(true, T)**,
-     * otherwise return **Pair(false, T)**.
-     */
+    private fun dismissAction(action: () -> Unit = {}): () -> Unit {
+        val dialog = content
+        return {
+            if (dialog != null && content === dialog) {
+                dismiss()
+                action()
+            }
+        }
+    }
+
+    private fun close() {
+        pending?.cancel()
+        dismiss()
+    }
+
+    internal fun dispose() {
+        disposed = true
+        close()
+    }
+
     suspend fun <T> open(
         initialState: T,
         title: String,
@@ -76,36 +99,41 @@ class DialogState {
         dismissText: String? = null,
         contentHorizontalPadding: Boolean = true,
         block: @Composable (MutableState<T>) -> Unit,
-    ): Pair<DismissState, T> {
-        return suspendCancellableCoroutine { continuation ->
-            continuation.invokeOnCancellation { dismiss() }
-            content = {
-                val uiState = remember { mutableStateOf(initialState) }
-                AlertDialog(
-                    onDismissRequest = {
-                        dismiss()
-                        continuation.resume(Pair(DismissState.DISMISS, initialState))
-                    },
-                    confirmButton = {
-                        TextButton(text = confirmText ?: stringResource(id = R.string.confirm), onClick = {
-                            dismiss()
-                            continuation.resume(Pair(DismissState.CONFIRM, uiState.value))
-                        })
-                    },
-                    dismissButton = {
-                        TextButton(text = dismissText ?: stringResource(id = R.string.cancel), onClick = {
-                            dismiss()
-                            continuation.resume(Pair(DismissState.CANCEL, initialState))
-                        })
-                    },
-                    title = { Text(text = title) },
-                    icon = icon?.let { { Icon(imageVector = icon, contentDescription = null) } },
-                    text = {
-                        block(uiState)
-                    },
-                    textHorizontalPadding = contentHorizontalPadding,
-                )
+    ): Pair<DismissState, T> = withContext(Dispatchers.Main.immediate) {
+        if (disposed) throw CancellationException("Dialog host is disposed")
+        var request: CancellableContinuation<*>? = null
+        try {
+            suspendCancellableCoroutine { continuation ->
+                close()
+                request = continuation
+                pending = continuation
+                content = {
+                    val uiState = remember { mutableStateOf(initialState) }
+                    AlertDialog(
+                        onDismissRequest = dismissAction {
+                            continuation.resume(Pair(DismissState.DISMISS, initialState))
+                        },
+                        confirmButton = {
+                            TextButton(text = confirmText ?: stringResource(id = R.string.confirm), onClick = dismissAction {
+                                continuation.resume(Pair(DismissState.CONFIRM, uiState.value))
+                            })
+                        },
+                        dismissButton = {
+                            TextButton(text = dismissText ?: stringResource(id = R.string.cancel), onClick = dismissAction {
+                                continuation.resume(Pair(DismissState.CANCEL, initialState))
+                            })
+                        },
+                        title = { Text(text = title) },
+                        icon = icon?.let { { Icon(imageVector = icon, contentDescription = null) } },
+                        text = {
+                            block(uiState)
+                        },
+                        textHorizontalPadding = contentHorizontalPadding,
+                    )
+                }
             }
+        } finally {
+            if (pending === request) dismiss()
         }
     }
 
@@ -117,21 +145,18 @@ class DialogState {
         onConfirm: () -> Unit,
         block: @Composable () -> Unit,
     ) {
+        if (disposed) return
+        close()
         content = {
             AlertDialog(
-                onDismissRequest = {
-                    dismiss()
-                },
+                onDismissRequest = dismissAction(),
                 confirmButton = {
-                    TextButton(text = confirmText(), onClick = {
+                    TextButton(text = confirmText(), onClick = dismissAction {
                         onConfirm()
-                        dismiss()
                     })
                 },
                 dismissButton = {
-                    TextButton(text = dismissText(), onClick = {
-                        dismiss()
-                    })
+                    TextButton(text = dismissText(), onClick = dismissAction())
                 },
                 title = { Text(text = title) },
                 icon = icon?.let { { Icon(imageVector = icon, contentDescription = null) } },
@@ -153,23 +178,20 @@ class DialogState {
         dismissText: @Composable () -> String,
         onConfirm: (String) -> Unit,
     ) {
+        if (disposed) return
+        close()
         content = {
             var content by rememberSaveable { mutableStateOf(defValue) }
 
             AlertDialog(
-                onDismissRequest = {
-                    dismiss()
-                },
+                onDismissRequest = dismissAction(),
                 confirmButton = {
-                    TextButton(text = confirmText(), onClick = {
+                    TextButton(text = confirmText(), onClick = dismissAction {
                         onConfirm(content)
-                        dismiss()
                     })
                 },
                 dismissButton = {
-                    TextButton(text = dismissText(), onClick = {
-                        dismiss()
-                    })
+                    TextButton(text = dismissText(), onClick = dismissAction())
                 },
                 title = { Text(text = title) },
                 icon = icon?.let { { Icon(imageVector = icon, contentDescription = null) } },

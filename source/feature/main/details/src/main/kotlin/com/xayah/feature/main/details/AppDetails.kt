@@ -62,6 +62,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -142,11 +143,11 @@ fun AppDetails(
     onDelete: () -> Unit,
     iconRefreshKey: Any? = null,
 ) {
-    var isShow by remember { mutableStateOf(false) }
-    var showFurtherOperations by remember { mutableStateOf(false) }
-    var selectedDataPath by remember { mutableStateOf<String?>(null) }
-    var colorCandidate by remember { mutableStateOf<ColoredLabel?>(null) }
-    var editNote by remember { mutableStateOf(false) }
+    var isShow by rememberSaveable { mutableStateOf(false) }
+    var showFurtherOperations by rememberSaveable { mutableStateOf(false) }
+    var selectedDataPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var colorCandidate by rememberSaveable { mutableStateOf<String?>(null) }
+    var editNote by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val onDismissRequest: () -> Unit = {
         coroutineScope.launch { sheetState.hide() }.invokeOnCompletion {
@@ -170,7 +171,7 @@ fun AppDetails(
         onAddLabel,
         onDeleteLabel,
         onSelectLabel,
-        onEditLabel = { colorCandidate = it },
+        onEditLabel = { colorCandidate = it.label },
     )
     if (showFurtherOperations) {
         FurtherOperationsBottomSheet(
@@ -251,7 +252,7 @@ fun AppDetails(
             app = app,
             refs = uiState.refs,
             labels = uiState.labels,
-            onEditColor = { colorCandidate = it },
+            onEditColor = { colorCandidate = it.label },
             onRemove = { ref -> onSelectLabel(true, ref) },
             onAdd = { isShow = true },
         )
@@ -279,7 +280,7 @@ fun AppDetails(
         }
     }
 
-    colorCandidate?.let { label ->
+    uiState.labels.firstOrNull { it.label == colorCandidate }?.let { label ->
         LabelColorDialog(
             label = label,
             onDismiss = { colorCandidate = null },
@@ -620,7 +621,7 @@ private fun LabelsBottomSheet(
     val context = LocalContext.current
     val dialogState = LocalSlotScope.current!!.dialogSlot
     if (isShow) {
-        var deleteCandidate by remember { mutableStateOf<String?>(null) }
+        var deleteCandidate by rememberSaveable { mutableStateOf<String?>(null) }
         ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState) {
             val selectedLabels by remember(refs) { mutableStateOf(refs.map { it.label }) }
 
@@ -1008,9 +1009,9 @@ private fun LabelColorDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Long) -> Unit,
 ) {
-    var name by remember(label.label) { mutableStateOf(label.label) }
-    var hex by remember(label.colorArgb) { mutableStateOf("%08X".format(label.colorArgb)) }
-    var renameCandidate by remember { mutableStateOf<String?>(null) }
+    var name by rememberSaveable(label.label) { mutableStateOf(label.label) }
+    var hex by rememberSaveable(label.colorArgb) { mutableStateOf("%08X".format(label.colorArgb)) }
+    var renameCandidate by rememberSaveable { mutableStateOf<String?>(null) }
     val parsedColor = parseColor(hex)
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1119,7 +1120,7 @@ private fun NoteRow(note: String, onEdit: () -> Unit) {
 
 @Composable
 fun NoteEditorDialog(note: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var value by remember(note) { mutableStateOf(note) }
+    var value by rememberSaveable(note) { mutableStateOf(note) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.edit_note)) },

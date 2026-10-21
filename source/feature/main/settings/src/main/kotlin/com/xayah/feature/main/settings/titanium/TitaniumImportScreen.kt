@@ -40,7 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,9 +71,9 @@ fun PageTitaniumImport() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val selectedPath = if (state.mode == ImportMode.BACKUPS) state.backupPath else state.labelPath
     val selectedCount = if (state.mode == ImportMode.BACKUPS) state.selectedBackupIds.size else state.selectedLabels.size
-    var showCancelConfirmation by remember { mutableStateOf(false) }
-    var leaveAfterCancel by remember { mutableStateOf(false) }
-    var expandedPackages by remember { mutableStateOf(emptySet<String>()) }
+    var showCancelConfirmation by rememberSaveable { mutableStateOf(false) }
+    var leaveAfterCancel by rememberSaveable { mutableStateOf(false) }
+    var expandedPackages by rememberSaveable { mutableStateOf(emptyList<String>()) }
 
     val requestBack: () -> Unit = {
         if (state.isBusy && !state.cancelling) {

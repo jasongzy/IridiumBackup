@@ -38,6 +38,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -56,6 +57,7 @@ import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
 import com.xayah.core.model.isProtectedByNote
 import com.xayah.core.ui.component.DataChips
+import com.xayah.core.ui.component.PackageDataStatesSaver
 import com.xayah.core.ui.component.TooltipIconButton
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
@@ -82,18 +84,18 @@ fun AppRevisionsRoute(
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
     val furtherOperations by detailsViewModel.furtherOperations.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
-    var selectedRevision by remember { mutableStateOf<BackupRevisionEntity?>(null) }
-    var restoreCandidate by remember { mutableStateOf<BackupRevisionEntity?>(null) }
-    var deleteCandidate by remember { mutableStateOf<BackupRevisionEntity?>(null) }
-    var noteCandidate by remember { mutableStateOf<BackupRevisionEntity?>(null) }
-    var backupCandidate by remember { mutableStateOf<PackageEntity?>(null) }
+    var selectedRevision by rememberSaveable { mutableStateOf<String?>(null) }
+    var restoreCandidate by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteCandidate by rememberSaveable { mutableStateOf<String?>(null) }
+    var noteCandidate by rememberSaveable { mutableStateOf<String?>(null) }
+    var showBackupScope by rememberSaveable { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var blacklistConfirmation by remember { mutableStateOf<Boolean?>(null) }
-    var uninstallKeepingDataConfirmation by remember { mutableStateOf(false) }
+    var blacklistConfirmation by rememberSaveable { mutableStateOf<Boolean?>(null) }
+    var uninstallKeepingDataConfirmation by rememberSaveable { mutableStateOf(false) }
     val appDetails = detailsState as? DetailsUiState.Success.App
 
     LaunchedEffect(Unit) {
-        detailsViewModel.refresh()
+        detailsViewModel.refresh(initial = true)
     }
 
     Scaffold(
@@ -178,7 +180,7 @@ fun AppRevisionsRoute(
                 item {
                     Button(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { backupCandidate = installedApp },
+                        onClick = { showBackupScope = true },
                     ) {
                         Text(stringResource(R.string.back_up))
                     }
@@ -197,7 +199,7 @@ fun AppRevisionsRoute(
                     RevisionItem(
                         revision = revision,
                         verificationStatus = verificationResults[revision.id]?.status,
-                        onClick = { selectedRevision = revision },
+                        onClick = { selectedRevision = revision.id },
                     )
                 }
             }
@@ -292,7 +294,7 @@ fun AppRevisionsRoute(
         )
     }
 
-    selectedRevision?.let { revision ->
+    revisions.firstOrNull { it.id == selectedRevision }?.let { revision ->
         RevisionDetailsDialog(
             revision = revision,
             verificationResult = verificationResults[revision.id],
@@ -300,21 +302,21 @@ fun AppRevisionsRoute(
             onDismiss = { selectedRevision = null },
             onRestore = {
                 selectedRevision = null
-                restoreCandidate = revision
+                restoreCandidate = revision.id
             },
             onDelete = {
                 selectedRevision = null
-                deleteCandidate = revision
+                deleteCandidate = revision.id
             },
             onVerify = { viewModel.verifyRevision(revision) },
             onEditNote = {
                 selectedRevision = null
-                noteCandidate = revision
+                noteCandidate = revision.id
             },
         )
     }
 
-    noteCandidate?.let { revision ->
+    revisions.firstOrNull { it.id == noteCandidate }?.let { revision ->
         NoteEditorDialog(
             note = revision.note,
             onDismiss = { noteCandidate = null },
@@ -325,7 +327,7 @@ fun AppRevisionsRoute(
         )
     }
 
-    restoreCandidate?.let { revision ->
+    revisions.firstOrNull { it.id == restoreCandidate }?.let { revision ->
         RestoreScopeDialog(
             revision = revision,
             onDismiss = { restoreCandidate = null },
@@ -336,7 +338,7 @@ fun AppRevisionsRoute(
         )
     }
 
-    deleteCandidate?.let { revision ->
+    revisions.firstOrNull { it.id == deleteCandidate }?.let { revision ->
         AlertDialog(
             onDismissRequest = { deleteCandidate = null },
             title = { Text(stringResource(R.string.delete_revision)) },
@@ -359,12 +361,12 @@ fun AppRevisionsRoute(
         )
     }
 
-    backupCandidate?.let { candidate ->
+    installedApp?.takeIf { showBackupScope }?.let { candidate ->
         BackupScopeDialog(
             app = candidate,
-            onDismiss = { backupCandidate = null },
+            onDismiss = { showBackupScope = false },
             onConfirm = { dataStates ->
-                backupCandidate = null
+                showBackupScope = false
                 viewModel.startBackup(dataStates, navController)
             },
         )
@@ -400,7 +402,7 @@ private fun BackupScopeDialog(
     onDismiss: () -> Unit,
     onConfirm: (PackageDataStates) -> Unit,
 ) {
-    var selections by remember(app.id) { mutableStateOf(app.dataStates.copy()) }
+    var selections by rememberSaveable(app.id, stateSaver = PackageDataStatesSaver) { mutableStateOf(app.dataStates.copy()) }
     val hasSelection = with(selections) {
         apkState == DataState.Selected || userState == DataState.Selected ||
             userDeState == DataState.Selected || dataState == DataState.Selected ||
@@ -441,7 +443,7 @@ private fun RestoreScopeDialog(
     onConfirm: (PackageDataStates) -> Unit,
 ) {
     val available = remember(revision.contentMask) { revision.contentMask.toDataStates() }
-    var selections by remember(revision.id) { mutableStateOf(available) }
+    var selections by rememberSaveable(revision.id, stateSaver = PackageDataStatesSaver) { mutableStateOf(available) }
     val hasSelection = with(selections) {
         apkState == DataState.Selected || userState == DataState.Selected ||
             userDeState == DataState.Selected || dataState == DataState.Selected ||

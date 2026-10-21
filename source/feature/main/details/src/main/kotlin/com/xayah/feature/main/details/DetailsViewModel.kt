@@ -111,6 +111,7 @@ class DetailsViewModel @Inject constructor(
     private val appRuntimeInfo = MutableStateFlow(AppRuntimeInfo())
     private val shareMutex = Mutex()
     private val refreshMutex = Mutex()
+    private var initialRefreshRequested = false
     private val _furtherOperations = MutableStateFlow<FurtherOperationsUiState>(FurtherOperationsUiState.Idle)
     val furtherOperations = _furtherOperations.asStateFlow()
     private val _updatingPermission = MutableStateFlow<String?>(null)
@@ -194,7 +195,9 @@ class DetailsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
     )
 
-    fun refresh() {
+    fun refresh(initial: Boolean = false) {
+        if (initial && initialRefreshRequested) return
+        if (initial) initialRefreshRequested = true
         viewModelScope.launchOnDefault {
             refreshMutex.withLock {
                 val state = uiState.first { it !is Loading }

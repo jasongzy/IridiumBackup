@@ -35,8 +35,6 @@ data class IndexUiState(
 ) : UiState
 
 sealed class IndexUiIntent : UiIntent {
-    data object Initialize : IndexUiIntent()
-
     data class UpdateEntity(
         val name: String,
         val remote: String,
@@ -66,6 +64,14 @@ class IndexViewModel @Inject constructor(
         isProcessing = false,
     )
 ) {
+    init {
+        launchOnIO {
+            val state = uiState.value
+            if (state.currentName.isNotEmpty()) {
+                emitState(state.copy(cloudEntity = cloudRepo.queryByName(state.currentName)))
+            }
+        }
+    }
 
     suspend fun updateFTPEntity(name: String, remote: String, url: String, username: String, password: String, port: String) {
         val extra = GsonUtil().toJson(FTPExtra(port = port.toIntOrNull() ?: 21))
@@ -143,12 +149,6 @@ class IndexViewModel @Inject constructor(
 
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
-            is IndexUiIntent.Initialize -> {
-                if (uiState.value.currentName.isNotEmpty()) {
-                    emitState(state.copy(cloudEntity = cloudRepo.queryByName(uiState.value.currentName)))
-                }
-            }
-
             is IndexUiIntent.CreateAccount -> {
                 cloudRepo.upsert(state.cloudEntity!!)
                 withMainContext {

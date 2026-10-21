@@ -77,7 +77,7 @@ class MainActivity : AppCompatActivity() {
                 val requestedDestination = intent.getStringExtra(ActivityUtil.EXTRA_START_DESTINATION)
                     ?.takeIf { it == MainRoutes.Reload.route }
                 LaunchedEffect(requestedDestination) {
-                    requestedDestination?.let { navController.navigateSingle(it) }
+                    if (savedInstanceState == null) requestedDestination?.let { navController.navigateSingle(it) }
                 }
                 CompositionLocalProvider(
                     LocalNavController provides navController,

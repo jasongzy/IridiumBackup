@@ -30,7 +30,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -114,10 +113,6 @@ fun PageSFTPSetup() {
                 ((modeIndex == 1 && privateKey.isNotEmpty()) || modeIndex == 0)
     ) }
     val scope = rememberCoroutineScope()
-
-    LaunchedEffect(null) {
-        viewModel.emitIntentOnIO(IndexUiIntent.Initialize)
-    }
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,

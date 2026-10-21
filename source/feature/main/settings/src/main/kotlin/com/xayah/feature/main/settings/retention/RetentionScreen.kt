@@ -39,7 +39,7 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,9 +81,9 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
     val validCount = state.retainCount.toIntOrNull()?.let { it >= 1 } == true
     val removableCount = state.candidates.count { it.removable }
     val groups = state.candidates.groupBy { AppKey(it.revision.packageName, it.revision.userId) }
-    var expandedApps by remember(state.candidates) { mutableStateOf(groups.keys) }
-    var detailRevision by remember { mutableStateOf<BackupRevisionEntity?>(null) }
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var collapsedApps by rememberSaveable(state.candidates) { mutableStateOf(emptyList<String>()) }
+    var detailRevision by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }
 
     SettingsScaffold(
         scrollBehavior = scrollBehavior,
@@ -132,27 +132,28 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
 
             LazyColumn(modifier = Modifier.weight(1f)) {
                 groups.forEach { (key, candidates) ->
+                    val groupId = "${key.packageName}:${key.userId}"
                     item(key = "app:${key.packageName}:${key.userId}") {
                         AppHeader(
                             candidate = candidates.first(),
                             candidates = candidates,
                             selectedIds = state.selectedIds,
-                            expanded = key in expandedApps,
+                            expanded = groupId !in collapsedApps,
                             onOpen = { navController.navigateSingle(MainRoutes.AppRevisions.getRoute(key.packageName, key.userId)) },
                             onToggle = { viewModel.toggleGroup(key.packageName, key.userId) },
                             onToggleExpanded = {
-                                expandedApps = if (key in expandedApps) expandedApps - key else expandedApps + key
+                                collapsedApps = if (groupId in collapsedApps) collapsedApps - groupId else collapsedApps + groupId
                             },
                         )
                     }
-                    if (key in expandedApps) {
+                    if (groupId !in collapsedApps) {
                         items(candidates, key = { it.revision.id }) { candidate ->
                             BackupCandidateItem(
                                 candidate = candidate,
                                 latest = candidate.revision.id == candidates.first().revision.id,
                                 selected = candidate.revision.id in state.selectedIds,
                                 onToggle = { viewModel.toggle(candidate.revision.id) },
-                                onDetails = { detailRevision = candidate.revision },
+                                onDetails = { detailRevision = candidate.revision.id },
                             )
                             HorizontalDivider()
                         }
@@ -184,7 +185,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
         }
     }
 
-    detailRevision?.let { revision ->
+    state.candidates.firstOrNull { it.revision.id == detailRevision }?.revision?.let { revision ->
         BackupDetailsDialog(revision = revision, onDismiss = { detailRevision = null })
     }
     if (showDeleteConfirmation) {

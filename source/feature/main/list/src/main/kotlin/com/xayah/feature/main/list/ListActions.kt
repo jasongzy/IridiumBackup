@@ -30,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,7 +84,7 @@ internal fun ListActions(
         }
 
         FilterAction(viewModel::showFilterSheet)
-        var sortExpanded by remember { mutableStateOf(false) }
+        var sortExpanded by rememberSaveable { mutableStateOf(false) }
         SortAction { sortExpanded = true }
         SortSheet(
             isShow = sortExpanded,
@@ -104,7 +105,7 @@ internal fun ListActions(
         }
 
         var moreExpanded by remember { mutableStateOf(false) }
-        var labelsExpanded by remember { mutableStateOf(false) }
+        var labelsExpanded by rememberSaveable { mutableStateOf(false) }
         Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
             IconButton(icon = Icons.Rounded.MoreVert, tooltip = stringResource(R.string.more_options)) {
                 moreExpanded = true
@@ -420,9 +421,9 @@ private fun BatchLabelsDialog(
     onAdd: (Set<String>) -> Unit,
     onRemove: (Set<String>) -> Unit,
 ) {
-    var selected by remember { mutableStateOf(emptySet<String>()) }
-    var newLabel by remember { mutableStateOf("") }
-    var confirmation by remember { mutableStateOf<Boolean?>(null) }
+    var selected by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var newLabel by rememberSaveable { mutableStateOf("") }
+    var confirmation by rememberSaveable { mutableStateOf<Boolean?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.edit_labels)) },

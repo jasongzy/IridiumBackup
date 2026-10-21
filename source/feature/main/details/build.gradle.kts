@@ -2,10 +2,12 @@ plugins {
     alias(libs.plugins.library.common)
     alias(libs.plugins.library.hilt)
     alias(libs.plugins.library.compose)
+    alias(libs.plugins.library.androidTest)
 }
 
 android {
     namespace = "com.xayah.feature.main.details"
+    packaging.resources.excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
 }
 
 dependencies {
@@ -20,4 +22,6 @@ dependencies {
 
     // Hilt navigation
     implementation(libs.androidx.hilt.navigation.compose)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

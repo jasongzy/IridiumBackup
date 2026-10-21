@@ -31,9 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -61,6 +61,7 @@ import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
 import com.xayah.core.ui.component.BottomButton
 import com.xayah.core.ui.component.DataChips
+import com.xayah.core.ui.component.PackageDataStatesSaver
 import com.xayah.core.ui.component.IconButton
 import com.xayah.core.ui.component.ModalBottomSheet
 import com.xayah.core.ui.component.Title
@@ -150,7 +151,7 @@ internal fun ListBottomSheet(
 }
 
 @Composable
-private fun SourceChips(clouds: List<CloudEntity>, onChanged: (cloud: String, backupDir: String) -> Unit) {
+private fun SourceChips(clouds: List<CloudEntity>, selectedCloud: String, onChanged: (cloud: String, backupDir: String) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -159,15 +160,13 @@ private fun SourceChips(clouds: List<CloudEntity>, onChanged: (cloud: String, ba
         horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level8),
     ) {
         val context = LocalContext.current
-        var index by remember { mutableIntStateOf(0) }
         FilterChip(
             onClick = {
-                index = 0
                 onChanged("", context.localBackupSaveDir())
             },
             label = { Text(stringResource(R.string.local)) },
-            selected = index == 0,
-            leadingIcon = if (index == 0) {
+            selected = selectedCloud.isEmpty(),
+            leadingIcon = if (selectedCloud.isEmpty()) {
                 {
                     Icon(
                         imageVector = Icons.Filled.Done,
@@ -180,15 +179,14 @@ private fun SourceChips(clouds: List<CloudEntity>, onChanged: (cloud: String, ba
             },
         )
 
-        clouds.forEachIndexed { i, cloudEntity ->
+        clouds.forEach { cloudEntity ->
             FilterChip(
                 onClick = {
-                    index = i + 1
                     onChanged(cloudEntity.name, cloudEntity.remote)
                 },
                 label = { Text(cloudEntity.name) },
-                selected = index - 1 == i,
-                leadingIcon = if (index - 1 == i) {
+                selected = selectedCloud == cloudEntity.name,
+                leadingIcon = if (selectedCloud == cloudEntity.name) {
                     {
                         Icon(
                             imageVector = Icons.Filled.Done,
@@ -400,7 +398,7 @@ internal fun AppsFilterSheet(
                     .verticalScroll(rememberScrollState())
             ) {
                 if (opType == OpType.BACKUP) {
-                    SourceChips(clouds) { cloud, backupDir ->
+                    SourceChips(clouds, filters.cloud) { cloud, backupDir ->
                         setFilters(filters.copy(cloud = cloud, backupDir = backupDir))
                     }
                 }
@@ -607,7 +605,7 @@ internal fun AppsDataItemsSheet(
         ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState) {
             Title(text = stringResource(id = R.string.data_items))
 
-            var selections by remember { mutableStateOf(PackageDataStates()) }
+            var selections by rememberSaveable(stateSaver = PackageDataStatesSaver) { mutableStateOf(PackageDataStates()) }
             DataChips(selections) { type, selected ->
                 selections = type.setSelected(selections, selected.not())
             }

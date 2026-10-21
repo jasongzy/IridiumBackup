@@ -38,6 +38,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.SortType
 import com.xayah.core.model.database.PackageDataStates
@@ -62,6 +64,11 @@ import com.xayah.core.ui.token.PaddingTokens
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.icon
 import com.xayah.core.util.SymbolUtil
+
+val PackageDataStatesSaver = listSaver<PackageDataStates, DataState>(
+    save = { listOf(it.apkState, it.userState, it.userDeState, it.dataState, it.obbState, it.mediaState, it.permissionState, it.ssaidState) },
+    restore = { PackageDataStates(it[0], it[1], it[2], it[3], it[4], it[5], it[6], it[7]) },
+)
 
 @Composable
 fun AssistChip(

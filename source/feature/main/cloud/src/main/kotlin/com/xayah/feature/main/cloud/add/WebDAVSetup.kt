@@ -18,7 +18,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -77,10 +76,6 @@ fun PageWebDAVSetup() {
         password,
         insecure
     ) { mutableStateOf(name.isNotEmpty() && url.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) }
-
-    LaunchedEffect(null) {
-        viewModel.emitIntentOnIO(IndexUiIntent.Initialize)
-    }
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,

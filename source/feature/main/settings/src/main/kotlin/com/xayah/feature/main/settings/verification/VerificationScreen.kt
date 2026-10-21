@@ -30,7 +30,7 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,8 +61,8 @@ fun PageBackupVerification(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    var showCleanupConfirmation by remember { mutableStateOf(false) }
-    var selectedResult by remember { mutableStateOf<AppBackupRepository.VerificationResult?>(null) }
+    var showCleanupConfirmation by rememberSaveable { mutableStateOf(false) }
+    var selectedResult by rememberSaveable { mutableStateOf<String?>(null) }
 
     SettingsScaffold(
         scrollBehavior = scrollBehavior,
@@ -95,7 +95,7 @@ fun PageBackupVerification(
                 }
 
                 items(uiState.results, key = { it.revision.id }) { result ->
-                    VerificationItem(result = result, onClick = { selectedResult = result })
+                    VerificationItem(result = result, onClick = { selectedResult = result.revision.id })
                     HorizontalDivider()
                 }
             }
@@ -134,7 +134,7 @@ fun PageBackupVerification(
         )
     }
 
-    selectedResult?.let { result ->
+    uiState.results.firstOrNull { it.revision.id == selectedResult }?.let { result ->
         val revision = result.revision
         AlertDialog(
             onDismissRequest = { selectedResult = null },

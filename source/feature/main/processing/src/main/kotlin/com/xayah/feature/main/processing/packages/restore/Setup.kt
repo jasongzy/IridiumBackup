@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,8 +71,8 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
     val keystoreRiskPackages by viewModel.keystoreRiskPackages.collectAsStateWithLifecycle()
     val isCheckingKeystoreRisk by viewModel.isCheckingKeystoreRisk.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    var currentIndex by remember { mutableIntStateOf(0) }
-    val restoreUser = if (currentIndex == 0) -1 else restoreUsers.getOrNull(currentIndex)?.title?.toIntOrNull() ?: -1
+    var restoreUser by rememberSaveable { mutableIntStateOf(-1) }
+    val currentIndex = restoreUsers.indexOfFirst { it.title == restoreUser.toString() }.coerceAtLeast(0)
 
     LaunchedEffect(null) {
         viewModel.launchOnIO {
@@ -122,12 +123,8 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
             }
             Title(title = stringResource(id = R.string.settings)) {
                 val dialogState = LocalSlotScope.current!!.dialogSlot
-                LaunchedEffect(currentIndex) {
-                    viewModel.launchOnIO {
-                        var userId = -1
-                        if (currentIndex != 0) userId = restoreUsers[currentIndex].title.toIntOrNull() ?: -1
-                        context.saveRestoreUser(userId)
-                    }
+                LaunchedEffect(restoreUser) {
+                    context.saveRestoreUser(restoreUser)
                 }
                 Selectable(
                     enabled = restoreUsers.size != 1,
@@ -142,7 +139,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                             items = restoreUsers
                         )
                         if (state.isConfirm) {
-                            currentIndex = selectedIndex
+                            restoreUser = if (selectedIndex == 0) -1 else restoreUsers[selectedIndex].title.toInt()
                         }
                     }
                 }
