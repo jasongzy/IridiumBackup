@@ -4,18 +4,20 @@
 
 <h1 align="center">Iridium Backup</h1>
 
-[中文文档](README.zh-CN.md)
+English | [简体中文](README.zh-CN.md)
 
-Iridium Backup is a modern native Android implementation of the app-centric features and workflow popularized by [Titanium Backup](https://www.titaniumtrack.com/titanium-backup.html). It requires root access.
+Iridium Backup is a modern, native Android backup tool that carries forward the core features and app-centric workflow of [Titanium Backup](https://www.titaniumtrack.com/titanium-backup.html). It requires root access.
 
 ## ✨ Features
 
 - Keep and manage multiple backup revisions for each app
-- Back up and restore APKs and app data with configurable scopes
-- Organize apps with colored labels, filters, search, and sorting
-- Select apps individually or in batches for backup
+- Choose APK and data scopes for individual or batch backup and restore
+- Organize apps and backups with colored labels, notes, filters, search, and sorting
+- Import backups, notes, and user labels directly from Titanium Backup
+- Batch-delete older backups beyond a chosen retention count while keeping protected backups
+- Verify local backup integrity and rebuild the index from the backup directory
 - Store backups locally or through supported cloud services
-- Support Android users and system apps
+- Support multiple Android users and system apps
 
 ## 📥 Download
 
