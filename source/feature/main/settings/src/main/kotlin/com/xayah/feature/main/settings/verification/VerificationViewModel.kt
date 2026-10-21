@@ -97,6 +97,7 @@ class VerificationViewModel @Inject constructor(
                 }
                 _uiState.value = _uiState.value.copy(
                     results = _uiState.value.results.filterNot { it.revision.id in report.deletedRevisionIds },
+                    total = repository.getLocalRevisionCount(),
                     cleanupFailedCount = report.failedCount,
                 )
                 withContext(Dispatchers.Main.immediate) {
