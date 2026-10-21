@@ -63,7 +63,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     }
 
     override suspend fun onTargetDirsCreated() {
-        mCloudRepo.getClient().also { (c, e) ->
+        mCloudRepo.getClient(requestedCloudName).also { (c, e) ->
             mCloudEntity = e
             mClient = c
         }

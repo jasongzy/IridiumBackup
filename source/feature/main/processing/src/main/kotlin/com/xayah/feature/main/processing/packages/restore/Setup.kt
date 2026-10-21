@@ -70,6 +70,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
     val restoreUsers by viewModel.restoreUsers.collectAsStateWithLifecycle()
     val keystoreRiskPackages by viewModel.keystoreRiskPackages.collectAsStateWithLifecycle()
     val isCheckingKeystoreRisk by viewModel.isCheckingKeystoreRisk.collectAsStateWithLifecycle()
+    val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var restoreUser by rememberSaveable { mutableIntStateOf(-1) }
     val currentIndex = restoreUsers.indexOfFirst { it.title == restoreUser.toString() }.coerceAtLeast(0)
@@ -95,7 +96,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                 horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level12, Alignment.End),
             ) {
                 Button(
-                    enabled = packages.isNotEmpty() && !isCheckingKeystoreRisk,
+                    enabled = packages.isNotEmpty() && !isCheckingKeystoreRisk && !isStarting,
                     onClick = {
                         viewModel.continueRestore(restoreUser, localNavController)
                     }) {
@@ -127,7 +128,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                     context.saveRestoreUser(restoreUser)
                 }
                 Selectable(
-                    enabled = restoreUsers.size != 1,
+                    enabled = restoreUsers.size != 1 && !isCheckingKeystoreRisk && !isStarting,
                     title = stringResource(id = R.string.restore_user),
                     value = stringResource(id = R.string.restore_user_desc),
                     current = restoreUsers[currentIndex].title,

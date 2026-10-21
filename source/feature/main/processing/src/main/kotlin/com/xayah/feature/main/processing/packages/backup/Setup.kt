@@ -73,7 +73,7 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
-    val isTesting by viewModel.isTesting.collectAsStateWithLifecycle()
+    val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val packages by viewModel.packages.collectAsStateWithLifecycle()
     val packagesSize by viewModel.packagesSize.collectAsStateWithLifecycle()
 
@@ -94,8 +94,8 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
                 horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level12, Alignment.End),
             ) {
                 Button(
-                    enabled = packages.isNotEmpty() &&
-                        (uiState.storageType == StorageMode.Local || (uiState.cloudEntity != null && isTesting.not())),
+                    enabled = packages.isNotEmpty() && !isStarting &&
+                        (uiState.storageType == StorageMode.Local || uiState.cloudEntity != null),
                     onClick = {
                         viewModel.emitIntentOnIO(FinishSetup(navController = localNavController))
                     }) {
@@ -118,9 +118,10 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
             ) {
                 storageOptions.forEachIndexed { index, label ->
                     SegmentedButton(
+                        enabled = !isStarting,
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = storageOptions.size),
                         onClick = {
-                            viewModel.emitStateOnMain(state = uiState.copy(storageIndex = index, storageType = if (index == 0) StorageMode.Local else StorageMode.Cloud))
+                            viewModel.selectStorage(index)
                         },
                         selected = index == uiState.storageIndex
                     ) {
@@ -144,9 +145,10 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
                         val dialogState = LocalSlotScope.current!!.dialogSlot
                         var currentIndex by remember { mutableIntStateOf(if (uiState.cloudEntity == null) 0 else accounts.indexOfFirst { it.title == uiState.cloudEntity!!.name }) }
                         LaunchedEffect(currentIndex) {
-                            viewModel.emitIntentOnIO(SetCloudEntity(name = accounts[currentIndex].title))
+                            viewModel.emitIntent(SetCloudEntity(name = accounts[currentIndex].title))
                         }
                         Selectable(
+                            enabled = !isStarting,
                             title = stringResource(id = R.string.account),
                             leadingIcon = uiState.cloudEntity?.type?.icon ?: ImageVector.vectorResource(id = R.drawable.ic_rounded_person),
                             value = if (uiState.cloudEntity == null) stringResource(id = R.string.choose_an_account) else accounts[currentIndex].desc,

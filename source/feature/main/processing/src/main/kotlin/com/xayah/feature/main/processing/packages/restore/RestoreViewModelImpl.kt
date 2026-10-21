@@ -13,15 +13,11 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
-import com.xayah.core.network.client.getCloud
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyLocalImpl
-import com.xayah.core.ui.material3.SnackbarDuration
-import com.xayah.core.ui.material3.SnackbarType
 import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.decodeURL
 import com.xayah.core.util.localBackupSaveDir
@@ -95,37 +91,10 @@ class RestoreViewModelImpl @Inject constructor(
             }
 
             is FinishSetup -> {
-                if (state.storageType == StorageMode.Cloud) {
-                    _isTesting.value = true
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffectOnIO(
-                        IndexUiEffect.ShowSnackbar(
-                            type = SnackbarType.Loading,
-                            message = mCloudRepo.getString(R.string.processing),
-                            duration = SnackbarDuration.Indefinite,
-                        )
-                    )
-                    runCatching {
-                        val client = state.cloudEntity!!.getCloud()
-                        client.testConnection()
-                        emitEffect(IndexUiEffect.DismissSnackbar)
-                        withMainContext {
-                            listDataRepo.clearAppSelection()
-                            intent.navController.popBackStack()
-                            intent.navController.navigateSingle(MainRoutes.PackagesRestoreProcessing.route)
-                        }
-                    }.onFailure {
-                        emitEffect(IndexUiEffect.DismissSnackbar)
-                        if (it.localizedMessage != null)
-                            emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = it.localizedMessage!!, duration = SnackbarDuration.Long))
-                    }
-                    _isTesting.value = false
-                } else {
-                    withMainContext {
-                        listDataRepo.clearAppSelection()
-                        intent.navController.popBackStack()
-                        intent.navController.navigateSingle(MainRoutes.PackagesRestoreProcessing.route)
-                    }
+                finishSetup(state) {
+                    listDataRepo.clearAppSelection()
+                    intent.navController.popBackStack()
+                    intent.navController.navigateSingle(MainRoutes.PackagesRestoreProcessing.route)
                 }
             }
 
@@ -166,7 +135,6 @@ class RestoreViewModelImpl @Inject constructor(
             )
         }
     }.flowOnIO()
-    private val _isTesting: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val _packages: MutableStateFlow<List<PackageEntity>> = MutableStateFlow(listOf())
     private val _packagesSize: MutableStateFlow<String> = MutableStateFlow(mContext.getString(R.string.loading))
     private val _restoreUsers: MutableStateFlow<List<DialogRadioItem<Any>>> = MutableStateFlow(listOf(DialogRadioItem(enum = Any(), title = mContext.getString(R.string.backup_user))))
@@ -174,7 +142,6 @@ class RestoreViewModelImpl @Inject constructor(
     private val _isCheckingKeystoreRisk = MutableStateFlow(false)
 
     val accounts: StateFlow<List<DialogRadioItem<Any>>> = _accounts.stateInScope(listOf())
-    val isTesting: StateFlow<Boolean> = _isTesting.stateInScope(false)
     val packages: StateFlow<List<PackageEntity>> = _packages.stateInScope(listOf())
     val packagesSize: StateFlow<String> = _packagesSize.stateInScope(mContext.getString(R.string.loading))
     val restoreUsers: StateFlow<List<DialogRadioItem<Any>>> = _restoreUsers.stateInScope(listOf(DialogRadioItem(enum = Any(), title = mContext.getString(R.string.backup_user))))
@@ -182,9 +149,8 @@ class RestoreViewModelImpl @Inject constructor(
     val isCheckingKeystoreRisk: StateFlow<Boolean> = _isCheckingKeystoreRisk
 
     fun continueRestore(restoreUser: Int, navController: NavController) {
-        if (_isCheckingKeystoreRisk.value) return
+        if (isStarting.value || !_isCheckingKeystoreRisk.compareAndSet(false, true)) return
         launchOnIO {
-            _isCheckingKeystoreRisk.value = true
             try {
                 val risks = _packages.value.filter { app ->
                     val targetUser = restoreUser.takeIf { it != -1 } ?: app.userId

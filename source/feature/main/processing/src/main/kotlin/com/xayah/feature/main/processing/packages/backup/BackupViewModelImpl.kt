@@ -10,15 +10,11 @@ import com.xayah.core.datastore.saveCloudActivatedAccountName
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
-import com.xayah.core.network.client.getCloud
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.packages.backup.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.packages.backup.ProcessingServiceProxyLocalImpl
-import com.xayah.core.ui.material3.SnackbarDuration
-import com.xayah.core.ui.material3.SnackbarType
 import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.AbstractPackagesProcessingViewModel
 import com.xayah.feature.main.processing.FinishSetup
@@ -49,6 +45,10 @@ class BackupViewModelImpl @Inject constructor(
     mLocalService: ProcessingServiceProxyLocalImpl,
     mCloudService: ProcessingServiceProxyCloudImpl,
 ) : AbstractPackagesProcessingViewModel(mContext, mRootService, taskRepo, mLocalService, mCloudService) {
+    fun selectStorage(index: Int) {
+        updateState { it.copy(storageIndex = index, storageType = if (index == 0) StorageMode.Local else StorageMode.Cloud) }
+    }
+
     override suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
             is UpdateApps -> {
@@ -58,42 +58,17 @@ class BackupViewModelImpl @Inject constructor(
             }
 
             is SetCloudEntity -> {
+                updateState { it.copy(cloudEntity = null) }
                 mContext.saveCloudActivatedAccountName(intent.name)
-                emitState(state.copy(cloudEntity = mCloudRepo.queryByName(intent.name)))
+                val account = mCloudRepo.queryByName(intent.name)
+                updateState { it.copy(cloudEntity = account) }
             }
 
             is FinishSetup -> {
-                if (state.storageType == StorageMode.Cloud) {
-                    _isTesting.value = true
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffectOnIO(
-                        IndexUiEffect.ShowSnackbar(
-                            type = SnackbarType.Loading,
-                            message = mCloudRepo.getString(R.string.processing),
-                            duration = SnackbarDuration.Indefinite,
-                        )
-                    )
-                    runCatching {
-                        val client = state.cloudEntity!!.getCloud()
-                        client.testConnection()
-                        emitEffect(IndexUiEffect.DismissSnackbar)
-                        withMainContext {
-                            listDataRepo.clearAppSelection()
-                            intent.navController.popBackStack()
-                            intent.navController.navigateSingle(MainRoutes.PackagesBackupProcessing.route)
-                        }
-                    }.onFailure {
-                        emitEffect(IndexUiEffect.DismissSnackbar)
-                        if (it.localizedMessage != null)
-                            emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = it.localizedMessage!!, duration = SnackbarDuration.Long))
-                    }
-                    _isTesting.value = false
-                } else {
-                    withMainContext {
-                        listDataRepo.clearAppSelection()
-                        intent.navController.popBackStack()
-                        intent.navController.navigateSingle(MainRoutes.PackagesBackupProcessing.route)
-                    }
+                finishSetup(state) {
+                    listDataRepo.clearAppSelection()
+                    intent.navController.popBackStack()
+                    intent.navController.navigateSingle(MainRoutes.PackagesBackupProcessing.route)
                 }
             }
 
@@ -112,12 +87,10 @@ class BackupViewModelImpl @Inject constructor(
             )
         }
     }.flowOnIO()
-    private val _isTesting: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val _packages: MutableStateFlow<List<PackageEntity>> = MutableStateFlow(listOf())
     private val _packagesSize: MutableStateFlow<String> = MutableStateFlow(mContext.getString(R.string.loading))
 
     val accounts: StateFlow<List<DialogRadioItem<Any>>> = _accounts.stateInScope(listOf())
-    val isTesting: StateFlow<Boolean> = _isTesting.stateInScope(false)
     val packages: StateFlow<List<PackageEntity>> = _packages.stateInScope(listOf())
     val packagesSize: StateFlow<String> = _packagesSize.stateInScope(mContext.getString(R.string.loading))
 }

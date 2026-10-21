@@ -19,15 +19,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalCoroutinesApi::class)
 class ProcessingFailureTest {
@@ -51,7 +54,7 @@ class ProcessingFailureTest {
         }
     }
 
-    private class TestViewModel(context: Context, root: RemoteRootService, repository: TaskRepository) : AbstractProcessingViewModel(
+    private class TestViewModel(context: Context, root: RemoteRootService, repository: TaskRepository) : AbstractPackagesProcessingViewModel(
         context, root, repository, proxy(context), proxy(context),
     ) {
         override val _dataItems = flowOf(emptyList<ProcessingDataCardItem>())
@@ -59,6 +62,8 @@ class ProcessingFailureTest {
         fun setTaskId(id: Long) {
             _taskId.value = id
         }
+
+        suspend fun submitSetup(onReady: suspend () -> Unit) = finishSetup(uiState.value, onReady)
 
         companion object {
             private fun proxy(bindingContext: Context) = object : AbstractProcessingServiceProxy() {
@@ -121,5 +126,40 @@ class ProcessingFailureTest {
             stores[1].clear()
             assertNotSame(current, root.onFailure)
         }
+    }
+
+    @Test
+    fun setupSubmitsOnceDuringPreparationAndAfterNavigation() = runBlocking {
+        withTimeout(5_000) {
+            val model = create()
+            val preparing = CompletableDeferred<Unit>()
+            val ready = CompletableDeferred<Unit>()
+            var submissions = 0
+            val first = launch {
+                model.submitSetup {
+                    preparing.complete(Unit)
+                    ready.await()
+                    submissions++
+                }
+            }
+            preparing.await()
+            assertTrue(model.isStarting.value)
+            model.submitSetup { submissions++ }
+            ready.complete(Unit)
+            first.join()
+            model.submitSetup { submissions++ }
+            assertEquals(1, submissions)
+        }
+    }
+
+    @Test
+    fun failedSetupAllowsAnotherSubmission() = runBlocking {
+        val model = create()
+        model.submitSetup { throw IOException("Setup failed") }
+        assertFalse(model.isStarting.value)
+        var submissions = 0
+        model.submitSetup { submissions++ }
+        assertEquals(1, submissions)
+        assertTrue(model.isStarting.value)
     }
 }
