@@ -148,7 +148,6 @@ class ListActionsViewModel @Inject constructor(
         viewModelScope.launchOnDefault {
             when (uiState.value) {
                 is Success.Apps -> {
-                    val state = uiState.value.castTo<Success.Apps>()
                     listDataRepo.selectApps(visibleAppKeys)
                 }
 
@@ -167,7 +166,6 @@ class ListActionsViewModel @Inject constructor(
         viewModelScope.launchOnDefault {
             when (uiState.value) {
                 is Success.Apps -> {
-                    val state = uiState.value.castTo<Success.Apps>()
                     listDataRepo.unselectApps(visibleAppKeys)
                 }
 
@@ -186,7 +184,6 @@ class ListActionsViewModel @Inject constructor(
         viewModelScope.launchOnDefault {
             when (uiState.value) {
                 is Success.Apps -> {
-                    val state = uiState.value.castTo<Success.Apps>()
                     listDataRepo.reverseAppSelection(visibleAppKeys)
                 }
 

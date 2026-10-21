@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -204,9 +205,7 @@ class ListDataRepo @Inject constructor(
     }
 
     suspend fun setAppSelected(key: AppKey, selected: Boolean) {
-        selectedAppKeys.emit(
-            if (selected) selectedAppKeys.value + key else selectedAppKeys.value - key
-        )
+        selectedAppKeys.update { if (selected) it + key else it - key }
     }
 
     suspend fun enterAppSelection(key: AppKey) {
@@ -215,21 +214,22 @@ class ListDataRepo @Inject constructor(
     }
 
     suspend fun selectApps(keys: Collection<AppKey>) {
-        selectedAppKeys.emit(selectedAppKeys.value + keys)
+        selectedAppKeys.update { it + keys }
     }
 
     suspend fun unselectApps(keys: Collection<AppKey>) {
-        selectedAppKeys.emit(selectedAppKeys.value - keys.toSet())
+        val candidates = keys.toSet()
+        selectedAppKeys.update { it - candidates }
     }
 
     suspend fun reverseAppSelection(keys: Collection<AppKey>) {
         val candidates = keys.toSet()
-        selectedAppKeys.emit((selectedAppKeys.value - candidates) + (candidates - selectedAppKeys.value))
+        selectedAppKeys.update { (it - candidates) + (candidates - it) }
     }
 
     suspend fun retainAppSelection(keys: Collection<AppKey>) {
-        if (searchQuery.value.isNotEmpty()) return
-        selectedAppKeys.emit(selectedAppKeys.value.intersect(keys.toSet()))
+        val candidates = keys.toSet()
+        selectedAppKeys.update { it.intersect(candidates) }
     }
 
     fun clearAppSelection() {
