@@ -39,6 +39,7 @@ fun Surface(
     tonalElevation: Dp = 0.dp,
     shadowElevation: Dp = 0.dp,
     border: BorderStroke? = null,
+    hapticFeedbackEnabled: Boolean = true,
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     indication: Indication? = ripple(),
     content: @Composable () -> Unit = {},
@@ -65,7 +66,8 @@ fun Surface(
                     indication = indication,
                     enabled = enabled,
                     onClick = { onClick?.invoke() },
-                    onLongClick = { onLongClick?.invoke() }
+                    onLongClick = onLongClick,
+                    hapticFeedbackEnabled = hapticFeedbackEnabled,
                 ),
             propagateMinConstraints = true
         ) {

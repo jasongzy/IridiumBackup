@@ -13,7 +13,7 @@ import com.xayah.core.model.OperationState
 import com.xayah.core.model.database.Info
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.ui.R
-import com.xayah.core.ui.material3.CircularProgressIndicator
+import com.xayah.core.ui.component.CircularProgressIndicator
 import com.xayah.core.ui.model.ProcessingCardItem
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
 import com.xayah.core.ui.theme.value

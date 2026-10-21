@@ -16,7 +16,6 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ListItem
@@ -34,6 +33,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.ui.component.IconButton
+import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.component.paddingHorizontal
@@ -93,7 +93,7 @@ fun PageReload() {
                                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                             } else {
                                 LinearProgressIndicator(
-                                    progress = { uiState.completed.toFloat() / uiState.total },
+                                    progress = uiState.completed.toFloat() / uiState.total,
                                     modifier = Modifier.fillMaxWidth(),
                                 )
                             }

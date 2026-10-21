@@ -33,8 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
@@ -151,7 +149,6 @@ fun AppItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
-    val hapticFeedback = LocalHapticFeedback.current
     val app = item.app
     val title = if (app.versionName.isEmpty()) app.label else "${app.label} · ${app.versionName}"
     val backupSummary = item.latestRevisionAt?.takeIf { item.revisionCount > 0 }?.let { timestamp ->
@@ -190,10 +187,7 @@ fun AppItem(
 
     Surface(
         onClick = onClick,
-        onLongClick = {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-            onLongClick()
-        },
+        onLongClick = onLongClick,
     ) {
         Row(
             modifier = Modifier

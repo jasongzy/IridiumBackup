@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
@@ -29,7 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -45,11 +47,11 @@ import com.xayah.core.datastore.saveScreenOffCountDown
 import com.xayah.core.model.OperationState
 import com.xayah.core.ui.component.AnimatedTextContainer
 import com.xayah.core.ui.component.BodyLargeText
+import com.xayah.core.ui.component.CircularProgressIndicator
 import com.xayah.core.ui.component.HeadlineMediumText
 import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.component.ProcessingCard
-import com.xayah.core.ui.component.SegmentCircularProgressIndicator
 import com.xayah.core.ui.component.Surface
 import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.component.paddingBottom
@@ -202,92 +204,79 @@ fun PageProcessing(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                var title: String by remember { mutableStateOf("") }
-                var subtitle: String by remember { mutableStateOf("") }
-                var segments: Int by remember { mutableIntStateOf(0) }
-                var segmentProgress: Float by remember { mutableFloatStateOf(0f) }
+                val index = task?.processingIndex
+                val currentItem = dataItems.getOrNull((index ?: 0) - 1)
+                val title = when (index) {
+                    null -> ""
+                    0 -> stringResource(R.string.preprocessing)
+                    dataItems.size + 1 -> stringResource(R.string.post_processing)
+                    dataItems.size + 2 -> stringResource(finishedTitleId)
+                    else -> currentItem?.title.orEmpty()
+                }
+                val subtitle = when (index) {
+                    null -> ""
+                    0 -> preItems.getOrNull(task?.preprocessingIndex ?: -1)?.title.orEmpty()
+                    dataItems.size + 1 -> postItems.getOrNull(task?.postProcessingIndex ?: -1)?.title.orEmpty()
+                    dataItems.size + 2 -> if ((task?.failureCount ?: 0) == 0) {
+                        stringResource(finishedSubtitleId, task?.successCount ?: dataItems.size)
+                    } else {
+                        stringResource(finishedWithErrorsSubtitleId, task!!.successCount, task!!.failureCount)
+                    }
+                    else -> currentItem?.let { item ->
+                        item.items.getOrNull(item.processingIndex)?.let { it.title + if (it.content.isEmpty()) "" else " (${it.content})" }
+                    } ?: stringResource(R.string.necessary_remaining_data_processing)
+                }
+                val segmentProgress = when (index) {
+                    0 -> preItemsProgress
+                    dataItems.size + 1 -> postItemsProgress
+                    dataItems.size + 2 -> 1f
+                    else -> currentItem?.progress ?: 0f
+                }
+                val animatedSegmentProgress by animateFloatAsState(
+                    targetValue = segmentProgress.coerceIn(0f, 1f).takeUnless { it.isNaN() } ?: 0f,
+                    animationSpec = tween(durationMillis = 800, delayMillis = 100),
+                    label = AnimationTokens.AnimatedProgressLabel,
+                )
                 val animatedImageVector = AnimatedImageVector.animatedVectorResource(com.xayah.core.ui.R.drawable.ic_animated_tick)
                 var atEnd by remember { mutableStateOf(false) }
 
-                AnimatedContent(modifier = Modifier.fillMaxWidth(), targetState = task?.processingIndex, label = AnimationTokens.AnimatedContentLabel) {
-                    Box(
-                        modifier = Modifier
-                            .paddingTop(SizeTokens.Level24)
-                            .paddingBottom(SizeTokens.Level16),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (it != null) {
-                            when (it) {
-                                0 -> {
-                                    // Preprocessing
-                                    title = stringResource(id = R.string.preprocessing)
-                                    subtitle = preItems.getOrNull(task?.preprocessingIndex ?: -1)?.title ?: ""
-                                    segments = preItems.size
-                                    segmentProgress = preItemsProgress
-                                }
-
-                                dataItems.size + 1 -> {
-                                    // Post-processing
-                                    title = stringResource(id = R.string.post_processing)
-                                    subtitle = postItems.getOrNull(task?.postProcessingIndex ?: -1)?.title ?: ""
-                                    segments = postItems.size
-                                    segmentProgress = postItemsProgress
-                                }
-
-                                dataItems.size + 2 -> {
-                                    // Finished
-                                    title = stringResource(id = finishedTitleId)
-                                    subtitle = if (task != null) {
-                                        if (task!!.failureCount == 0) {
-                                            context.getString(finishedSubtitleId, task!!.successCount)
-                                        } else {
-                                            context.getString(finishedWithErrorsSubtitleId, task!!.successCount, task!!.failureCount)
+                if (LocalConfiguration.current.screenHeightDp >= 480) {
+                    AnimatedContent(modifier = Modifier.fillMaxWidth(), targetState = task?.processingIndex, label = AnimationTokens.AnimatedContentLabel) {
+                        Box(
+                            modifier = Modifier
+                                .paddingTop(SizeTokens.Level24)
+                                .paddingBottom(SizeTokens.Level16),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (it != null) {
+                                when (it) {
+                                    dataItems.size + 2 -> {
+                                        // Finished
+                                        LaunchedEffect(animatedImageVector) {
+                                            atEnd = true
                                         }
-                                    } else {
-                                        context.getString(finishedSubtitleId, dataItems.size)
+                                        Image(
+                                            painter = rememberAnimatedVectorPainter(animatedImageVector, atEnd),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(SizeTokens.Level152),
+                                        )
                                     }
-                                }
 
-                                else -> {
-                                    // Processing
-                                    val item = dataItems.getOrNull(it - 1)
-                                    if (item != null) {
-                                        val index = item.processingIndex
-                                        title = item.title
-                                        subtitle = item.items.getOrNull(index)?.let { it.title + if (it.content.isEmpty()) "" else " (${it.content})" } ?: stringResource(id = R.string.necessary_remaining_data_processing)
-                                        segments = item.items.size
-                                        segmentProgress = item.progress
+                                    else -> {
+                                        // Processing, Pre-processing, Post-processing
+                                        PackageIconImage(
+                                            icon = if (it > 0 && it < dataItems.size + 1) null else ImageVector.vectorResource(id = com.xayah.core.ui.R.drawable.ic_rounded_hourglass_empty),
+                                            packageName = dataItems.getOrNull(it - 1)?.key ?: "",
+                                            inCircleShape = true,
+                                            size = SizeTokens.Level128
+                                        )
+
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(SizeTokens.Level152),
+                                            progress = animatedSegmentProgress,
+                                            strokeWidth = SizeTokens.Level8,
+                                        )
                                     }
-                                }
-                            }
-
-                            when (it) {
-                                dataItems.size + 2 -> {
-                                    // Finished
-                                    LaunchedEffect(animatedImageVector) {
-                                        atEnd = true
-                                    }
-                                    Image(
-                                        painter = rememberAnimatedVectorPainter(animatedImageVector, atEnd),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(SizeTokens.Level152),
-                                    )
-                                }
-
-                                else -> {
-                                    // Processing, Pre-processing, Post-processing
-                                    PackageIconImage(
-                                        icon = if (it > 0 && it < dataItems.size + 1) null else ImageVector.vectorResource(id = com.xayah.core.ui.R.drawable.ic_rounded_hourglass_empty),
-                                        packageName = dataItems.getOrNull(it - 1)?.key ?: "",
-                                        inCircleShape = true,
-                                        size = SizeTokens.Level128
-                                    )
-
-                                    SegmentCircularProgressIndicator(
-                                        size = SizeTokens.Level152,
-                                        segments = segments,
-                                        progress = segmentProgress
-                                    )
                                 }
                             }
                         }

@@ -28,7 +28,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -52,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.xayah.core.data.repository.TitaniumImportRepository
+import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
@@ -140,7 +140,7 @@ fun PageTitaniumImport() {
             if (state.isBusy) {
                 Column(modifier = Modifier.padding(SizeTokens.Level16)) {
                     LinearProgressIndicator(
-                        progress = { if (state.total == 0) 0f else state.completed.toFloat() / state.total },
+                        progress = if (state.total == 0) 0f else state.completed.toFloat() / state.total,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(

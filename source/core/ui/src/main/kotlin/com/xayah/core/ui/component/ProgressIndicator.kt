@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.progressSemantics
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.ProgressIndicatorDefaults
+import androidx.compose.material3.WavyProgressIndicatorDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.xayah.core.ui.material3.LinearIndicatorHeight
 import com.xayah.core.ui.material3.LinearIndicatorWidth
@@ -36,6 +40,7 @@ import com.xayah.core.ui.theme.withState
 import com.xayah.core.ui.token.AnimationTokens
 import com.xayah.core.ui.token.SizeTokens
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LinearProgressIndicator(
     progress: Float,
@@ -45,15 +50,19 @@ fun LinearProgressIndicator(
     strokeCap: StrokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
     enabled: Boolean = true,
 ) {
-    LinearProgressIndicator(
+    val stroke = Stroke(width = WavyProgressIndicatorDefaults.linearIndicatorStroke.width, cap = strokeCap)
+    val trackStroke = Stroke(width = WavyProgressIndicatorDefaults.linearTrackStroke.width, cap = strokeCap)
+    LinearWavyProgressIndicator(
         progress = { progress },
         modifier = modifier,
         color = color.withState(enabled),
         trackColor = trackColor.withState(enabled),
-        strokeCap = strokeCap,
+        stroke = stroke,
+        trackStroke = trackStroke,
     )
 }
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun LinearProgressIndicator(
     modifier: Modifier = Modifier,
@@ -62,11 +71,54 @@ fun LinearProgressIndicator(
     strokeCap: StrokeCap = ProgressIndicatorDefaults.LinearStrokeCap,
     enabled: Boolean = true,
 ) {
-    LinearProgressIndicator(
+    val stroke = Stroke(width = WavyProgressIndicatorDefaults.linearIndicatorStroke.width, cap = strokeCap)
+    val trackStroke = Stroke(width = WavyProgressIndicatorDefaults.linearTrackStroke.width, cap = strokeCap)
+    LinearWavyProgressIndicator(
         modifier = modifier,
         color = color.withState(enabled),
         trackColor = trackColor.withState(enabled),
-        strokeCap = strokeCap,
+        stroke = stroke,
+        trackStroke = trackStroke,
+    )
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun CircularProgressIndicator(
+    modifier: Modifier = Modifier,
+    color: Color = WavyProgressIndicatorDefaults.indicatorColor,
+    trackColor: Color = WavyProgressIndicatorDefaults.trackColor,
+    strokeWidth: Dp = ProgressIndicatorDefaults.CircularStrokeWidth,
+    strokeCap: StrokeCap = StrokeCap.Round,
+) {
+    val stroke = with(LocalDensity.current) { Stroke(width = strokeWidth.toPx(), cap = strokeCap) }
+    CircularWavyProgressIndicator(
+        modifier = modifier,
+        color = color,
+        trackColor = trackColor,
+        stroke = stroke,
+        trackStroke = stroke,
+    )
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun CircularProgressIndicator(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    color: Color = WavyProgressIndicatorDefaults.indicatorColor,
+    trackColor: Color = WavyProgressIndicatorDefaults.trackColor,
+    strokeWidth: Dp = ProgressIndicatorDefaults.CircularStrokeWidth,
+    strokeCap: StrokeCap = StrokeCap.Round,
+) {
+    val stroke = with(LocalDensity.current) { Stroke(width = strokeWidth.toPx(), cap = strokeCap) }
+    CircularWavyProgressIndicator(
+        progress = { progress },
+        modifier = modifier,
+        color = color,
+        trackColor = trackColor,
+        stroke = stroke,
+        trackStroke = stroke,
     )
 }
 

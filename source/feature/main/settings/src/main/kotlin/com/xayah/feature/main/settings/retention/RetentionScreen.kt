@@ -27,7 +27,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -59,6 +58,7 @@ import com.xayah.core.model.AppKey
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.isProtectedByNote
 import com.xayah.core.model.util.formatSize
+import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.component.TooltipIconButton
 import com.xayah.core.ui.route.MainRoutes
@@ -110,7 +110,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                 if (state.isScanning) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 if (state.isDeleting) {
                     LinearProgressIndicator(
-                        progress = { if (state.deleteTotal == 0) 0f else state.completed.toFloat() / state.deleteTotal },
+                        progress = if (state.deleteTotal == 0) 0f else state.completed.toFloat() / state.deleteTotal,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(stringResource(R.string.old_backup_cleanup_progress, state.completed, state.deleteTotal))

@@ -16,7 +16,8 @@ appcompat = "1.7.0"
 androidx-test-ext-junit = "1.2.1"
 espresso-core = "3.6.1"
 junit = "4.13.2"
-compose-bom = "2024.12.01"
+compose-bom = "2025.08.01"
+material3 = "1.5.0-alpha08"
 core-ktx = "1.15.0"
 core-splashscreen = "1.0.1"
 gson = "2.10.1"
@@ -50,7 +51,6 @@ sshj = "0.38.0"
 guava-compat = "9999.0-empty-to-avoid-conflict-with-guava"
 sardine-next = "1.0.2"
 bountycastle = "1.79"
-animation-graphics = "1.7.6"
 
 # plugins
 android-gradle-plugin = "8.11.1"
@@ -65,7 +65,7 @@ accompanist-systemuicontroller = { module = "com.google.accompanist:accompanist-
 accompanist-drawablepainter = { module = "com.google.accompanist:accompanist-drawablepainter", version.ref = "accompanist" }
 accompanist-placeholder = { module = "com.google.accompanist:accompanist-placeholder", version.ref = "accompanist" }
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
-androidx-animation-graphics = { module = "androidx.compose.animation:animation-graphics", version.ref = "animation-graphics" }
+androidx-animation-graphics = { module = "androidx.compose.animation:animation-graphics" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
 androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "core-splashscreen" }
@@ -78,7 +78,7 @@ androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3", version.ref = "material3" }
 androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 androidx-palette = { module = "androidx.palette:palette", version.ref = "palette" }

@@ -148,7 +148,7 @@ internal fun ListTopBar(
             UserTabs(selected = state.userIndex, userList = state.userList, usersMap = state.userMap, onTabClick = viewModel::setUser)
         }
 
-        AnimatedVisibility(visible = uiState !is ListTopBarUiState.Success.Apps) {
+        AnimatedVisibility(visible = uiState is ListTopBarUiState.Success.Files) {
             Divider(modifier = Modifier.fillMaxWidth())
         }
     }

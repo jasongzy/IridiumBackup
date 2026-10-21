@@ -46,9 +46,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,7 +58,6 @@ import com.xayah.core.ui.R
 import com.xayah.core.ui.material3.CardColors
 import com.xayah.core.ui.material3.CardDefaults
 import com.xayah.core.ui.material3.CardElevation
-import com.xayah.core.ui.material3.CircularProgressIndicator
 import com.xayah.core.ui.material3.ShapeDefaults
 import com.xayah.core.ui.material3.tokens.OutlinedCardTokens
 import com.xayah.core.ui.model.ProcessingCardItem
@@ -108,13 +105,10 @@ fun Card(
     indication: Indication? = ripple(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val haptic = LocalHapticFeedback.current
     Surface(
         onClick = onClick,
-        onLongClick = {
-            if (performHapticFeedback) haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-            onLongClick?.invoke()
-        },
+        onLongClick = onLongClick,
+        hapticFeedbackEnabled = performHapticFeedback,
         modifier = modifier,
         enabled = enabled,
         shape = shape,

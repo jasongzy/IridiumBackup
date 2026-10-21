@@ -20,7 +20,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +41,7 @@ import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.model.util.formatSize
 import com.xayah.core.ui.component.IconButton
+import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
@@ -200,10 +200,8 @@ private fun VerificationSummary(uiState: VerificationUiState) {
         when {
             uiState.isCleaning -> {
                 LinearProgressIndicator(
-                    progress = {
-                        if (uiState.cleanupTotal == 0) 0f
-                        else uiState.cleanupCompleted.toFloat() / uiState.cleanupTotal
-                    },
+                    progress = if (uiState.cleanupTotal == 0) 0f
+                    else uiState.cleanupCompleted.toFloat() / uiState.cleanupTotal,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(stringResource(R.string.cleanup_progress, uiState.cleanupCompleted, uiState.cleanupTotal))
@@ -211,14 +209,14 @@ private fun VerificationSummary(uiState: VerificationUiState) {
 
             uiState.isRunning -> {
                 LinearProgressIndicator(
-                    progress = { if (uiState.total == 0) 0f else uiState.completed.toFloat() / uiState.total },
+                    progress = if (uiState.total == 0) 0f else uiState.completed.toFloat() / uiState.total,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(stringResource(R.string.verification_progress, uiState.completed, uiState.total))
             }
 
             uiState.isComplete -> {
-                LinearProgressIndicator(progress = { 1f }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = 1f, modifier = Modifier.fillMaxWidth())
                 Text(
                     text = if (uiState.failedBackups.isEmpty()) {
                         stringResource(R.string.verification_valid_count, uiState.validCount)

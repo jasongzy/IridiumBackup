@@ -45,7 +45,6 @@ import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded._123
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -90,6 +89,7 @@ import com.xayah.core.ui.component.BodyMediumText
 import com.xayah.core.ui.component.BodyLargeText
 import com.xayah.core.ui.component.BottomButton
 import com.xayah.core.ui.component.Clickable
+import com.xayah.core.ui.component.CircularProgressIndicator
 import com.xayah.core.ui.component.DataChips
 import com.xayah.core.ui.component.DropdownMenuItem
 import com.xayah.core.ui.component.FilledTonalIconTextButton
