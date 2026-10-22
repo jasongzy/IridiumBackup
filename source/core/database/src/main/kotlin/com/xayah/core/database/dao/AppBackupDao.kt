@@ -8,9 +8,11 @@ import androidx.room.Transaction
 import androidx.room.Upsert
 import com.xayah.core.model.AppBackupOverview
 import com.xayah.core.model.AppKey
+import com.xayah.core.model.AppNoteItem
 import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.OpType
+import com.xayah.core.model.toBackupApp
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -34,6 +36,17 @@ interface AppBackupDao {
 
     @Query("UPDATE backup_apps SET note = :note WHERE packageName = :packageName AND userId = :userId")
     suspend fun updateAppNote(packageName: String, userId: Int, note: String)
+
+    @Transaction
+    suspend fun importAppNotes(notes: List<AppNoteItem>) {
+        notes.forEach { item ->
+            val note = item.note.trim()
+            if (note.isNotEmpty()) {
+                insertMissingApp(AppKey(item.packageName, item.userId).toBackupApp().copy(note = note))
+            }
+            updateAppNote(item.packageName, item.userId, note)
+        }
+    }
 
     @Query("SELECT * FROM backup_apps WHERE note != ''")
     suspend fun getAppsWithNotes(): List<BackupAppEntity>

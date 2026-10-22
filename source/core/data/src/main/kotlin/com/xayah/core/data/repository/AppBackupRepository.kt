@@ -26,7 +26,6 @@ import com.xayah.core.model.findRetentionRevisions
 import com.xayah.core.model.hasValidFileEntries
 import com.xayah.core.model.matchesRevision
 import com.xayah.core.model.toPackageEntity
-import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.ConfigsPackageRestoreName
 import com.xayah.core.util.FileUtil
@@ -128,18 +127,8 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun importAppNotes(notes: List<AppNoteItem>) {
-        notes.forEach { item ->
-            val app = dao.getApp(item.packageName, item.userId)
-            if (app != null) {
-                dao.updateAppNote(item.packageName, item.userId, item.note.trim())
-            } else if (item.note.isNotBlank()) {
-                dao.upsertApps(
-                    listOf(
-                        AppKey(item.packageName, item.userId).toBackupApp().copy(note = item.note.trim())
-                    )
-                )
-            }
-        }
+        require(notes.all { PathUtil.isValidPackageName(it.packageName) && it.userId >= 0 })
+        dao.importAppNotes(notes)
     }
 
     suspend fun removeUnusedApps(userId: Int) {

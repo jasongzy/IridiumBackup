@@ -1,6 +1,7 @@
 package com.xayah.core.datastore
 
 import android.content.Context
+import androidx.datastore.preferences.core.edit
 import com.xayah.core.model.ConfigurationSettings
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.ThemeType
@@ -27,19 +28,21 @@ suspend fun Context.readConfigurationSettings(): ConfigurationSettings {
 }
 
 suspend fun Context.saveConfigurationSettings(settings: ConfigurationSettings) {
-    saveMonet(settings.monet)
-    saveThemeType(ThemeType.valueOf(settings.themeType))
-    saveLanguage(settings.language)
-    saveAutoScreenOff(settings.autoScreenOff)
-    saveLoadSystemApps(settings.loadSystemApps)
-    saveCompressionLevel(settings.compressionLevel)
-    saveKillAppOption(KillAppOption.valueOf(settings.killAppOption))
-    saveStoreBoolean(KeyFastSameVersionBackup, settings.fastSameVersionBackup)
-    saveBackupItself(settings.backupItself)
-    saveBackupConfigs(settings.backupConfigs)
-    saveCompressionTest(settings.compressionTest)
-    saveFollowSymlinks(settings.followSymlinks)
-    saveCleanRestoring(settings.cleanRestoring)
-    saveRestorePermissions(settings.restorePermissions)
-    saveRestoreSsaid(settings.restoreSsaid)
+    dataStore.edit { preferences ->
+        preferences[KeyMonet] = settings.monet
+        preferences[KeyThemeType] = ThemeType.valueOf(settings.themeType).name
+        preferences[KeyLanguage] = settings.language.trim()
+        preferences[KeyAutoScreenOff] = settings.autoScreenOff
+        preferences[KeyLoadSystemApps] = settings.loadSystemApps
+        preferences[KeyCompressionLevel] = settings.compressionLevel
+        preferences[KeyKillAppOption] = KillAppOption.valueOf(settings.killAppOption).name
+        preferences[KeyFastSameVersionBackup] = settings.fastSameVersionBackup
+        preferences[KeyBackupItself] = settings.backupItself
+        preferences[KeyBackupConfigs] = settings.backupConfigs
+        preferences[KeyCompressionTest] = settings.compressionTest
+        preferences[KeyFollowSymlinks] = settings.followSymlinks
+        preferences[KeyCleanRestoring] = settings.cleanRestoring
+        preferences[KeyRestorePermissions] = settings.restorePermissions
+        preferences[KeyRestoreSsaid] = settings.restoreSsaid
+    }
 }

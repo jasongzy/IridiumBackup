@@ -44,6 +44,7 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.withLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -86,217 +87,229 @@ class IndexViewModel @Inject constructor(
     )
 ) {
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
-        when (intent) {
-            is IndexUiIntent.Export -> {
-                rootService.mkdirs(pathUtil.getLocalBackupConfigsDir())
-                val result = commonBackupUtil.backupConfigs(
-                    dstDir = pathUtil.getLocalBackupConfigsDir(),
-                    includeBlacklist = state.blacklistSelected,
-                    includeCloud = state.cloudSelected,
-                    includeLabels = state.labelSelected,
-                    includeAppNotes = state.appNotesSelected,
-                    includeSettings = state.settingsSelected,
-                )
-                emitEffect(IndexUiEffect.DismissSnackbar)
-                emitEffect(IndexUiEffect.ShowSnackbar(type = if (result.isSuccess) SnackbarType.Success else SnackbarType.Error, message = result.outString, duration = SnackbarDuration.Short))
-            }
+        try {
+            when (intent) {
+                is IndexUiIntent.Export -> {
+                    rootService.mkdirs(pathUtil.getLocalBackupConfigsDir())
+                    val result = commonBackupUtil.backupConfigs(
+                        dstDir = pathUtil.getLocalBackupConfigsDir(),
+                        includeBlacklist = state.blacklistSelected,
+                        includeCloud = state.cloudSelected,
+                        includeLabels = state.labelSelected,
+                        includeAppNotes = state.appNotesSelected,
+                        includeSettings = state.settingsSelected,
+                    )
+                    emitEffect(IndexUiEffect.DismissSnackbar)
+                    emitEffect(IndexUiEffect.ShowSnackbar(type = if (result.isSuccess) SnackbarType.Success else SnackbarType.Error, message = result.outString, duration = SnackbarDuration.Short))
+                }
 
-            is IndexUiIntent.Import -> {
-                val src = "${pathUtil.getLocalBackupConfigsDir()}/$ConfigsConfigurationsName"
-                if (rootService.exists(src)) {
-                    val config = rootService.readJson<Configurations>(src)
-                    val items = mutableListOf<DialogCheckBoxItem<String>>()
-                    if (config != null) {
-                        runCatching {
-                            val appsCount = config.blacklist.apps.size
-                            val filesCount = config.blacklist.files.size
-                            if (appsCount + filesCount != 0) {
-                                items.add(
-                                    DialogCheckBoxItem(
-                                        enum = ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST,
-                                        title = joinOf(
-                                            context.getString(R.string.blacklist),
-                                            " (${appsCount + filesCount})",
+                is IndexUiIntent.Import -> {
+                    val src = "${pathUtil.getLocalBackupConfigsDir()}/$ConfigsConfigurationsName"
+                    if (rootService.exists(src)) {
+                        val config = rootService.readJson<Configurations>(src)
+                        val items = mutableListOf<DialogCheckBoxItem<String>>()
+                        if (config != null) {
+                            runCatching {
+                                val appsCount = config.blacklist.apps.size
+                                val filesCount = config.blacklist.files.size
+                                if (appsCount + filesCount != 0) {
+                                    items.add(
+                                        DialogCheckBoxItem(
+                                            enum = ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST,
+                                            title = joinOf(
+                                                context.getString(R.string.blacklist),
+                                                " (${appsCount + filesCount})",
+                                            )
                                         )
                                     )
-                                )
-                            }
-                        }.withLog()
-                        config.settings?.let {
-                            items.add(
-                                DialogCheckBoxItem(
-                                    enum = ConstantUtil.CONFIGURATIONS_KEY_SETTINGS,
-                                    title = context.getString(R.string.other_settings),
-                                )
-                            )
-                        }
-                        runCatching {
-                            if (config.cloud.isNotEmpty()) {
+                                }
+                            }.withLog()
+                            config.settings?.let {
                                 items.add(
                                     DialogCheckBoxItem(
-                                        enum = ConstantUtil.CONFIGURATIONS_KEY_CLOUD,
-                                        title = joinOf(context.getString(R.string.cloud_accounts), " (${config.cloud.size})")
+                                        enum = ConstantUtil.CONFIGURATIONS_KEY_SETTINGS,
+                                        title = context.getString(R.string.other_settings),
                                     )
                                 )
                             }
-                        }.withLog()
-                        runCatching {
-                            var size = 0
-                            if (config.labels.isNotEmpty()) {
-                                size += config.labels.size
-                            }
-                            if (config.labelAppRefs.isNotEmpty()) {
-                                size += config.labelAppRefs.size
-                            }
-                            if (config.labelFileRefs.isNotEmpty()) {
-                                size += config.labelFileRefs.size
-                            }
-                            if (size != 0) {
-                                items.add(
-                                    DialogCheckBoxItem(
-                                        enum = ConstantUtil.CONFIGURATIONS_KEY_LABEL,
-                                        title = joinOf(
-                                            context.getString(R.string.labels),
-                                            " ($size)",
+                            runCatching {
+                                if (config.cloud.isNotEmpty()) {
+                                    items.add(
+                                        DialogCheckBoxItem(
+                                            enum = ConstantUtil.CONFIGURATIONS_KEY_CLOUD,
+                                            title = joinOf(context.getString(R.string.cloud_accounts), " (${config.cloud.size})")
                                         )
                                     )
+                                }
+                            }.withLog()
+                            runCatching {
+                                var size = 0
+                                if (config.labels.isNotEmpty()) {
+                                    size += config.labels.size
+                                }
+                                if (config.labelAppRefs.isNotEmpty()) {
+                                    size += config.labelAppRefs.size
+                                }
+                                if (config.labelFileRefs.isNotEmpty()) {
+                                    size += config.labelFileRefs.size
+                                }
+                                if (size != 0) {
+                                    items.add(
+                                        DialogCheckBoxItem(
+                                            enum = ConstantUtil.CONFIGURATIONS_KEY_LABEL,
+                                            title = joinOf(
+                                                context.getString(R.string.labels),
+                                                " ($size)",
+                                            )
+                                        )
+                                    )
+                                }
+                            }.withLog()
+                            config.appNotes.orEmpty().takeIf { it.isNotEmpty() }?.let { notes ->
+                                items.add(
+                                    DialogCheckBoxItem(
+                                        enum = ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES,
+                                        title = joinOf(context.getString(R.string.app_notes), " (${notes.size})"),
+                                    )
                                 )
                             }
-                        }.withLog()
-                        config.appNotes.orEmpty().takeIf { it.isNotEmpty() }?.let { notes ->
-                            items.add(
-                                DialogCheckBoxItem(
-                                    enum = ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES,
-                                    title = joinOf(context.getString(R.string.app_notes), " (${notes.size})"),
-                                )
-                            )
                         }
-                    }
 
-                    if (items.isEmpty()) {
-                        emitEffect(IndexUiEffect.DismissSnackbar)
-                        emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = context.getString(R.string.config_file_may_be_broken), duration = SnackbarDuration.Short))
-                    } else {
-                        val (s, selection) = intent.dialogState.select(
-                            title = context.getString(R.string._import),
-                            def = items.map { true },
-                            items = items
-                        )
-                        if (s.isConfirm) {
-                            items.forEachIndexed { i, item ->
-                                if (selection[i]) {
-                                    when (item.enum) {
-                                        ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST -> {
-                                            if (config?.blacklist?.apps != null) {
-                                                packageRepo.clearBlocked()
-                                                config.blacklist.apps.forEach {
-                                                    val pkg = packageRepo.getPackage(packageName = it.packageName, opType = OpType.BACKUP, userId = it.userId) ?: PackageEntity(
-                                                        id = 0,
-                                                        indexInfo = PackageIndexInfo(
-                                                            opType = OpType.BACKUP,
-                                                            packageName = it.packageName,
-                                                            userId = it.userId,
-                                                            compressionType = CompressionType.ZSTD,
-                                                            preserveId = 0,
-                                                            cloud = "",
-                                                            backupDir = ""
-                                                        ),
-                                                        packageInfo = PackageInfo(label = "", versionName = "", versionCode = 0L, flags = 0, firstInstallTime = 0L, lastUpdateTime = 0L),
-                                                        extraInfo = PackageExtraInfo(
-                                                            uid = 0,
-                                                            hasKeystore = false,
-                                                            permissions = listOf(),
-                                                            ssaid = "",
-                                                            lastBackupTime = 0L,
-                                                            blocked = true,
-                                                            activated = false,
-                                                            firstUpdated = true,
-                                                            enabled = true,
-                                                        ),
-                                                        dataStats = PackageDataStats(),
-                                                        dataStates = PackageDataStates(),
-                                                        storageStats = PackageStorageStats(),
-                                                        displayStats = PackageDataStats(),
-                                                    )
-                                                    pkg.extraInfo.blocked = true
-                                                    pkg.extraInfo.activated = false
-                                                    packageRepo.upsert(pkg)
+                        if (items.isEmpty()) {
+                            emitEffect(IndexUiEffect.DismissSnackbar)
+                            emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = context.getString(R.string.config_file_may_be_broken), duration = SnackbarDuration.Short))
+                        } else {
+                            val (s, selection) = intent.dialogState.select(
+                                title = context.getString(R.string._import),
+                                def = items.map { true },
+                                items = items
+                            )
+                            if (s.isConfirm) {
+                                items.forEachIndexed { i, item ->
+                                    if (selection[i]) {
+                                        when (item.enum) {
+                                            ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST -> {
+                                                if (config?.blacklist?.apps != null) {
+                                                    packageRepo.clearBlocked()
+                                                    config.blacklist.apps.forEach {
+                                                        val pkg = packageRepo.getPackage(packageName = it.packageName, opType = OpType.BACKUP, userId = it.userId) ?: PackageEntity(
+                                                            id = 0,
+                                                            indexInfo = PackageIndexInfo(
+                                                                opType = OpType.BACKUP,
+                                                                packageName = it.packageName,
+                                                                userId = it.userId,
+                                                                compressionType = CompressionType.ZSTD,
+                                                                preserveId = 0,
+                                                                cloud = "",
+                                                                backupDir = ""
+                                                            ),
+                                                            packageInfo = PackageInfo(label = "", versionName = "", versionCode = 0L, flags = 0, firstInstallTime = 0L, lastUpdateTime = 0L),
+                                                            extraInfo = PackageExtraInfo(
+                                                                uid = 0,
+                                                                hasKeystore = false,
+                                                                permissions = listOf(),
+                                                                ssaid = "",
+                                                                lastBackupTime = 0L,
+                                                                blocked = true,
+                                                                activated = false,
+                                                                firstUpdated = true,
+                                                                enabled = true,
+                                                            ),
+                                                            dataStats = PackageDataStats(),
+                                                            dataStates = PackageDataStates(),
+                                                            storageStats = PackageStorageStats(),
+                                                            displayStats = PackageDataStats(),
+                                                        )
+                                                        pkg.extraInfo.blocked = true
+                                                        pkg.extraInfo.activated = false
+                                                        packageRepo.upsert(pkg)
+                                                    }
+                                                }
+
+                                                if (config?.blacklist?.files != null) {
+                                                    mediaRepo.clearBlocked()
+                                                    config.blacklist.files.forEach {
+                                                        val media = mediaRepo.query(name = it.name, opType = OpType.BACKUP) ?: MediaEntity(
+                                                            id = 0,
+                                                            indexInfo = MediaIndexInfo(
+                                                                opType = OpType.BACKUP,
+                                                                name = it.name,
+                                                                compressionType = CompressionType.TAR,
+                                                                preserveId = 0,
+                                                                cloud = "",
+                                                                backupDir = ""
+                                                            ),
+                                                            mediaInfo = MediaInfo(
+                                                                path = it.path,
+                                                                dataBytes = 0,
+                                                                displayBytes = 0,
+                                                            ),
+                                                            extraInfo = MediaExtraInfo(
+                                                                lastBackupTime = 0,
+                                                                blocked = true,
+                                                                activated = false,
+                                                                existed = false,
+                                                            ),
+                                                        )
+                                                        media.extraInfo.blocked = true
+                                                        media.extraInfo.activated = false
+                                                        mediaRepo.upsert(media)
+                                                    }
                                                 }
                                             }
 
-                                            if (config?.blacklist?.files != null) {
-                                                mediaRepo.clearBlocked()
-                                                config.blacklist.files.forEach {
-                                                    val media = mediaRepo.query(name = it.name, opType = OpType.BACKUP) ?: MediaEntity(
-                                                        id = 0,
-                                                        indexInfo = MediaIndexInfo(
-                                                            opType = OpType.BACKUP,
-                                                            name = it.name,
-                                                            compressionType = CompressionType.TAR,
-                                                            preserveId = 0,
-                                                            cloud = "",
-                                                            backupDir = ""
-                                                        ),
-                                                        mediaInfo = MediaInfo(
-                                                            path = it.path,
-                                                            dataBytes = 0,
-                                                            displayBytes = 0,
-                                                        ),
-                                                        extraInfo = MediaExtraInfo(
-                                                            lastBackupTime = 0,
-                                                            blocked = true,
-                                                            activated = false,
-                                                            existed = false,
-                                                        ),
-                                                    )
-                                                    media.extraInfo.blocked = true
-                                                    media.extraInfo.activated = false
-                                                    mediaRepo.upsert(media)
+                                            ConstantUtil.CONFIGURATIONS_KEY_CLOUD -> {
+                                                if (config?.cloud != null) {
+                                                    cloudRepo.upsert(config.cloud)
                                                 }
                                             }
-                                        }
 
-                                        ConstantUtil.CONFIGURATIONS_KEY_CLOUD -> {
-                                            if (config?.cloud != null) {
-                                                cloudRepo.upsert(config.cloud)
+                                            ConstantUtil.CONFIGURATIONS_KEY_LABEL -> {
+                                                if (config?.labels != null) {
+                                                    labelsRepo.addLabels(config.labels)
+                                                }
+                                                if (config?.labelColors != null) {
+                                                    labelsRepo.setLabelColors(config.labelColors)
+                                                }
+                                                if (config?.labelAppRefs != null) {
+                                                    labelsRepo.addLabelAppCrossRefs(config.labelAppRefs)
+                                                }
+                                                if (config?.labelFileRefs != null) {
+                                                    labelsRepo.addLabelFileCrossRefs(config.labelFileRefs)
+                                                }
                                             }
-                                        }
 
-                                        ConstantUtil.CONFIGURATIONS_KEY_LABEL -> {
-                                            if (config?.labels != null) {
-                                                labelsRepo.addLabels(config.labels)
+                                            ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES -> {
+                                                config?.appNotes?.let { appBackupRepository.importAppNotes(it) }
                                             }
-                                            if (config?.labelColors != null) {
-                                                labelsRepo.setLabelColors(config.labelColors)
-                                            }
-                                            if (config?.labelAppRefs != null) {
-                                                labelsRepo.addLabelAppCrossRefs(config.labelAppRefs)
-                                            }
-                                            if (config?.labelFileRefs != null) {
-                                                labelsRepo.addLabelFileCrossRefs(config.labelFileRefs)
-                                            }
-                                        }
 
-                                        ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES -> {
-                                            config?.appNotes?.let { appBackupRepository.importAppNotes(it) }
-                                        }
-
-                                        ConstantUtil.CONFIGURATIONS_KEY_SETTINGS -> {
-                                            config?.settings?.let { context.saveConfigurationSettings(it) }
+                                            ConstantUtil.CONFIGURATIONS_KEY_SETTINGS -> {
+                                                config?.settings?.let { context.saveConfigurationSettings(it) }
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            emitEffect(IndexUiEffect.DismissSnackbar)
-                            emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = context.getString(R.string.imported), duration = SnackbarDuration.Short))
+                                emitEffect(IndexUiEffect.DismissSnackbar)
+                                emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = context.getString(R.string.imported), duration = SnackbarDuration.Short))
+                            }
                         }
+                    } else {
+                        emitEffect(IndexUiEffect.DismissSnackbar)
+                        emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = "${context.getString(R.string.not_exist)}: $src", duration = SnackbarDuration.Short))
                     }
-                } else {
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = "${context.getString(R.string.not_exist)}: $src", duration = SnackbarDuration.Short))
                 }
             }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            emitEffect(IndexUiEffect.DismissSnackbar)
+            emitEffect(
+                IndexUiEffect.ShowSnackbar(
+                    type = SnackbarType.Error,
+                    message = error.localizedMessage ?: error.javaClass.simpleName,
+                    duration = SnackbarDuration.Long,
+                )
+            )
         }
     }
 
