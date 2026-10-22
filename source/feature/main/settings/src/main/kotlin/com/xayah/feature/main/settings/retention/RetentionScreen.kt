@@ -78,6 +78,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
     val navController = LocalNavController.current!!
     val focusManager = LocalFocusManager.current
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val isBusy = state.isScanning || state.isDeleting
     val validCount = state.retainCount.toIntOrNull()?.let { it >= 1 } == true
     val removableCount = state.candidates.count { it.removable }
     val groups = state.candidates.groupBy { AppKey(it.revision.packageName, it.revision.userId) }
@@ -99,7 +100,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                     value = state.retainCount,
                     onValueChange = viewModel::setRetainCount,
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.isScanning && !state.isDeleting,
+                    enabled = !isBusy,
                     isError = state.retainCount.isNotEmpty() && !validCount,
                     label = { Text(stringResource(R.string.backups_to_keep)) },
                     supportingText = { Text(stringResource(R.string.protected_backups_retained)) },
@@ -123,6 +124,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                     if (removableCount > 0) {
                         SelectionActions(
                             selectedCount = state.selectedIds.size,
+                            enabled = !isBusy,
                             onSelectAll = { viewModel.selectAll(true) },
                             onUnselectAll = { viewModel.selectAll(false) },
                         )
@@ -139,6 +141,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                             candidates = candidates,
                             selectedIds = state.selectedIds,
                             expanded = groupId !in collapsedApps,
+                            enabled = !isBusy,
                             onOpen = { navController.navigateSingle(MainRoutes.AppRevisions.getRoute(key.packageName, key.userId)) },
                             onToggle = { viewModel.toggleGroup(key.packageName, key.userId) },
                             onToggleExpanded = {
@@ -152,6 +155,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                                 candidate = candidate,
                                 latest = candidate.revision.id == candidates.first().revision.id,
                                 selected = candidate.revision.id in state.selectedIds,
+                                enabled = !isBusy,
                                 onToggle = { viewModel.toggle(candidate.revision.id) },
                                 onDetails = { detailRevision = candidate.revision.id },
                             )
@@ -165,8 +169,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(SizeTokens.Level16),
-                enabled = if (state.hasScanned) state.selectedIds.isNotEmpty() && !state.isScanning && !state.isDeleting
-                else validCount && !state.isScanning && !state.isDeleting,
+                enabled = !isBusy && (if (state.hasScanned) state.selectedIds.isNotEmpty() else validCount),
                 onClick = {
                     if (state.hasScanned) showDeleteConfirmation = true
                     else scan(viewModel, focusManager, validCount)
@@ -213,15 +216,15 @@ private fun scan(viewModel: RetentionViewModel, focusManager: FocusManager, vali
 }
 
 @Composable
-private fun SelectionActions(selectedCount: Int, onSelectAll: () -> Unit, onUnselectAll: () -> Unit) {
+private fun SelectionActions(selectedCount: Int, enabled: Boolean, onSelectAll: () -> Unit, onUnselectAll: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level8),
     ) {
         Text(stringResource(R.string.selected_count, selectedCount), modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = onSelectAll) { Text(stringResource(R.string.select_all)) }
-        OutlinedButton(onClick = onUnselectAll) { Text(stringResource(R.string.unselect_all)) }
+        OutlinedButton(enabled = enabled, onClick = onSelectAll) { Text(stringResource(R.string.select_all)) }
+        OutlinedButton(enabled = enabled, onClick = onUnselectAll) { Text(stringResource(R.string.unselect_all)) }
     }
 }
 
@@ -232,6 +235,7 @@ private fun AppHeader(
     candidates: List<AppBackupRepository.RetentionCandidate>,
     selectedIds: Set<String>,
     expanded: Boolean,
+    enabled: Boolean,
     onOpen: () -> Unit,
     onToggle: () -> Unit,
     onToggleExpanded: () -> Unit,
@@ -244,7 +248,7 @@ private fun AppHeader(
         else -> ToggleableState.Indeterminate
     }
     ListItem(
-        modifier = Modifier.clickable(onClick = onOpen),
+        modifier = Modifier.clickable(enabled = enabled, onClick = onOpen),
         leadingContent = {
             PackageIconImage(
                 packageName = candidate.revision.packageName,
@@ -256,7 +260,7 @@ private fun AppHeader(
         supportingContent = { Text(candidate.revision.packageName) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TriStateCheckbox(state = state, enabled = removableIds.isNotEmpty(), onClick = onToggle)
+                TriStateCheckbox(state = state, enabled = enabled && removableIds.isNotEmpty(), onClick = onToggle)
                 TooltipIconButton(
                     tooltip = stringResource(if (expanded) R.string.collapse_backups else R.string.expand_backups),
                     onClick = onToggleExpanded,
@@ -277,6 +281,7 @@ private fun BackupCandidateItem(
     candidate: AppBackupRepository.RetentionCandidate,
     latest: Boolean,
     selected: Boolean,
+    enabled: Boolean,
     onToggle: () -> Unit,
     onDetails: () -> Unit,
 ) {
@@ -285,7 +290,7 @@ private fun BackupCandidateItem(
         modifier = Modifier
             .alpha(if (candidate.removable) 1f else 0.55f)
             .padding(start = SizeTokens.Level32)
-            .combinedClickable(onClick = { if (candidate.removable) onToggle() }, onLongClick = onDetails),
+            .combinedClickable(enabled = enabled, onClick = { if (candidate.removable) onToggle() }, onLongClick = onDetails),
         headlineContent = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level8)) {
                 Text(revision.appVersionName.ifEmpty { revision.appVersionCode.toString() }, modifier = Modifier.weight(1f))
@@ -301,7 +306,7 @@ private fun BackupCandidateItem(
             }
         },
         trailingContent = {
-            Checkbox(checked = selected, enabled = candidate.removable, onCheckedChange = { onToggle() })
+            Checkbox(checked = selected, enabled = enabled && candidate.removable, onCheckedChange = { onToggle() })
         },
     )
 }
