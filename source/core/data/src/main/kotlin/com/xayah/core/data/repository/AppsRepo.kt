@@ -259,9 +259,6 @@ class AppsRepo @Inject constructor(
         labelsRepo.deleteOrphanedAppRefs()
     }
 
-    /**
-     * Initialize only newly installed apps or remove uninstalled apps.
-     */
     suspend fun fastInitialize(onInit: suspend (cur: Int, max: Int, content: String) -> Unit) = appInitializationMutex.withLock {
         val loadSystemApps = context.readLoadSystemApps().first()
         val settings = settingsDataRepo.settingsData.first()
@@ -278,7 +275,9 @@ class AppsRepo @Inject constructor(
                 } else {
                     info.versionCode.toLong()
                 }
-                app.packageInfo.versionCode != versionCode || app.packageInfo.lastUpdateTime != info.lastUpdateTime
+                app.packageInfo.versionCode != versionCode ||
+                    app.packageInfo.lastUpdateTime != info.lastUpdateTime ||
+                    app.extraInfo.enabled != (info.applicationInfo?.enabled ?: false)
             }
             FastInitializationBatch(
                 userId = userId,
