@@ -16,7 +16,6 @@ import java.io.File
 import java.io.PrintWriter
 import java.io.RandomAccessFile
 import java.io.StringWriter
-import java.nio.channels.FileChannel
 
 object LogUtil {
     private lateinit var cacheDir: String
@@ -35,15 +34,18 @@ object LogUtil {
         // Clear empty log files.
         FileUtil.listFilePaths(cacheDir).forEach { path ->
             File(path).apply {
-                if (readLines().size <= 4) deleteRecursively()
+                if (useLines { it.take(5).count() } <= 4) deleteRecursively()
             }
         }
 
         File(cacheDir).apply {
             if (exists().not()) mkdirs()
         }
-        this.cacheDir = cacheDir
-        this.logFile = RandomAccessFile("$cacheDir/${getLogFileName()}", "rw")
+        synchronized(this) {
+            if (::logFile.isInitialized) logFile.close()
+            this.cacheDir = cacheDir
+            this.logFile = RandomAccessFile("$cacheDir/${getLogFileName()}", "rw")
+        }
         log("Version:    ${BuildConfigUtil.VERSION_NAME}")
         log("Model:      ${Build.MODEL}")
         log("ABIs:       ${Build.SUPPORTED_ABIS.firstOrNull() ?: ""}")
@@ -55,11 +57,11 @@ object LogUtil {
         log("${USD}HOME:                ${runBlocking { BaseUtil.readVariable("HOME").trim() }}")
     }
 
+    @Synchronized
     private fun appendLine(msg: String) = runCatching {
         val bytes = (msg + LF).toByteArray()
-        val pos = logFile.channel.size()
-        val buffer = logFile.channel.map(FileChannel.MapMode.READ_WRITE, pos, bytes.size.toLong())
-        buffer.put(bytes)
+        logFile.seek(logFile.length())
+        logFile.write(bytes)
     }
 
     private fun appendWithTimestamp(tag: String, msg: String) = run {
