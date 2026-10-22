@@ -238,7 +238,7 @@ fun SegmentCircularProgressIndicator(
         targetProgress = if (progress.isNaN()) 0f else progress
     }
 
-    Canvas(modifier = Modifier.size(size)) {
+    Canvas(modifier = Modifier.size(size).progressSemantics(targetProgress)) {
         val strokeWidthPx = strokeWidth.toPx()
         val sizePx = size.toPx() - strokeWidthPx
         repeat(segments) { index ->

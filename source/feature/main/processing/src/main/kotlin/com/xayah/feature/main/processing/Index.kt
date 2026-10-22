@@ -4,8 +4,6 @@ import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.graphics.ExperimentalAnimationGraphicsApi
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.res.rememberAnimatedVectorPainter
@@ -52,11 +50,11 @@ import com.xayah.core.datastore.saveScreenOffCountDown
 import com.xayah.core.model.OperationState
 import com.xayah.core.ui.component.AnimatedTextContainer
 import com.xayah.core.ui.component.BodyLargeText
-import com.xayah.core.ui.component.CircularProgressIndicator
 import com.xayah.core.ui.component.HeadlineMediumText
 import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.component.ProcessingCard
+import com.xayah.core.ui.component.SegmentCircularProgressIndicator
 import com.xayah.core.ui.component.Surface
 import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.component.paddingBottom
@@ -234,11 +232,11 @@ fun PageProcessing(
                     dataItems.size + 2 -> 1f
                     else -> currentItem?.progress ?: 0f
                 }
-                val animatedSegmentProgress by animateFloatAsState(
-                    targetValue = segmentProgress.coerceIn(0f, 1f).takeUnless { it.isNaN() } ?: 0f,
-                    animationSpec = tween(durationMillis = 800, delayMillis = 100),
-                    label = AnimationTokens.AnimatedProgressLabel,
-                )
+                val segments = when (index) {
+                    0 -> preItems.size
+                    dataItems.size + 1 -> postItems.size
+                    else -> currentItem?.items?.size ?: 0
+                }
                 val animatedImageVector = AnimatedImageVector.animatedVectorResource(com.xayah.core.ui.R.drawable.ic_animated_tick)
                 var atEnd by remember { mutableStateOf(false) }
 
@@ -273,10 +271,10 @@ fun PageProcessing(
                                             size = SizeTokens.Level128
                                         )
 
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(SizeTokens.Level152),
-                                            progress = animatedSegmentProgress,
-                                            strokeWidth = SizeTokens.Level8,
+                                        SegmentCircularProgressIndicator(
+                                            size = SizeTokens.Level152,
+                                            segments = segments,
+                                            progress = segmentProgress,
                                         )
                                     }
                                 }

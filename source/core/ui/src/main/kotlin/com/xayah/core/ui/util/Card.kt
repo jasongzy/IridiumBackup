@@ -3,7 +3,9 @@ package com.xayah.core.ui.util
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Circle
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
@@ -20,14 +22,14 @@ import com.xayah.core.ui.theme.value
 import com.xayah.core.ui.theme.withState
 import com.xayah.core.ui.token.SizeTokens
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun OperationState.StateView(enabled: Boolean = true, expanded: Boolean = false, isProcessing: Boolean = false) {
     when (this) {
         OperationState.PROCESSING -> {
             if (isProcessing) {
-                CircularProgressIndicator(
+                LoadingIndicator(
                     modifier = Modifier.size(SizeTokens.Level24),
-                    strokeCap = StrokeCap.Round,
                 )
             } else {
                 CircularProgressIndicator(
