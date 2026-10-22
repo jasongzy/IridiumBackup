@@ -53,7 +53,7 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
         mTaskDao.upsert(this)
     }
 
-    protected suspend fun killApp(killAppOption: KillAppOption, pkg: TaskDetailPackageEntity) = run {
+    protected suspend fun killApp(killAppOption: KillAppOption, pkg: TaskDetailPackageEntity, userId: Int = pkg.packageEntity.userId) = run {
         // Kill the package.
         when (killAppOption) {
             KillAppOption.DISABLED -> {
@@ -62,12 +62,12 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
 
             KillAppOption.OPTION_I -> {
                 log { "Trying to kill ${pkg.packageEntity.packageName}." }
-                BaseUtil.killPackage(context = mContext, userId = pkg.packageEntity.userId, packageName = pkg.packageEntity.packageName)
+                BaseUtil.killPackage(context = mContext, userId = userId, packageName = pkg.packageEntity.packageName)
             }
 
             KillAppOption.OPTION_II, KillAppOption.OPTION_III -> {
                 log { "Trying to kill ${pkg.packageEntity.packageName}." }
-                mRootService.forceStopPackageAsUser(pkg.packageEntity.packageName, pkg.packageEntity.userId)
+                mRootService.forceStopPackageAsUser(pkg.packageEntity.packageName, userId)
             }
         }
     }

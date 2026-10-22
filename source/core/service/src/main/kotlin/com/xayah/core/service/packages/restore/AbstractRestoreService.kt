@@ -114,12 +114,12 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
             executeAtLeast {
                 log { "Current package: ${pkg.packageEntity}" }
 
-                killApp(killAppOption, pkg)
+                val p = pkg.packageEntity
+                val userId = if (restoreUser == -1) p.userId else restoreUser
+                killApp(killAppOption, pkg, userId)
 
                 pkg.update(state = OperationState.PROCESSING)
-                val p = pkg.packageEntity
                 val srcDir = "${mAppsDir}/${p.archivesRelativeDir}"
-                val userId = if (restoreUser == -1) p.userId else restoreUser
                 restore(type = DataType.PACKAGE_APK, userId = userId, p = p, t = pkg, srcDir = srcDir)
                 restore(type = DataType.PACKAGE_USER, userId = userId, p = p, t = pkg, srcDir = srcDir)
                 restore(type = DataType.PACKAGE_USER_DE, userId = userId, p = p, t = pkg, srcDir = srcDir)
