@@ -77,14 +77,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.zip.Deflater
-import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
-import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
 private const val ICON_EXPORT_DIR = "IridiumBackup"
@@ -543,7 +539,11 @@ class DetailsViewModel @Inject constructor(
     fun shareApk() {
         viewModelScope.launch {
             val app = (uiState.value as? Success.App)?.app ?: return@launch
-            val file = withContext(Dispatchers.IO) { prepareAppShareFile(app) }
+            val file = withContext(Dispatchers.IO) {
+                shareMutex.withLock {
+                    prepareAppShareFile(context.externalCacheDir ?: context.cacheDir, app, rootService)
+                }
+            }
             if (file == null) {
                 showToast(R.string.share_apk_failed)
                 return@launch
@@ -699,53 +699,6 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun prepareAppShareFile(app: PackageEntity): File? = shareMutex.withLock {
-        val sources = rootService.getPackageSourceDir(app.packageName, app.userId)
-        if (sources.isEmpty()) return@withLock null
-        val shareDir = File(context.externalCacheDir ?: context.cacheDir, SHARED_APK_DIR)
-        if (!shareDir.exists() && !shareDir.mkdirs()) return@withLock null
-        shareDir.listFiles().orEmpty().forEach { rootService.deleteRecursively(it.path) }
-
-        val label = app.packageInfo.label.ifBlank { app.packageName }
-        val version = app.packageInfo.versionName.ifBlank { app.packageInfo.versionCode.toString() }
-        val fileName = "$label-$version".replace(INVALID_FILE_NAME_CHARS, "_").trim().ifEmpty { app.packageName }
-        if (sources.size == 1) {
-            val target = File(shareDir, "$fileName.apk")
-            if (!rootService.copyTo(sources.first(), target.path, true)) return@withLock null
-            rootService.setAllPermissions(target.path)
-            return@withLock target.takeIf(File::isFile)
-        }
-
-        val stagingDir = File(shareDir, "staging")
-        if (!stagingDir.mkdirs()) return@withLock null
-        val stagedFiles = mutableListOf<File>()
-        for ((index, source) in sources.withIndex()) {
-            val name = if (index == 0) "base.apk" else File(source).name
-            val staged = File(stagingDir, name)
-            if (!rootService.copyTo(source, staged.path, true)) {
-                rootService.deleteRecursively(stagingDir.path)
-                return@withLock null
-            }
-            rootService.setAllPermissions(staged.path)
-            stagedFiles += staged
-        }
-
-        val target = File(shareDir, "$fileName.apks")
-        val created = runCatching {
-            ZipOutputStream(BufferedOutputStream(FileOutputStream(target))).use { output ->
-                output.setLevel(Deflater.NO_COMPRESSION)
-                stagedFiles.forEach { file ->
-                    output.putNextEntry(ZipEntry(file.name).apply { time = file.lastModified() })
-                    file.inputStream().use { it.copyTo(output) }
-                    output.closeEntry()
-                }
-            }
-            true
-        }.getOrDefault(false)
-        rootService.deleteRecursively(stagingDir.path)
-        target.takeIf { created && it.isFile }
-    }
-
     private suspend fun loadAppRuntimeInfo(app: PackageEntity) {
         val info = rootService.getPackageInfoAsUser(app.packageName, 0, app.userId)
         val applicationInfo = info?.applicationInfo
@@ -879,8 +832,6 @@ class DetailsViewModel @Inject constructor(
     private companion object {
         const val APK_MIME_TYPE = "application/vnd.android.package-archive"
         const val BINARY_MIME_TYPE = "application/octet-stream"
-        const val SHARED_APK_DIR = "shared_apk"
-        val INVALID_FILE_NAME_CHARS = Regex("""[\\/:*?"<>|]""")
         val fileUriExposureAttempted = AtomicBoolean(false)
     }
 
