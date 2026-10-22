@@ -98,10 +98,9 @@ class AppIconRepository @Inject constructor(
             if (!rootService.extractArchive(apkArchive, extracted, compression.decompressPara, workspace).result.isSuccess) {
                 return@withLock false
             }
-            val apk = rootService.listFilePaths(extracted, listDirs = false)
-                .firstOrNull { it.endsWith(".apk", ignoreCase = true) }
-                ?: return@withLock false
-            saveApkIconUnlocked(apk, appsDir, packageName)
+            rootService.listFilePaths(extracted, listDirs = false)
+                .filter { it.endsWith(".apk", ignoreCase = true) }
+                .any { saveApkIconUnlocked(it, appsDir, packageName) }
         } finally {
             withContext(NonCancellable) {
                 rootService.deleteRecursively(extracted)
