@@ -74,7 +74,6 @@ class AppRevisionsViewModel @Inject constructor(
                 ids = listOf(appId),
                 dataStates = mapOf(appId to dataStates),
             )
-            directoryRepository.updateSelected()
             val route = if (directoryRepository.querySelectedByDirectoryTypeFlow().first() == null) {
                 MainRoutes.Directory.route
             } else {
