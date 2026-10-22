@@ -20,6 +20,12 @@ interface DirectoryDao {
     @Upsert(entity = DirectoryEntity::class)
     suspend fun upsert(items: List<DirectoryUpsertEntity>)
 
+    @Query("UPDATE DirectoryEntity SET childUsedBytes = :childUsedBytes, availableBytes = :availableBytes, totalBytes = :totalBytes WHERE id = :id")
+    suspend fun updateStats(id: Long, childUsedBytes: Long, availableBytes: Long, totalBytes: Long)
+
+    @Query("UPDATE DirectoryEntity SET type = :type, tags = :tags, error = :error, enabled = :enabled WHERE id = :id")
+    suspend fun updateFileSystem(id: Long, type: String, tags: List<String>, error: String, enabled: Boolean)
+
     @Query("SELECT * FROM DirectoryEntity WHERE active = 1 AND storageType = :storageType ORDER BY parent")
     fun queryActiveDirectoriesFlow(storageType: StorageType): Flow<List<DirectoryEntity>>
 

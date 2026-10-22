@@ -152,7 +152,8 @@ class DirectoryRepository @Inject constructor(
                     entity.type = type
                 }
 
-                directoryDao.upsert(entity)
+                directoryDao.updateStats(entity.id, entity.childUsedBytes, entity.availableBytes, entity.totalBytes)
+                directoryDao.updateFileSystem(entity.id, entity.type, entity.tags, entity.error, entity.enabled)
             }
 
             val selectedDirectory = directoryDao.querySelectedByDirectoryType()
@@ -177,7 +178,7 @@ class DirectoryRepository @Inject constructor(
                 childUsedBytes = rootService.calculateSize(path)
                 availableBytes = statFs.availableBytes
                 totalBytes = statFs.totalBytes
-                directoryDao.upsert(this)
+                directoryDao.updateStats(id, childUsedBytes, availableBytes, totalBytes)
             }
         }
     }
