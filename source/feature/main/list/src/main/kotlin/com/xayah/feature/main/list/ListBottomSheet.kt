@@ -95,7 +95,8 @@ internal fun ListBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState()
     val onDismissRequest: () -> Unit = {
-        coroutineScope.launch { sheetState.hide() }.invokeOnCompletion {
+        coroutineScope.launch {
+            sheetState.hide()
             if (!sheetState.isVisible) {
                 viewModel.setShowFilterSheet(false)
             }
@@ -124,7 +125,8 @@ internal fun ListBottomSheet(
                 isShow = uiState.showDataItemsSheet,
                 sheetState = dataItemsSheetState,
                 onDismissRequest = {
-                    coroutineScope.launch { dataItemsSheetState.hide() }.invokeOnCompletion {
+                    coroutineScope.launch {
+                        dataItemsSheetState.hide()
                         if (!dataItemsSheetState.isVisible) {
                             viewModel.setShowDataItemsSheet(false)
                         }

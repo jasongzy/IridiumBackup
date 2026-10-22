@@ -150,7 +150,8 @@ fun AppDetails(
     var editNote by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val onDismissRequest: () -> Unit = {
-        coroutineScope.launch { sheetState.hide() }.invokeOnCompletion {
+        coroutineScope.launch {
+            sheetState.hide()
             if (!sheetState.isVisible) {
                 isShow = false
             }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
@@ -22,6 +23,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -29,7 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -48,30 +49,22 @@ fun FullscreenModalBottomSheet(
     sheetState: SheetState = rememberModalBottomSheetState(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val maxHeight = LocalConfiguration.current.screenHeightDp
-    with(LocalDensity.current) {
-        ModalBottomSheet(
-            onDismissRequest = onDismissRequest,
-            sheetState = sheetState,
-            dragHandle = {
-                TopAppBar(
-                    title = { Text(text = title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    actions = actions,
-                )
-            },
-            contentWindowInsets = { WindowInsets.ime }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(
-                        maxHeight.dp - WindowInsets.safeDrawing
-                            .getTop(this@with)
-                            .toDp()
-                    )
-            ) {
-                content()
-            }
+    ModalBottomSheet(
+        modifier = Modifier.fillMaxHeight(),
+        onDismissRequest = {
+            if (sheetState.targetValue == SheetValue.Hidden) onDismissRequest()
+        },
+        sheetState = sheetState,
+        dragHandle = {
+            TopAppBar(
+                title = { Text(text = title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                actions = actions,
+            )
+        },
+        contentWindowInsets = { WindowInsets.ime }
+    ) {
+        Column(Modifier.fillMaxWidth().weight(1f)) {
+            content()
         }
     }
 }
@@ -85,7 +78,9 @@ fun ModalBottomSheet(
 ) {
     with(LocalDensity.current) {
         ModalBottomSheet(
-            onDismissRequest = onDismissRequest,
+            onDismissRequest = {
+                if (sheetState.targetValue == SheetValue.Hidden) onDismissRequest()
+            },
             sheetState = sheetState,
             contentWindowInsets = { remember { WindowInsets(0, 0, 0, 0) } }
         ) {
