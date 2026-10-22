@@ -29,20 +29,15 @@ object FileUtil {
         }
     }
 
-    private fun calculateSizeApi24(path: String): Long {
-        val file = File(path)
-        if (!file.exists()) {
+    internal fun calculateSizeApi24(path: String): Long {
+        val stat = try {
+            Os.lstat(path)
+        } catch (_: ErrnoException) {
             return 0
         }
-        var size: Long = 0
-        if (file.isFile) {
-            size += file.length()
-        } else if (file.isDirectory) {
-            for (item in file.listFiles()!!) {
-                size += calculateSizeApi24(item.absolutePath)
-            }
-        }
-        return size
+        return if (OsConstants.S_ISDIR(stat.st_mode)) {
+            File(path).listFiles()?.sumOf { calculateSizeApi24(it.path) } ?: 0
+        } else stat.st_size
     }
 
     @TargetApi(Build.VERSION_CODES.O)
