@@ -178,13 +178,22 @@ fun PageProcessing(
             ) {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = (uiState.state == OperationState.IDLE && !autoStart) || uiState.state == OperationState.DONE || uiState.state == OperationState.ERROR,
+                    enabled = when (uiState.state) {
+                        OperationState.IDLE -> !autoStart
+                        OperationState.PROCESSING, OperationState.DONE, OperationState.ERROR -> true
+                        else -> false
+                    },
                     onClick = {
                         if (uiState.state == OperationState.IDLE) viewModel.emitIntentOnIO(ProcessingUiIntent.Process)
                         else onBack()
                     },
                 ) {
-                    AnimatedTextContainer(targetState = if (uiState.state == OperationState.DONE || uiState.state == OperationState.ERROR) stringResource(id = R.string.finish) else stringResource(id = R.string._continue)) { text ->
+                    val actionText = when (uiState.state) {
+                        OperationState.PROCESSING -> R.string.cancel
+                        OperationState.DONE, OperationState.ERROR -> R.string.finish
+                        else -> R.string._continue
+                    }
+                    AnimatedTextContainer(targetState = stringResource(actionText)) { text ->
                         Text(text = text)
                     }
                 }
