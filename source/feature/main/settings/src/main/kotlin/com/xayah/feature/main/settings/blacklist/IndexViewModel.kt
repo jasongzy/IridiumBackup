@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 data class IndexUiState(
-    val selectAll: Boolean,
     val appIds: Set<Long>,
     val fileIds: Set<Long>,
 ) : UiState
@@ -35,7 +34,6 @@ class IndexViewModel @Inject constructor(
     private val mediaRepo: MediaRepository,
 ) : BaseViewModel<IndexUiState, IndexUiIntent, IndexUiEffect>(
     IndexUiState(
-        selectAll = false,
         appIds = setOf(),
         fileIds = setOf()
     )
@@ -43,43 +41,38 @@ class IndexViewModel @Inject constructor(
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
             is IndexUiIntent.SelectApp -> {
-                if (intent.id in state.appIds) {
-                    emitState(state.copy(appIds = state.appIds.toMutableSet().apply { remove(intent.id) }))
-                } else {
-                    emitState(state.copy(appIds = state.appIds.toMutableSet().apply { add(intent.id) }))
+                updateState {
+                    it.copy(appIds = if (intent.id in it.appIds) it.appIds - intent.id else it.appIds + intent.id)
                 }
             }
 
             is IndexUiIntent.SelectFile -> {
-                if (intent.id in state.fileIds) {
-                    emitState(state.copy(fileIds = state.fileIds.toMutableSet().apply { remove(intent.id) }))
-                } else {
-                    emitState(state.copy(fileIds = state.fileIds.toMutableSet().apply { add(intent.id) }))
+                updateState {
+                    it.copy(fileIds = if (intent.id in it.fileIds) it.fileIds - intent.id else it.fileIds + intent.id)
                 }
             }
 
             is IndexUiIntent.SelectAll -> {
-                emitState(
-                    state.copy(
-                        selectAll = state.selectAll.not(),
-                        appIds = if (state.selectAll.not()) packagesState.value.map { it.id }.toSet() else setOf(),
-                        fileIds = if (state.selectAll.not()) mediumState.value.map { it.id }.toSet() else setOf(),
+                val appIds = packagesState.value.mapTo(mutableSetOf()) { it.id }
+                val fileIds = mediumState.value.mapTo(mutableSetOf()) { it.id }
+                updateState {
+                    val allSelected = it.appIds.containsAll(appIds) && it.fileIds.containsAll(fileIds)
+                    it.copy(
+                        appIds = if (allSelected) emptySet() else appIds,
+                        fileIds = if (allSelected) emptySet() else fileIds,
                     )
-                )
+                }
             }
 
             is IndexUiIntent.RemoveSelected -> {
-                val appIds = state.appIds.toMutableSet()
-                state.appIds.forEach {
-                    packageRepo.setBlocked(it, false)
-                    appIds.remove(it)
+                state.appIds.forEach { id ->
+                    packageRepo.setBlocked(id, false)
+                    updateState { it.copy(appIds = it.appIds - id) }
                 }
-                val fileIds = state.fileIds.toMutableSet()
-                state.fileIds.forEach {
-                    mediaRepo.setBlocked(it, false)
-                    fileIds.remove(it)
+                state.fileIds.forEach { id ->
+                    mediaRepo.setBlocked(id, false)
+                    updateState { it.copy(fileIds = it.fileIds - id) }
                 }
-                emitState(state.copy(appIds = appIds, fileIds = fileIds))
             }
         }
     }

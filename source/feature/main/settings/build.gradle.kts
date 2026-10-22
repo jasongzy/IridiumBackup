@@ -2,10 +2,12 @@ plugins {
     alias(libs.plugins.library.common)
     alias(libs.plugins.library.hilt)
     alias(libs.plugins.library.compose)
+    alias(libs.plugins.library.androidTest)
 }
 
 android {
     namespace = "com.xayah.feature.main.settings"
+    packaging.resources.excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
 }
 
 dependencies {
@@ -38,4 +40,7 @@ dependencies {
 
     // Coil
     implementation(libs.coil.compose)
+
+    androidTestImplementation(project(":core:database"))
+    androidTestImplementation(libs.androidx.room.runtime)
 }
