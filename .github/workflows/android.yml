@@ -100,11 +100,11 @@ jobs:
           test -n "$apk"
           test -n "$apksigner"
           for abi in arm64-v8a armeabi-v7a x86_64 x86; do
-            unzip -Z1 "$apk" | grep -Fxq "assets/$abi/bin.zip"
+            unzip -Z1 "$apk" | grep -Fx "assets/$abi/bin.zip" > /dev/null
           done
           "$apksigner" verify --verbose --print-certs "$apk"
           cp "$apk" "../$output"
-          sha256sum "../$output" > "../${output}.sha256"
+          (cd .. && sha256sum "$output" > "${output}.sha256")
       - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.APP_NAME }}-${{ github.ref_name }}
