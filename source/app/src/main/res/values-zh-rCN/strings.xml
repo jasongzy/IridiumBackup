@@ -561,7 +561,7 @@
     <string name="dismiss">取消</string>
     <string name="clear">清除</string>
     <string name="toggle_password_visibility">切换密码可见性</string>
-    <string name="permissions_screen_desc">数据备份需要以下权限才能运行。如果拒绝，某些功能将无法正常运行</string>
+    <string name="permissions_screen_desc">铱备份需要以下权限才能运行。如果拒绝，某些功能将无法正常运行</string>
     <string name="next">下一步</string>
     <string name="back">返回</string>
     <string name="root_desc">此应用程序允许您对设备进行完整备份，需要Root（超级用户）权限才能访问标准应用程序无法访问的系统文件和设置</string>
