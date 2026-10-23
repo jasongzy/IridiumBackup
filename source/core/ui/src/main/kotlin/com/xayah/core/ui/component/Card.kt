@@ -27,7 +27,9 @@ import androidx.compose.material.icons.rounded.Circle
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ripple
@@ -43,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -126,6 +127,7 @@ fun Card(
 
 @ExperimentalMaterial3Api
 @ExperimentalFoundationApi
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ProcessingCard(
     modifier: Modifier = Modifier,
@@ -178,9 +180,8 @@ fun ProcessingCard(
                                 LabelSmallText(text = "${successCount + failedCount}/${totalCount}", color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value.withState(enabled))
                             }
                             if (state == OperationState.PROCESSING) {
-                                CircularProgressIndicator(
+                                LoadingIndicator(
                                     modifier = Modifier.size(SizeTokens.Level24),
-                                    strokeCap = StrokeCap.Round,
                                 )
                             }
                             Icon(

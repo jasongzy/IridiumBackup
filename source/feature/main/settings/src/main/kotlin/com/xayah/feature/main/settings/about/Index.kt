@@ -21,6 +21,7 @@ import com.xayah.core.ui.component.AppIcon
 import com.xayah.core.ui.component.BodyMediumText
 import com.xayah.core.ui.component.HeadlineSmallText
 import com.xayah.core.ui.component.OutlinedButtonIconTextButton
+import com.xayah.core.ui.component.paddingTop
 import com.xayah.core.ui.component.paddingVertical
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
 import com.xayah.core.ui.theme.value
@@ -52,6 +53,7 @@ fun PageAboutSettings() {
                 color = ThemedColorSchemeKeyTokens.OnSurface.value,
             )
             BodyMediumText(
+                modifier = Modifier.paddingTop(SizeTokens.Level4),
                 text = "${stringResource(id = R.string.version)} ${BuildConfigUtil.VERSION_NAME} (${BuildConfigUtil.VERSION_CODE})",
                 color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value,
             )
