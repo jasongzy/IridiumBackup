@@ -122,7 +122,7 @@ fun PageBackupSettings() {
                 )
                 Switchable(
                     key = KeyBackupItself,
-                    defValue = false,
+                    defValue = true,
                     title = stringResource(id = R.string.backup_itself),
                     checkedText = stringResource(id = R.string.backup_itself_desc),
                 )

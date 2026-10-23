@@ -185,6 +185,10 @@ class RemoteRootService(private val context: Context) {
     suspend fun copyTo(path: String, targetPath: String, overwrite: Boolean): Boolean =
         runCatching { getService().copyTo(path, targetPath, overwrite) }.onFailure(onFailure).getOrElse { false }
 
+    suspend fun archiveApks(paths: List<String>, targetPath: String): Boolean = withIOContext {
+        runCatching { getService().archiveApks(paths.toTypedArray(), targetPath) }.onFailure(onFailure).getOrDefault(false)
+    }
+
     suspend fun hasZipEntry(path: String, entries: List<String>): Boolean =
         runCatching { getService().hasZipEntry(path, entries.toTypedArray()) }.onFailure(onFailure).getOrElse { false }
 

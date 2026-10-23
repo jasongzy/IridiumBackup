@@ -1,8 +1,6 @@
 package com.xayah.core.service.util
 
 import android.content.Context
-import android.os.Build
-import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.LabelsRepo
@@ -19,7 +17,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.ConfigsConfigurationsName
 import com.xayah.core.util.LogUtil
-import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.Tar
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -33,7 +30,6 @@ class CommonBackupUtil @Inject constructor(
     private val cloudRepo: CloudRepository,
     private val labelsRepo: LabelsRepo,
     private val appBackupRepository: AppBackupRepository,
-    private val pathUtil: PathUtil,
     private val rootService: RemoteRootService,
 ) {
     companion object {
@@ -46,45 +42,21 @@ class CommonBackupUtil @Inject constructor(
         msg
     }
 
-    fun getItselfDst(dstDir: String) = "${dstDir}/IridiumBackup.apk"
+    fun getItselfDst(dstDir: String) = "${dstDir}/IridiumBackup.zip"
 
     suspend fun backupItself(dstDir: String): ShellResult = run {
         log { "Backing up itself..." }
 
         val packageName = context.packageName
-        var isSuccess = true
-        val out = mutableListOf<String>()
         val sourceDirList = rootService.getPackageSourceDir(packageName, android.os.Process.myUid() / 100000)
-        if (sourceDirList.isNotEmpty()) {
-            val apkPath = PathUtil.getParentPath(sourceDirList[0])
-            val path = "${apkPath}/base.apk"
-            val targetPath = getItselfDst(dstDir = dstDir)
-
-            if (rootService.exists(targetPath) && (rootService.getPackageArchiveInfo(targetPath)
-                    ?.let {
-                        BuildConfigUtil.VERSION_CODE == if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                            it.longVersionCode
-                        } else {
-                            it.versionCode.toLong()
-                        }
-                    } == true)
-            ) {
-                out.add(log { "$targetPath exists, skip." })
-            } else {
-                isSuccess = rootService.copyTo(path = path, targetPath = targetPath, overwrite = true)
-                if (isSuccess.not()) {
-                    out.add(log { "Failed to copy $path to $targetPath." })
-                } else {
-                    rootService.setAllPermissions(targetPath)
-                    out.add(log { "Copied from $path to $targetPath." })
-                }
-            }
-        } else {
-            isSuccess = false
-            out.add(log { "Failed to get apk path of $packageName." })
+        val targetPath = getItselfDst(dstDir)
+        val isSuccess = sourceDirList.isNotEmpty() && rootService.archiveApks(sourceDirList, targetPath)
+        val message = when {
+            sourceDirList.isEmpty() -> "Failed to get APK paths of $packageName."
+            isSuccess -> "Saved APK archive to $targetPath."
+            else -> "Failed to save APK archive to $targetPath."
         }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
+        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = listOf(log { message }))
     }
 
     suspend fun testArchive(src: String, ct: CompressionType) = run {

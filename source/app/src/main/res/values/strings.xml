@@ -99,7 +99,7 @@
     <string name="restore_completed">Restoring completed</string>
     <string name="backup">Backup</string>
     <string name="backup_itself">Backup itself</string>
-    <string name="backup_itself_desc">Copy the APK to the backup folder after backing up</string>
+    <string name="backup_itself_desc">Save a fresh ZIP of the app APK to the backup folder after each backup</string>
     <string name="compression_test">Compression test</string>
     <string name="compression_test_desc">Check whether compressed archives work after creation</string>
     <string name="reset_backup_list">Reset backup list</string>

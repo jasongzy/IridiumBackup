@@ -14,6 +14,7 @@ interface IRemoteRootService {
     boolean mkdirsWithin(String root, String path);
     boolean copyRecursively(String path, String targetPath, boolean overwrite);
     boolean copyTo(String path, String targetPath, boolean overwrite);
+    boolean archiveApks(in String[] paths, String targetPath);
     boolean createHardLink(String path, String targetPath);
     int restoreArchiveLinks(String linkDir, String destination);
     ArchiveExtractionParcelable extractArchive(String source, String destination, String compression, String workspace, String cleanDestination, String requiredPrefix, in String[] excludedPathPrefixes, in String[] excludedNamePrefixes, boolean preservePermissions, boolean ignoreModificationTime);

@@ -95,7 +95,7 @@
     <string name="restore_completed">恢复完成</string>
     <string name="backup">备份</string>
     <string name="backup_itself">备份自身</string>
-    <string name="backup_itself_desc">备份后自动复制安装包至备份目录</string>
+    <string name="backup_itself_desc">每次备份后重新将自身安装包打包为 ZIP，保存至备份目录</string>
     <string name="compression_test">压缩测试</string>
     <string name="compression_test_desc">压缩后立即测试压缩包是否损坏</string>
     <string name="reset_backup_list">重置备份列表</string>

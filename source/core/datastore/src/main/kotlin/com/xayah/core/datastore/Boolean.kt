@@ -19,7 +19,7 @@ val KeyFastSameVersionBackup = booleanPreferencesKey("fast_same_version_backup")
 
 // -----------------------------------------Read-----------------------------------------
 fun Context.readMonet() = readStoreBoolean(key = KeyMonet, defValue = true)
-fun Context.readBackupItself() = readStoreBoolean(key = KeyBackupItself, defValue = false)
+fun Context.readBackupItself() = readStoreBoolean(key = KeyBackupItself, defValue = true)
 fun Context.readCompressionTest() = readStoreBoolean(key = KeyCompressionTest, defValue = true)
 fun Context.readFollowSymlinks() = readStoreBoolean(key = KeyFollowSymlinks, defValue = false)
 fun Context.readCleanRestoring() = readStoreBoolean(key = KeyCleanRestoring, defValue = true)

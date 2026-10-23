@@ -138,6 +138,10 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         }
     }
 
+    override fun archiveApks(paths: Array<out String>, targetPath: String): Boolean = synchronized(lock) {
+        tryWithBoolean { writeApkArchive(paths.map(::File), File(targetPath)) }
+    }
+
     override fun hasZipEntry(path: String, entries: Array<out String>): Boolean = synchronized(lock) {
         tryOn(
             block = { ZipFile(path).use { archive -> entries.any { archive.getEntry(it) != null } } },
