@@ -42,7 +42,7 @@ class BackupRecordingTest {
                 indexInfo.opType = OpType.BACKUP
             }
             packages.upsert(app)
-            val requests = BackupRequestStore(packages)
+            val requests = BackupRequestStore(context, packages)
             val temporaryScope = app.dataStates.copy(apkState = DataState.NotSelected)
             requests.prepare(listOf(app.id), mapOf(app.id to temporaryScope))
             val request = requests.packages.value.single()

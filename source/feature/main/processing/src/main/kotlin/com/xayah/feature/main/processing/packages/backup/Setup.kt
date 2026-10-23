@@ -37,7 +37,6 @@ import androidx.compose.ui.res.vectorResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.xayah.core.datastore.KeyAutoScreenOff
-import com.xayah.core.datastore.KeyBackupConfigs
 import com.xayah.core.model.StorageMode
 import com.xayah.core.ui.component.Clickable
 import com.xayah.core.ui.component.LocalSlotScope
@@ -76,6 +75,7 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
     val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val packages by viewModel.packages.collectAsStateWithLifecycle()
     val packagesSize by viewModel.packagesSize.collectAsStateWithLifecycle()
+    val backupOptions by viewModel.backupOptions.collectAsStateWithLifecycle()
 
     LaunchedEffect(null) {
         viewModel.emitIntentOnIO(UpdateApps)
@@ -187,10 +187,18 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
                     checkedText = stringResource(id = R.string.auto_screen_off_desc),
                 )
                 Switchable(
-                    key = KeyBackupConfigs,
-                    defValue = true,
+                    enabled = !isStarting,
+                    checked = backupOptions.backupItself,
+                    title = stringResource(id = R.string.backup_itself),
+                    checkedText = stringResource(id = R.string.backup_itself_desc),
+                    onCheckedChange = { viewModel.setBackupOptions(backupOptions.copy(backupItself = !it)) },
+                )
+                Switchable(
+                    enabled = !isStarting,
+                    checked = backupOptions.backupConfigs,
                     title = stringResource(id = R.string.backup_configs),
                     checkedText = stringResource(id = R.string.backup_configs_desc),
+                    onCheckedChange = { viewModel.setBackupOptions(backupOptions.copy(backupConfigs = !it)) },
                 )
             }
         }

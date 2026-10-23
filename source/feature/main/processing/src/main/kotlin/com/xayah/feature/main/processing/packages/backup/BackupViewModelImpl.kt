@@ -45,6 +45,12 @@ class BackupViewModelImpl @Inject constructor(
     mLocalService: ProcessingServiceProxyLocalImpl,
     mCloudService: ProcessingServiceProxyCloudImpl,
 ) : AbstractPackagesProcessingViewModel(mContext, mRootService, taskRepo, mLocalService, mCloudService) {
+    val backupOptions = backupRequestStore.options
+
+    fun setBackupOptions(options: BackupRequestStore.Options) {
+        if (!isStarting.value) backupRequestStore.setOptions(options)
+    }
+
     fun selectStorage(index: Int) {
         updateState { it.copy(storageIndex = index, storageType = if (index == 0) StorageMode.Local else StorageMode.Cloud) }
     }

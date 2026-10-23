@@ -4,8 +4,6 @@ import android.annotation.SuppressLint
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.BackupRequestStore
-import com.xayah.core.datastore.readBackupConfigs
-import com.xayah.core.datastore.readBackupItself
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.saveLastBackupTime
 import com.xayah.core.model.DataType
@@ -37,6 +35,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 internal abstract class AbstractBackupService : AbstractPackagesService() {
+    private lateinit var backupOptions: BackupRequestStore.Options
+
     override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) {
         entities.apply {
             add(ProcessingInfoEntity(
@@ -73,6 +73,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
     @SuppressLint("StringFormatInvalid")
     override suspend fun onInitializing() {
+        backupOptions = mBackupRequestStore.options.value
         val packages = mBackupRequestStore.packages.value
         packages.forEach { pkg ->
             mPkgEntities.add(
@@ -298,7 +299,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     mContext.getString(R.string.backing_up),
                     mContext.getString(R.string.backup_itself)
                 )
-                if (mContext.readBackupItself().first()) {
+                if (backupOptions.backupItself) {
                     log { "Backup itself enabled." }
                     mCommonBackupUtil.backupItself(dstDir = mRootDir).apply {
                         entity.set(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = outString)
@@ -322,7 +323,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
                 var isSuccess = true
                 val out = mutableListOf<String>()
-                if (mContext.readBackupConfigs().first()) {
+                if (backupOptions.backupConfigs) {
                     log { "Backup configs enabled." }
                     mCommonBackupUtil.backupConfigs(dstDir = mConfigsDir).also { result ->
                         if (result.isSuccess.not()) {

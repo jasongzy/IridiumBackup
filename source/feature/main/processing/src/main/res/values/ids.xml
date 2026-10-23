@@ -87,6 +87,8 @@
     <item name="visit_details" type="string" />
     <item name="backup_configs" type="string" />
     <item name="backup_configs_desc" type="string" />
+    <item name="backup_itself" type="string" />
+    <item name="backup_itself_desc" type="string" />
 
     <item name="backup_sort_type_items_apps" type="array" />
     <item name="flag_type_items" type="array" />
