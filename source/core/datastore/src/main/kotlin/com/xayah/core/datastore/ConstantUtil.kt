@@ -32,7 +32,7 @@ object ConstantUtil {
         "Download" to "${DEFAULT_PATH_PARENT}/Download",
     )
 
-    const val GITHUB_LINK = "https://github.com/jasongzy/Android-DataBackup"
+    const val GITHUB_LINK = "https://github.com/jasongzy/IridiumBackup"
 
     const val FLAVOR_PREMIUM = "premium"
 }

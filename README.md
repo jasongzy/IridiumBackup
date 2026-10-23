@@ -21,7 +21,7 @@ Iridium Backup is a modern, native Android backup tool that carries forward the 
 
 ## 📥 Download
 
-Download the universal APK from the [latest GitHub release](https://github.com/jasongzy/Android-DataBackup/releases/latest).
+Download the universal APK from the [latest GitHub release](https://github.com/jasongzy/IridiumBackup/releases/latest).
 
 - Android 7.0 or newer
 - Root access through a compatible root solution

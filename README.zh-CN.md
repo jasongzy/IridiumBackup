@@ -21,7 +21,7 @@
 
 ## 📥 下载
 
-请从 [GitHub 最新版本](https://github.com/jasongzy/Android-DataBackup/releases/latest) 下载通用 APK。
+请从 [GitHub 最新版本](https://github.com/jasongzy/IridiumBackup/releases/latest) 下载通用 APK。
 
 - Android 7.0 或更高版本
 - 通过兼容的 Root 方案获得超级用户权限
