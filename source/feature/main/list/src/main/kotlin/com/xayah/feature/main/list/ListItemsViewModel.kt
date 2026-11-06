@@ -145,11 +145,7 @@ class ListItemsViewModel @Inject constructor(
                 .toList()
 
             val filteredItems = (installedItems + archivedItems).asSequence()
-                .filter { item ->
-                    item.app.label.contains(listData.searchQuery, ignoreCase = true) ||
-                        item.app.packageName.contains(listData.searchQuery, ignoreCase = true) ||
-                        item.notes.contains(listData.searchQuery, ignoreCase = true)
-                }
+                .filter(appSearchPredicate(listData.searchQuery))
                 .filter { if (it.app.isFrozen) listData.filters.frozenApps else listData.filters.unfrozenApps }
                 .filter { listData.filters.matchesXposed(it.app.isXposedModule) }
                 .filter { listData.filters.hasBackups || it.revisionCount == 0 }
@@ -321,3 +317,14 @@ data class AppListItem(
     val labels: List<ColoredLabel>,
     val notes: String,
 )
+
+internal fun appSearchPredicate(query: String): (AppListItem) -> Boolean {
+    val terms = query.split(Regex("[\\s\\p{Z}]+")).filter(String::isNotEmpty)
+    return { item ->
+        terms.all { term ->
+            item.app.label.contains(term, ignoreCase = true) ||
+                item.app.packageName.contains(term, ignoreCase = true) ||
+                item.notes.contains(term, ignoreCase = true)
+        }
+    }
+}
