@@ -20,15 +20,23 @@ class BackupManifestTest {
     }
 
     @Test
-    fun manifestEntriesStayWithinTheRevisionDirectory() {
+    fun manifestEntriesMustBeSafeAndMatchTheDeclaredContents() {
         val manifest = BackupManifest(1, "com.example", 0, 1234, "1.0", 1, 1, files = null)
-        val valid = manifest.copy(files = listOf(BackupManifestFile("apk.tar.zst", 1, "digest")))
+        val apk = BackupManifestFile("apk.tar.zst", 1, "a".repeat(64))
+        val config = apk.copy(name = "package_restore_config.json")
+        val valid = manifest.copy(files = listOf(apk, config))
         assertTrue(valid.hasValidFileEntries())
         assertFalse(manifest.hasValidFileEntries())
         listOf("", ".", "..", "../../Download/file", "/absolute", "folder\\file").forEach { name ->
-            assertFalse(manifest.copy(files = listOf(BackupManifestFile(name, 1, "digest"))).hasValidFileEntries())
+            assertFalse(valid.copy(files = listOf(apk, config, apk.copy(name = name))).hasValidFileEntries())
         }
-        val malformed = Gson().fromJson(Gson().toJson(valid).replace("[{", "[null,{"), BackupManifest::class.java)
-        assertFalse(malformed.hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(config)).hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(apk)).hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(apk, config, apk)).hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(apk.copy(sha256 = ""), config)).hasValidFileEntries())
+        val json = Gson().toJson(valid)
+        for (malformed in listOf(json.replace("[{", "[null,{"), json.replaceFirst("\"${apk.sha256}\"", "null"))) {
+            assertFalse(Gson().fromJson(malformed, BackupManifest::class.java).hasValidFileEntries())
+        }
     }
 }

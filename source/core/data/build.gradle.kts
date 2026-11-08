@@ -40,4 +40,5 @@ dependencies {
     implementation(libs.androidx.work.runtime.ktx)
 
     androidTestImplementation(libs.androidx.room.runtime)
+    testImplementation(libs.junit)
 }

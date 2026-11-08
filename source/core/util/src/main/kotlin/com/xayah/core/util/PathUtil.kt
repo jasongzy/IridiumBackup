@@ -3,6 +3,7 @@ package com.xayah.core.util
 import android.annotation.SuppressLint
 import android.content.Context
 import com.xayah.core.datastore.readBackupSavePath
+import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.util.command.SELinux
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -17,7 +18,6 @@ const val ApksRelativeDir = "apks"
 const val AppsRelativeDir = "apps"
 const val FilesRelativeDir = "files"
 const val ConfigsRelativeDir = "configs"
-const val ConfigsPackageRestoreName = "package_restore_config.json"
 const val BackupManifestName = "backup_manifest.json"
 const val AppIconName = "icon.bin"
 const val ConfigsMediaRestoreName = "media_restore_config.json"
@@ -111,7 +111,7 @@ class PathUtil @Inject constructor(
 
     private fun getAppsDir(parent: String): String = "${parent}/${getAppsRelativeDir()}"
     private fun getFilesDir(parent: String): String = "${parent}/${getFilesRelativeDir()}"
-    fun getLocalBackupAppsDir(): String = getAppsDir(parent = context.localBackupSaveDir())
+    fun getLocalBackupAppsDir(backupDir: String = context.localBackupSaveDir()): String = getAppsDir(parent = backupDir)
     fun getLocalBackupAppIconPath(packageName: String): String = getAppIconPath(getLocalBackupAppsDir(), packageName)
     fun getCloudTmpAppsDir(): String = getAppsDir(parent = context.cloudTmpAbsoluteDir())
     fun getCloudRemoteAppsDir(remote: String): String = getAppsDir(parent = remote)

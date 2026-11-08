@@ -68,4 +68,5 @@ interface IRemoteRootService {
     boolean forceStopPackageIfRunning(String packageName, int userId);
     ParcelFileDescriptor readDirectory(String path, boolean includeFiles);
     boolean createDirectory(String path);
+    boolean removeEntry(String path, boolean directory);
 }

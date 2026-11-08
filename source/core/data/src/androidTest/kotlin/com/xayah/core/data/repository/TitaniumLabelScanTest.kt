@@ -33,8 +33,8 @@ class TitaniumLabelScanTest {
             SQLiteDatabase.openOrCreateDatabase(source, null).use { db ->
                 db.execSQL("CREATE TABLE labels (_id INTEGER, labelName TEXT, labelColor INTEGER)")
                 db.execSQL("CREATE TABLE packages (id_label INTEGER, packageName TEXT)")
-                db.execSQL("INSERT INTO labels VALUES (1, 'tag', 255)")
-                db.execSQL("INSERT INTO packages VALUES (1, 'com.example.secondary'), (1, 'com.example.revision')")
+                db.execSQL("INSERT INTO labels VALUES (1, 'tag', 255), (2, 'tag', 128)")
+                db.execSQL("INSERT INTO packages VALUES (1, 'com.example.secondary'), (2, 'com.example.revision'), (2, 'com.example.secondary')")
             }
             val binder = Binder()
             val remote = Proxy.newProxyInstance(
@@ -69,6 +69,7 @@ class TitaniumLabelScanTest {
 
             val candidates = repository.scanLabels(source.path)
             assertFalse(candidates.single().imported)
+            assertEquals(0xFF0000FFL, candidates.single().color)
             assertEquals(otherRefs.toSet(), labels.getAppRefs().toSet())
 
             val results = repository.importLabels(candidates) { _, _, _ -> }

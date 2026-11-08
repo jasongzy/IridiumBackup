@@ -1,0 +1,3 @@
+<resources>
+    <string name="import_destination_changed">备份目录已更改，请重新扫描后再导入</string>
+</resources>

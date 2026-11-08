@@ -601,7 +601,7 @@
     <string name="search_imports">Search app name or package</string>
     <string name="waiting_to_import">Waiting</string>
     <string name="importing">Importing…</string>
-    <string name="missing_files">Missing: %1$s</string>
+    <string name="missing_files">Missing or empty: %1$s</string>
     <string name="import_backups">Import backups</string>
     <string name="import_labels">Import labels</string>
     <string name="titanium_imported">Imported</string>

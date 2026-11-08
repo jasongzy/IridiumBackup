@@ -79,6 +79,16 @@ object FileUtil {
         }.getOrElse { false }
     }
 
+    fun removeEntry(path: String, directory: Boolean): Boolean {
+        val normalized = normalizeAbsolutePath(path)?.takeUnless(::isProtectedDeletionPath) ?: return false
+        if (hasSymbolicLinkParentApi24(File(normalized))) return false
+        return try {
+            OsConstants.S_ISDIR(Os.lstat(normalized).st_mode) == directory && File(normalized).delete()
+        } catch (error: ErrnoException) {
+            error.errno == OsConstants.ENOENT
+        }
+    }
+
     fun clearEmptyDirectoriesRecursively(path: String): Boolean {
         val normalized = normalizeAbsolutePath(path)?.takeUnless(::isProtectedDeletionPath) ?: return false
         return runCatching {

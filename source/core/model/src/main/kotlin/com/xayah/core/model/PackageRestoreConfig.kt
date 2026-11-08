@@ -12,6 +12,7 @@ import com.xayah.core.model.database.PackageStorageStats
 import kotlinx.serialization.Serializable
 
 const val PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION = 1
+const val ConfigsPackageRestoreName = "package_restore_config.json"
 
 @Serializable
 data class PackageRestoreConfig(

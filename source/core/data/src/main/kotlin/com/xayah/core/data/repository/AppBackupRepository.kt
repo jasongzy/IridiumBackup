@@ -14,12 +14,16 @@ import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.model.CompressionType
+import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION
 import com.xayah.core.model.PackageRestoreConfig
+import com.xayah.core.model.TitaniumSource
+import com.xayah.core.model.archiveContentMask
 import com.xayah.core.model.database.PackageDataStates
+import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.findRetentionRevisions
@@ -27,7 +31,6 @@ import com.xayah.core.model.hasValidFileEntries
 import com.xayah.core.model.matchesRevision
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.rootservice.service.RemoteRootService
-import com.xayah.core.util.ConfigsPackageRestoreName
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
@@ -186,36 +189,31 @@ class AppBackupRepository @Inject constructor(
         createdAt: Long,
         revisionDir: String,
         note: String = "",
-        uploadedFiles: List<BackupManifestFile> = emptyList(),
+        knownFiles: List<BackupManifestFile> = emptyList(),
+        titaniumSource: TitaniumSource? = null,
     ): BackupManifest? {
         val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        val localFiles = rootService.listFilePaths(revisionDir, listFiles = true, listDirs = false)
-            .filterNot { it == manifestPath }
-            .map { path -> getManifestFile(path) ?: return null }
-        val files = (uploadedFiles + localFiles).sortedBy(BackupManifestFile::name)
-        if (files.isEmpty()) return null
-        val contentMask = files.fold(0) { mask, file ->
-            mask or when (file.name.substringBefore('.')) {
-                DataType.PACKAGE_APK.type -> 1
-                DataType.PACKAGE_USER.type -> 2
-                DataType.PACKAGE_USER_DE.type -> 4
-                DataType.PACKAGE_DATA.type -> 8
-                DataType.PACKAGE_OBB.type -> 16
-                DataType.PACKAGE_MEDIA.type -> 32
-                else -> 0
-            }
+        val paths = if (titaniumSource == null) {
+            rootService.listFilePaths(revisionDir, listFiles = true, listDirs = false).filterNot { it == manifestPath }
+        } else {
+            DataType.entries.filter { it.getSelected(app.dataStates) }.map { "$revisionDir/${it.type}.${app.indexInfo.compressionType.suffix}" } +
+                PathUtil.getPackageRestoreConfigDst(revisionDir)
         }
+        val knownNames = knownFiles.mapTo(mutableSetOf()) { it.name }
+        val localFiles = paths.filterNot { PathUtil.getFileName(it) in knownNames }.map { path -> getManifestFile(path) ?: return null }
+        val files = (knownFiles + localFiles).sortedBy(BackupManifestFile::name)
         val manifest = BackupManifest(
             packageName = app.packageName,
             userId = app.userId,
             createdAt = createdAt,
             versionName = app.packageInfo.versionName,
             versionCode = app.packageInfo.versionCode,
-            contentMask = contentMask,
+            contentMask = archiveContentMask(files.map { it.name }),
             note = note.trim(),
             files = files,
+            titaniumSource = titaniumSource,
         )
-        return manifest.takeIf { rootService.writeJson(data = it, dst = manifestPath).isSuccess }
+        return manifest.takeIf { it.hasValidFileEntries() && rootService.writeJson(data = it, dst = manifestPath).isSuccess }
     }
 
     fun rememberVerification(result: VerificationResult) {
@@ -251,9 +249,11 @@ class AppBackupRepository @Inject constructor(
         revisionDir: String,
         compression: CompressionType,
         states: PackageDataStates,
+        knownFiles: List<BackupManifestFile> = emptyList(),
     ) = PackageDataStats().apply {
         suspend fun size(type: DataType, selected: Boolean) = if (selected) {
-            rootService.calculateSize("$revisionDir/${type.type}.${compression.suffix}")
+            val name = "${type.type}.${compression.suffix}"
+            knownFiles.firstOrNull { it.name == name }?.sizeBytes ?: rootService.calculateSize("$revisionDir/$name")
         } else 0L
 
         apkBytes = size(DataType.PACKAGE_APK, states.apkState == DataState.Selected)
@@ -388,10 +388,9 @@ class AppBackupRepository @Inject constructor(
         )
     }
 
-    suspend fun rebuildLocalIndex(onProgress: suspend (Int, Int, Int) -> Unit): RebuildReport {
-        val backupDir = context.localBackupSaveDir()
+    suspend fun rebuildLocalIndex(backupDir: String = context.localBackupSaveDir(), onProgress: suspend (Int, Int, Int) -> Unit): RebuildReport {
         val repositoryId = ":$backupDir"
-        val appsDir = pathUtil.getLocalBackupAppsDir()
+        val appsDir = pathUtil.getLocalBackupAppsDir(backupDir)
         val rebuilt = mutableListOf<Pair<PackageEntity, BackupManifest>>()
         val packageDirs = rootService.listFilePathsChecked(appsDir, listFiles = false, listDirs = true).getOrThrow()
         val revisionDirs = buildList {

@@ -72,6 +72,12 @@ fun PageTitaniumImport() {
     val selectedPath = if (state.mode == ImportMode.BACKUPS) state.backupPath else state.labelPath
     var pickingSource by rememberSaveable { mutableStateOf(false) }
     val selectedCount = if (state.mode == ImportMode.BACKUPS) state.selectedBackupIds.size else state.selectedLabels.size
+    val preview = state.stage == ImportStage.PREVIEW
+    val canImport = preview && state.hasImportableCandidates
+    val emptyPreview = preview && when (state.mode) {
+        ImportMode.BACKUPS -> state.backupCandidates.isEmpty()
+        ImportMode.LABELS -> state.labelCandidates.isEmpty()
+    }
     var showCancelConfirmation by rememberSaveable { mutableStateOf(false) }
     var leaveAfterCancel by rememberSaveable { mutableStateOf(false) }
     var expandedPackages by rememberSaveable { mutableStateOf(emptyList<String>()) }
@@ -81,7 +87,6 @@ fun PageTitaniumImport() {
             leaveAfterCancel = true
             showCancelConfirmation = true
         } else if (!state.cancelling) {
-            viewModel.discardPreview()
             navController.popBackStack()
         }
     }
@@ -102,7 +107,6 @@ fun PageTitaniumImport() {
     LaunchedEffect(state.isBusy, state.cancelling, showCancelConfirmation) {
         if (leaveAfterCancel && !showCancelConfirmation && !state.isBusy && !state.cancelling) {
             leaveAfterCancel = false
-            viewModel.discardPreview()
             navController.popBackStack()
         }
     }
@@ -148,35 +152,40 @@ fun PageTitaniumImport() {
 
             if (state.isBusy) {
                 Column(modifier = Modifier.padding(SizeTokens.Level16)) {
-                    LinearProgressIndicator(
-                        progress = if (state.total == 0) 0f else state.completed.toFloat() / state.total,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        stringResource(
-                            if (state.stage == ImportStage.SCANNING) R.string.titanium_scan_progress else R.string.titanium_import_progress,
-                            state.completed,
-                            state.total,
+                    if (state.stage == ImportStage.IMPORTING && state.mode == ImportMode.BACKUPS && state.total == 0) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text(stringResource(R.string.waiting_to_import))
+                    } else {
+                        LinearProgressIndicator(
+                            progress = if (state.total == 0) 0f else state.completed.toFloat() / state.total,
+                            modifier = Modifier.fillMaxWidth(),
                         )
-                    )
+                        Text(
+                            stringResource(
+                                if (state.stage == ImportStage.SCANNING) R.string.titanium_scan_progress else R.string.titanium_import_progress,
+                                state.completed,
+                                state.total,
+                            )
+                        )
+                    }
                 }
             }
-            state.error?.takeIf { it.isNotEmpty() }?.let {
+            state.error?.let {
                 Text(
                     text = it,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(SizeTokens.Level16),
                 )
             }
-            if (state.stage == ImportStage.PREVIEW) {
+            if (canImport) {
                 SelectionActions(
                     selectedCount = selectedCount,
                     onSelectAll = { viewModel.emitIntentOnMain(TitaniumImportIntent.SelectAll(true)) },
                     onUnselectAll = { viewModel.emitIntentOnMain(TitaniumImportIntent.SelectAll(false)) },
                 )
             }
-            if (state.mode == ImportMode.BACKUPS &&
-                (state.stage == ImportStage.PREVIEW || state.stage == ImportStage.IMPORTING || state.stage == ImportStage.COMPLETE)
+            if (state.mode == ImportMode.BACKUPS && !emptyPreview &&
+                (preview || state.stage == ImportStage.IMPORTING || state.stage == ImportStage.COMPLETE)
             ) {
                 OutlinedTextField(
                     value = state.searchQuery,
@@ -192,17 +201,22 @@ fun PageTitaniumImport() {
 
             LazyColumn(modifier = Modifier.weight(1f)) {
                 when {
+                    emptyPreview -> item {
+                        Text(
+                            stringResource(if (state.mode == ImportMode.BACKUPS) R.string.no_backups_in_source else R.string.no_labels_in_source),
+                            modifier = Modifier.padding(SizeTokens.Level16),
+                        )
+                    }
                     state.stage == ImportStage.PREVIEW && state.mode == ImportMode.BACKUPS -> {
-                        val groups = state.backupCandidates
-                            .filter { it.matches(state.searchQuery) }
-                            .groupBy { it.packageName }.values.sortedBy { it.first().label }
+                        val groups = state.visibleBackups
+                            .groupBy { it.packageName }.values.sortedBy { it.representative().label }
                         items(groups, key = { it.first().packageName }) { candidates ->
                             val packageName = candidates.first().packageName
                             BackupGroupItem(
                                 candidates = candidates,
                                 selectedIds = state.selectedBackupIds,
                                 expanded = packageName in expandedPackages,
-                                onToggleGroup = { viewModel.emitIntentOnMain(TitaniumImportIntent.ToggleBackupGroup(packageName)) },
+                                onSelectGroup = { viewModel.emitIntentOnMain(TitaniumImportIntent.SelectBackupGroup(packageName, it)) },
                                 onToggleExpanded = {
                                     expandedPackages = if (packageName in expandedPackages) expandedPackages - packageName else expandedPackages + packageName
                                 },
@@ -224,8 +238,8 @@ fun PageTitaniumImport() {
                     state.stage == ImportStage.IMPORTING && state.mode == ImportMode.BACKUPS -> {
                         val selected = state.backupCandidates.filter { it.id in state.selectedBackupIds }
                         val resultMap = state.backupResults.associateBy { it.key }
-                        val processingId = selected.getOrNull(state.backupResults.size)?.id
-                        items(selected.filter { it.matches(state.searchQuery) }, key = { it.id }) { candidate ->
+                        val processingId = if (state.total > 0) selected.getOrNull(state.backupResults.size)?.id else null
+                        items(selected.filter { matchesImportSearch(state.searchQuery, it.label, it.packageName) }, key = { it.id }) { candidate ->
                             ImportingBackupItem(candidate, resultMap[candidate.key], candidate.id == processingId)
                             HorizontalDivider()
                         }
@@ -240,7 +254,7 @@ fun PageTitaniumImport() {
                         }
                     }
                     state.stage == ImportStage.COMPLETE && state.mode == ImportMode.BACKUPS -> {
-                        items(state.backupResults.filter { it.matches(state.searchQuery) }, key = { it.key }) { result ->
+                        items(state.backupResults.filter { matchesImportSearch(state.searchQuery, it.label, it.packageName) }, key = { it.key }) { result ->
                             BackupResultItem(result) {
                                 navController.navigateSingle(MainRoutes.AppRevisions.getRoute(result.packageName, 0))
                             }
@@ -260,26 +274,26 @@ fun PageTitaniumImport() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(SizeTokens.Level16),
-                enabled = !state.cancelling && when (state.stage) {
-                    ImportStage.SCANNING, ImportStage.IMPORTING -> true
-                    ImportStage.PREVIEW -> selectedCount > 0
+                enabled = !state.cancelling && when {
+                    state.isBusy -> true
+                    canImport -> selectedCount > 0
                     else -> selectedPath.isNotEmpty()
                 },
                 onClick = {
-                    when (state.stage) {
-                        ImportStage.SCANNING, ImportStage.IMPORTING -> {
+                    when {
+                        state.isBusy -> {
                             leaveAfterCancel = false
                             showCancelConfirmation = true
                         }
-                        ImportStage.PREVIEW -> viewModel.emitIntentOnMain(TitaniumImportIntent.Import)
+                        canImport -> viewModel.emitIntentOnMain(TitaniumImportIntent.Import)
                         else -> viewModel.emitIntentOnMain(TitaniumImportIntent.Scan)
                     }
                 },
             ) {
                 Icon(
-                    imageVector = when (state.stage) {
-                        ImportStage.SCANNING, ImportStage.IMPORTING -> Icons.Outlined.Close
-                        ImportStage.PREVIEW -> if (state.mode == ImportMode.BACKUPS) Icons.Outlined.Archive else Icons.AutoMirrored.Outlined.Label
+                    imageVector = when {
+                        state.isBusy -> Icons.Outlined.Close
+                        canImport -> if (state.mode == ImportMode.BACKUPS) Icons.Outlined.Archive else Icons.AutoMirrored.Outlined.Label
                         else -> Icons.Outlined.Search
                     },
                     contentDescription = null,
@@ -289,7 +303,7 @@ fun PageTitaniumImport() {
                         when {
                             state.cancelling -> R.string.cancelling
                             state.isBusy -> R.string.cancel
-                            state.stage == ImportStage.PREVIEW -> R.string.import_selected
+                            canImport -> R.string.import_selected
                             else -> R.string.scan_source
                         }
                     )
@@ -329,12 +343,6 @@ private val TitaniumImportRepository.BackupCandidate.key: String
 
 private val TitaniumImportRepository.BackupResult.key: String
     get() = "$packageName:$createdAt"
-
-private fun TitaniumImportRepository.BackupCandidate.matches(query: String): Boolean = query.isBlank() ||
-    label.contains(query, ignoreCase = true) || packageName.contains(query, ignoreCase = true)
-
-private fun TitaniumImportRepository.BackupResult.matches(query: String): Boolean = query.isBlank() ||
-    label.contains(query, ignoreCase = true) || packageName.contains(query, ignoreCase = true)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -400,20 +408,22 @@ private fun SelectionActions(selectedCount: Int, onSelectAll: () -> Unit, onUnse
     }
 }
 
+private fun List<TitaniumImportRepository.BackupCandidate>.representative() = firstOrNull { it.scanError == null } ?: first()
+
 @Composable
 private fun BackupGroupItem(
     candidates: List<TitaniumImportRepository.BackupCandidate>,
     selectedIds: Set<String>,
     expanded: Boolean,
-    onToggleGroup: () -> Unit,
+    onSelectGroup: (Boolean) -> Unit,
     onToggleExpanded: () -> Unit,
     onToggleBackup: (String) -> Unit,
 ) {
-    val first = candidates.first()
+    val first = candidates.representative()
     val selectableIds = candidates.filter { it.isComplete }.mapTo(mutableSetOf()) { it.id }
     val selected = selectableIds.count(selectedIds::contains)
     val toggleState = when {
-        selected == 0 || selectableIds.isEmpty() -> ToggleableState.Off
+        selected == 0 -> ToggleableState.Off
         selected == selectableIds.size -> ToggleableState.On
         else -> ToggleableState.Indeterminate
     }
@@ -423,7 +433,7 @@ private fun BackupGroupItem(
         supportingContent = { Text(stringResource(R.string.titanium_backup_versions, candidates.size)) },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TriStateCheckbox(state = toggleState, enabled = selectableIds.isNotEmpty(), onClick = onToggleGroup)
+                TriStateCheckbox(state = toggleState, enabled = selectableIds.isNotEmpty(), onClick = { onSelectGroup(toggleState != ToggleableState.On) })
                 TooltipIconButton(
                     tooltip = stringResource(if (expanded) R.string.collapse_backups else R.string.expand_backups),
                     onClick = onToggleExpanded,
@@ -443,10 +453,15 @@ private fun BackupGroupItem(
                     .padding(start = SizeTokens.Level32)
                     .clickable(enabled = candidate.isComplete) { onToggleBackup(candidate.id) },
                 headlineContent = {
-                    Text(candidate.versionName.ifEmpty { candidate.versionCode.toString() })
+                    val title = if (candidate.scanError != null) File(candidate.metadataPath).name
+                    else candidate.versionName.ifEmpty { candidate.versionCode.toString() }
+                    Text(title)
                 },
                 supportingContent = {
-                    Column {
+                    val scanError = candidate.scanError
+                    if (scanError != null) {
+                        Text(scanError, color = MaterialTheme.colorScheme.error)
+                    } else Column {
                         Text(DateUtil.formatTimestamp(candidate.createdAt, DateUtil.PATTERN_YMD_HMS))
                         Text(
                             buildList {
@@ -458,7 +473,6 @@ private fun BackupGroupItem(
                             text = when {
                                 candidate.imported -> stringResource(R.string.already_imported)
                                 candidate.isComplete -> stringResource(R.string.ready_to_import)
-                                candidate.scanError != null -> candidate.scanError.orEmpty()
                                 else -> stringResource(R.string.missing_files, candidate.missingFiles.joinToString())
                             },
                             color = if (candidate.isComplete) Color.Unspecified else MaterialTheme.colorScheme.error,

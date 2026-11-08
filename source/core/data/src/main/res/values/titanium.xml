@@ -1,0 +1,3 @@
+<resources>
+    <string name="import_destination_changed">The backup location has changed. Scan again before importing.</string>
+</resources>

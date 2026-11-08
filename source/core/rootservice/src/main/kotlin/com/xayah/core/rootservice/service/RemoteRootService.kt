@@ -280,6 +280,9 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun deleteRecursively(path: String): Boolean = runCatching { getService().deleteRecursively(path) }.onFailure(onFailure).getOrElse { false }
 
+    suspend fun removeEntry(path: String, directory: Boolean = false): Boolean =
+        runCatching { getService().removeEntry(path, directory) }.onFailure(onFailure).getOrDefault(false)
+
     suspend fun listFilePaths(path: String, listFiles: Boolean = true, listDirs: Boolean = true): List<String> =
         runCatching { getService().listFilePaths(path, listFiles, listDirs) }.onFailure(onFailure).getOrElse { listOf() }
 

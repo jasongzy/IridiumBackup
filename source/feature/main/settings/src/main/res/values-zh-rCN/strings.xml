@@ -1,0 +1,4 @@
+<resources>
+    <string name="no_backups_in_source">此目录中未找到备份</string>
+    <string name="no_labels_in_source">此数据库中未找到应用标签</string>
+</resources>

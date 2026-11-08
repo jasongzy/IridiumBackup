@@ -1,0 +1,4 @@
+<resources>
+    <string name="no_backups_in_source">No backups found in this folder</string>
+    <string name="no_labels_in_source">No app labels found in this database</string>
+</resources>

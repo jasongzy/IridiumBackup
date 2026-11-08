@@ -236,7 +236,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         val configSaved = mRootService.writeJson(data = restoreEntity.toRestoreConfig(), dst = configDst).isSuccess &&
                             onConfigSaved(path = configDst, archivesRelativeDir = revisionApp.archivesRelativeDir)
                         val manifest = if (configSaved) {
-                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir, uploadedFiles = uploadedManifestFiles)
+                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir, knownFiles = uploadedManifestFiles)
                         } else {
                             null
                         }

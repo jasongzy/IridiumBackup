@@ -189,6 +189,10 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         FileUtil.deleteRecursively(path)
     }
 
+    override fun removeEntry(path: String, directory: Boolean): Boolean = synchronized(lock) {
+        FileUtil.removeEntry(path, directory)
+    }
+
     override fun listFilePaths(path: String, listFiles: Boolean, listDirs: Boolean): List<String> = synchronized(lock) {
         FileUtil.listFilePaths(path = path, listFiles = listFiles, listDirs = listDirs)
     }
