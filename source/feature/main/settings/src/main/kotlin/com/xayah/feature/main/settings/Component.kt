@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,27 +26,61 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.dotlottie.dlplayer.Mode
 import com.lottiefiles.dotlottie.core.compose.ui.DotLottieAnimation
 import com.lottiefiles.dotlottie.core.util.DotLottieSource
+import com.xayah.core.datastore.readKillAppOption
+import com.xayah.core.datastore.saveKillAppOption
+import com.xayah.core.model.KillAppOption
 import com.xayah.core.ui.component.BodyLargeText
 import com.xayah.core.ui.component.InnerTopSpacer
+import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.SecondaryLargeTopBar
+import com.xayah.core.ui.component.Selectable
 import com.xayah.core.ui.component.TitleMediumText
 import com.xayah.core.ui.component.TitleSmallText
 import com.xayah.core.ui.component.paddingBottom
+import com.xayah.core.ui.component.select
 import com.xayah.core.ui.material3.Card
 import com.xayah.core.ui.material3.SnackbarHost
 import com.xayah.core.ui.material3.SnackbarHostState
+import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
 import com.xayah.core.ui.theme.value
 import com.xayah.core.ui.token.SizeTokens
+
+@OptIn(ExperimentalAnimationApi::class)
+@Composable
+internal fun KillAppOptionPreference() {
+    val context = LocalContext.current
+    val dialog = LocalSlotScope.current!!.dialogSlot
+    val current by context.readKillAppOption().collectAsStateWithLifecycle(initialValue = KillAppOption.Default)
+    val names = stringArrayResource(R.array.kill_app_options)
+    val title = stringResource(R.string.kill_app_options)
+    Selectable(title = title, value = stringResource(R.string.kill_app_options_desc), current = names[current.ordinal]) {
+        val items = KillAppOption.entries.map { option ->
+            DialogRadioItem<Unit>(
+                title = names[option.ordinal],
+                desc = when (option) {
+                    KillAppOption.DISABLED -> null
+                    KillAppOption.OPTION_I -> context.getString(R.string.kill_app_option_i_desc)
+                    KillAppOption.OPTION_II -> context.getString(R.string.kill_app_option_ii_desc)
+                    KillAppOption.OPTION_III -> context.getString(R.string.kill_app_option_iii_desc)
+                },
+            )
+        }
+        val (result, index) = dialog.select(title, current.ordinal, items)
+        if (result.isConfirm) context.saveKillAppOption(KillAppOption.entries[index])
+    }
+}
 
 @ExperimentalAnimationApi
 @ExperimentalMaterial3Api

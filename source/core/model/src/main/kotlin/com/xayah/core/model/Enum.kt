@@ -160,7 +160,9 @@ enum class KillAppOption {
     OPTION_II,
     OPTION_III;
 
-    companion object
+    companion object {
+        val Default = OPTION_III
+    }
 }
 
 enum class ProcessingInfoType {

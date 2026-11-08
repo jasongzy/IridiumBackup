@@ -1,7 +1,7 @@
 package com.xayah.core.model
 
 import com.xayah.core.model.util.formatSize
-import com.xayah.core.model.util.indexOf
+import com.xayah.core.model.util.of
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -9,8 +9,11 @@ import org.junit.Test
 
 class UnitTest {
     @Test
-    fun testKillAppOptionIndex() {
-        assertEquals(KillAppOption.OPTION_III, KillAppOption.indexOf(3))
+    fun killAppOptionDefaultsToPauseAndHonorsSavedChoices() {
+        assertEquals(KillAppOption.OPTION_III, KillAppOption.of(""))
+        for (option in KillAppOption.entries) {
+            assertEquals(option, KillAppOption.of(option.name))
+        }
     }
 
     @Test

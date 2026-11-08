@@ -17,6 +17,7 @@ import android.content.pm.PackageManagerHidden
 import android.content.pm.PermissionInfo
 import android.content.pm.UserInfo
 import android.os.Build
+import android.os.IBinder
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import android.os.ServiceManager
@@ -64,6 +65,7 @@ import kotlin.io.path.pathString
 internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRootService.Stub() {
     private val lock = Any()
     private val archiveExtractor = ArchiveExtractor(context)
+    private val pauses = PackagePauses()
     private var systemContext: Context
     private var packageManager: PackageManager
     private var packageManagerHidden: PackageManagerHidden
@@ -638,38 +640,48 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         activityManager.forceStopPackageAsUser(packageName, userId)
     }
 
-    override fun pausePackage(packageName: String, userId: Int): IntArray = synchronized(lock) {
-        if (packageName == context.packageName) return@synchronized intArrayOf()
-        val processManager = systemContext.getSystemService(ActivityManager::class.java)
-        val pids = checkNotNull(processManager.runningAppProcesses)
-            .filter { process ->
-                process.uid / 100000 == userId && process.pkgList?.contains(packageName) == true
+    private fun runningPackagePids(packageName: String, userId: Int): Set<Int> {
+        val manager = systemContext.getSystemService(ActivityManager::class.java)
+        val pids = manager.runningAppProcesses.orEmpty().filter { process ->
+            process.uid / 100000 == userId && process.pkgList?.contains(packageName) == true
+        }.mapTo(mutableSetOf()) { it.pid }
+        val errors = manager.processesInErrorState.orEmpty().filter { it.uid / 100000 == userId }
+        if (errors.isNotEmpty()) {
+            val uid = getPackageUid(packageName, userId)
+            if (uid >= 0 && packageManager.getPackagesForUid(uid)?.singleOrNull() == packageName) {
+                errors.filter { it.uid == uid }.mapTo(pids) { it.pid }
             }
-            .map { process -> process.pid }
-            .toIntArray()
-        val paused = mutableListOf<Int>()
-        try {
-            pids.forEach { pid ->
-                Os.kill(pid, OsConstants.SIGSTOP)
-                paused.add(pid)
-            }
-        } catch (error: Throwable) {
-            paused.forEach { pid -> runCatching { Os.kill(pid, OsConstants.SIGCONT) } }
-            throw error
         }
-        paused.toIntArray()
+        return pids
     }
 
-    override fun resumeProcesses(pids: IntArray): Unit = synchronized(lock) {
-        var error: Throwable? = null
-        pids.forEach { pid ->
-            val failure = runCatching { Os.kill(pid, OsConstants.SIGCONT) }.exceptionOrNull()
-            if (error == null && failure != null && (failure !is ErrnoException || failure.errno != OsConstants.ESRCH)) {
-                error = failure
-            }
+    private fun isPackageRunning(packageName: String, userId: Int, pids: Set<Int> = runningPackagePids(packageName, userId)): Boolean {
+        if (pids.isNotEmpty()) return true
+        val gone = ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE
+        if (activityManager.getPackageImportance(packageName) == gone) return false
+        val uid = try {
+            packageManagerHidden.getPackageInfoAsUser(packageName, 0, userId).applicationInfo!!.uid
+        } catch (_: PackageManager.NameNotFoundException) {
+            return false
         }
-        if (error != null) throw error
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (activityManager.getUidImportance(uid) == gone) return false
+            if (packageManager.getPackagesForUid(uid)?.singleOrNull() == packageName) return true
+        }
+        error("Cannot attribute a running process to $packageName for user $userId")
     }
+
+    override fun pausePackage(packageName: String, userId: Int, owner: IBinder) {
+        require(userId >= 0)
+        if (packageName == context.packageName) return
+        val pids = runningPackagePids(packageName, userId)
+        check(pids.isNotEmpty() || !isPackageRunning(packageName, userId, pids)) { "Running package has no visible PIDs" }
+        pauses.pause(owner, pids)
+    }
+
+    override fun resumePackage(owner: IBinder) = pauses.resume(owner)
+
+    fun closePauses() = pauses.close()
 
     override fun uninstallPackageAsUser(packageName: String, userId: Int): Boolean = synchronized(lock) {
         ShellUtils.fastCmd("pm uninstall --user $userId $packageName").trim() == "Success"

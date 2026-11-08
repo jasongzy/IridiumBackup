@@ -71,15 +71,8 @@ fun SFTPAuthMode.Companion.indexOf(index: Int): SFTPAuthMode = when (index) {
     else -> SFTPAuthMode.PASSWORD
 }
 
-fun KillAppOption.Companion.indexOf(index: Int): KillAppOption = when (index) {
-    1 -> KillAppOption.OPTION_I
-    2 -> KillAppOption.OPTION_II
-    3 -> KillAppOption.OPTION_III
-    else -> KillAppOption.DISABLED
-}
-
 fun KillAppOption.Companion.of(name: String?): KillAppOption =
-    runCatching { KillAppOption.valueOf(name!!.uppercase()) }.getOrDefault(KillAppOption.OPTION_II)
+    KillAppOption.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } ?: KillAppOption.Default
 
 fun Info.set(
     bytes: Long? = null,

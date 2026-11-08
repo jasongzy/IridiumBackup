@@ -20,7 +20,11 @@ class ConfigurationSettingsTest {
             autoScreenOff = !original.autoScreenOff,
             loadSystemApps = !original.loadSystemApps,
             compressionLevel = 3,
-            killAppOption = KillAppOption.OPTION_III.name,
+            killAppOption = if (original.killAppOption == KillAppOption.OPTION_II.name) {
+                KillAppOption.OPTION_III.name
+            } else {
+                KillAppOption.OPTION_II.name
+            },
             fastSameVersionBackup = !original.fastSameVersionBackup,
             backupItself = !original.backupItself,
             backupConfigs = !original.backupConfigs,

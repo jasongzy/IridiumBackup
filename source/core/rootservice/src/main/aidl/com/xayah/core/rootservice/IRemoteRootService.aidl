@@ -52,8 +52,8 @@ interface IRemoteRootService {
     int getScreenOffTimeout();
     void setScreenOffTimeout(int timeout);
     void forceStopPackageAsUser(String packageName, int userId);
-    int[] pausePackage(String packageName, int userId);
-    void resumeProcesses(in int[] pids);
+    void pausePackage(String packageName, int userId, IBinder owner);
+    void resumePackage(IBinder owner);
     boolean uninstallPackageAsUser(String packageName, int userId);
     boolean uninstallPackageKeepingDataAsUser(String packageName, int userId);
     boolean clearPackageDataAsUser(String packageName, int userId);

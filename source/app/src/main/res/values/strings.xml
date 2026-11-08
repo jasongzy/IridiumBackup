@@ -415,12 +415,12 @@
     <string name="translators">Translators</string>
     <string name="translators_desc">We appreciate their efforts</string>
     <string name="no_root_directory">Please do not select the root directory</string>
-    <string name="option_i">Option One</string>
+    <string name="option_i">Option I</string>
     <string name="option_ii">Option II</string>
     <string name="option_iii">Option III</string>
     <string name="disabled">Disabled</string>
     <string name="kill_app_options">Killing app options</string>
-    <string name="kill_app_options_desc">Behavior before backup</string>
+    <string name="kill_app_options_desc">App behavior during backup and restore</string>
     <string name="kill_app_option_i_desc">Stops the app process with the system kill command; the app may restart itself.</string>
     <string name="kill_app_option_ii_desc">Force-stops the app through Android package management; more reliable until the app is opened again.</string>
     <string name="kill_app_option_iii_desc">Pauses the app during backup and resumes it afterward; restores still force-stop the app.</string>

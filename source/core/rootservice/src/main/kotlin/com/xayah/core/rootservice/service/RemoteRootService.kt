@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageInfo
 import android.content.pm.UserInfo
+import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
@@ -30,6 +31,7 @@ import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
 import com.xayah.core.util.withLog
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -73,7 +75,14 @@ class RemoteRootService(private val context: Context) {
                 System.loadLibrary("nativelib")
         }
 
-        override fun onBind(intent: Intent): IBinder = RemoteRootServiceImpl(applicationContext)
+        private val service by lazy { RemoteRootServiceImpl(applicationContext) }
+
+        override fun onBind(intent: Intent): IBinder = service
+
+        override fun onDestroy() {
+            service.closePauses()
+            super.onDestroy()
+        }
     }
 
     private suspend fun bindService(): IRemoteRootService = run {
@@ -401,14 +410,25 @@ class RemoteRootService(private val context: Context) {
     suspend fun forceStopPackageAsUser(packageName: String, userId: Int) =
         runCatching { getService().forceStopPackageAsUser(packageName, userId) }.onFailure(onFailure)
 
-    suspend fun pausePackage(packageName: String, userId: Int): IntArray? =
-        runCatching { getService().pausePackage(packageName, userId) }.onFailure(onFailure).getOrNull()
-
-    suspend fun resumeProcesses(pids: IntArray) {
-        if (runCatching { getService().resumeProcesses(pids) }.isFailure) {
-            mService = null
-            runCatching { getService().resumeProcesses(pids) }.onFailure(onFailure)
+    suspend fun pausePackage(packageName: String, userId: Int): AutoCloseable? = runCatching {
+        val service = getService()
+        val owner = Binder()
+        val pause = AutoCloseable {
+            runCatching { service.resumePackage(owner) }
+                .recoverCatching { service.resumePackage(owner) }
+                .onFailure(onFailure)
         }
+        try {
+            service.pausePackage(packageName, userId, owner)
+            pause
+        } catch (error: Exception) {
+            pause.close()
+            throw error
+        }
+    }.getOrElse {
+        if (it is CancellationException) throw it
+        onFailure(it)
+        null
     }
 
     suspend fun uninstallPackageAsUser(packageName: String, userId: Int): Boolean =

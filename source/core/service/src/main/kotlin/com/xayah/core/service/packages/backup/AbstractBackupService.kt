@@ -31,6 +31,8 @@ import com.xayah.core.util.command.PreparationUtil
 import com.xayah.core.util.withLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
@@ -170,30 +172,23 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
         log { "Kill app option: $killAppOption" }
 
         mPkgEntities.forEach { pkg ->
+            currentCoroutineContext().ensureActive()
             var pendingArchiveDir: String? = null
-            val pausedPids = if (killAppOption == KillAppOption.OPTION_III) {
+            val pause = if (killAppOption == KillAppOption.OPTION_III) {
                 log { "Trying to pause ${pkg.packageEntity.packageName}." }
-                mRootService.pausePackage(pkg.packageEntity.packageName, pkg.packageEntity.userId) ?: run {
-                    log { "Failed to pause ${pkg.packageEntity.packageName}, falling back to force-stop." }
-                    killApp(killAppOption, pkg)
-                    intArrayOf()
-                }
-            } else {
-                killApp(killAppOption, pkg)
-                intArrayOf()
-            }
+                mRootService.pausePackage(pkg.packageEntity.packageName, pkg.packageEntity.userId)
+            } else null
             executeAtLeast(finalizer = {
                 withContext(NonCancellable) {
+                    pause?.close()
                     pendingArchiveDir?.let {
                         runCatchingOnService { onBackupFailed(it) }
                         mRootService.deleteRecursively("$mAppsDir/$it")
                     }
-                    if (pausedPids.isNotEmpty()) {
-                        log { "Resuming ${pkg.packageEntity.packageName}." }
-                        mRootService.resumeProcesses(pausedPids)
-                    }
                 }
             }) {
+                currentCoroutineContext().ensureActive()
+                if (pause == null) killApp(killAppOption, pkg)
                 log { "Current package: ${pkg.packageEntity}" }
 
                 pkg.update(state = OperationState.PROCESSING)

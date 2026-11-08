@@ -13,13 +13,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.datastore.KeyBackupConfigs
@@ -28,19 +25,12 @@ import com.xayah.core.datastore.KeyCompressionTest
 import com.xayah.core.datastore.KeyFollowSymlinks
 import com.xayah.core.datastore.KeyFastSameVersionBackup
 import com.xayah.core.datastore.readCompressionLevel
-import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.saveCompressionLevel
-import com.xayah.core.datastore.saveKillAppOption
-import com.xayah.core.model.KillAppOption
-import com.xayah.core.model.util.indexOf
 import com.xayah.core.ui.component.InnerBottomSpacer
-import com.xayah.core.ui.component.LocalSlotScope
-import com.xayah.core.ui.component.Selectable
 import com.xayah.core.ui.component.Slideable
 import com.xayah.core.ui.component.Switchable
-import com.xayah.core.ui.component.select
-import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.token.SizeTokens
+import com.xayah.feature.main.settings.KillAppOptionPreference
 import com.xayah.feature.main.settings.R
 import com.xayah.feature.main.settings.SettingsScaffold
 import kotlinx.coroutines.launch
@@ -53,7 +43,6 @@ import kotlin.math.roundToInt
 @Composable
 fun PageBackupSettings() {
     val context = LocalContext.current
-    val dialogState = LocalSlotScope.current!!.dialogSlot
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
 
     SettingsScaffold(
@@ -82,37 +71,7 @@ fun PageBackupSettings() {
                     }
                 }
 
-                val items = stringArrayResource(id = R.array.kill_app_options)
-                val dialogItems by remember(items) {
-                    mutableStateOf(items.mapIndexed { index, s ->
-                        DialogRadioItem(
-                            enum = KillAppOption.indexOf(index),
-                            title = s,
-                            desc = when (index) {
-                                1 -> context.getString(R.string.kill_app_option_i_desc)
-                                2 -> context.getString(R.string.kill_app_option_ii_desc)
-                                3 -> context.getString(R.string.kill_app_option_iii_desc)
-                                else -> null
-                            },
-                        )
-                    })
-                }
-                val currentOption by context.readKillAppOption().collectAsStateWithLifecycle(initialValue = KillAppOption.OPTION_II)
-                val currentIndex by remember(currentOption) { mutableIntStateOf(currentOption.ordinal) }
-                Selectable(
-                    title = stringResource(id = R.string.kill_app_options),
-                    value = stringResource(id = R.string.kill_app_options_desc),
-                    current = items[currentIndex]
-                ) {
-                    val (state, selectedIndex) = dialogState.select(
-                        title = context.getString(R.string.kill_app_options),
-                        defIndex = currentIndex,
-                        items = dialogItems
-                    )
-                    if (state.isConfirm) {
-                        context.saveKillAppOption(dialogItems[selectedIndex].enum!!)
-                    }
-                }
+                KillAppOptionPreference()
 
                 Switchable(
                     key = KeyFastSameVersionBackup,

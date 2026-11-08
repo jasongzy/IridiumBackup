@@ -7,6 +7,14 @@ import dev.rikka.tools.refine.RefineAs;
  */
 @RefineAs(ActivityManager.class)
 public class ActivityManagerHidden {
+    public int getPackageImportance(String packageName) {
+        throw new RuntimeException("Stub!");
+    }
+
+    public int getUidImportance(int uid) {
+        throw new RuntimeException("Stub!");
+    }
+
     public void forceStopPackageAsUser(String packageName, int userId) {
         throw new RuntimeException("Stub!");
     }
