@@ -8,10 +8,8 @@ import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import com.xayah.core.data.repository.AppsRepo
 import com.xayah.core.data.repository.APP_REFRESH_WORK_TAG
-import com.xayah.core.data.repository.INPUT_DATA_KEY_REGULAR
 import com.xayah.core.data.repository.SettingsDataRepo
 import com.xayah.core.datastore.di.DbDispatchers.Default
 import com.xayah.core.datastore.di.Dispatcher
@@ -51,12 +49,10 @@ internal class AppsUpdateWorker @AssistedInject constructor(
     }
 
     override suspend fun doWork(): Result = withContext(defaultDispatcher) {
-        val regular = inputData.getBoolean(INPUT_DATA_KEY_REGULAR, true)
         val appsUpdateTime = settingsDataRepo.settingsData.first().appsUpdateTime
         val curTime = DateUtil.getTimestamp()
         val hasPassedOneDay = DateUtil.getNumberOfDaysPassed(appsUpdateTime, curTime) >= 1
-        if (regular.not() || hasPassedOneDay) {
-            settingsDataRepo.setAppsUpdateTime(curTime)
+        if (hasPassedOneDay) {
             appsRepo.fullUpdate { cur, max, content ->
                 if (notificationUpdates.shouldUpdate(cur + 1, max)) {
                     val progress = publishProgress(cur + 1, max, APP_UPDATE_STAGE, APP_REFRESH_STAGE_COUNT)
@@ -71,19 +67,15 @@ internal class AppsUpdateWorker @AssistedInject constructor(
                     setForeground(mNotificationInfo!!)
                 }
             }
+            settingsDataRepo.setAppsUpdateTime(curTime)
         }
         publishProgress(1, 1, APP_UPDATE_STAGE, APP_REFRESH_STAGE_COUNT)
         Result.success()
     }
 
     companion object {
-        fun buildRequest(regular: Boolean) = OneTimeWorkRequestBuilder<AppsUpdateWorker>()
+        fun buildRequest() = OneTimeWorkRequestBuilder<AppsUpdateWorker>()
             .addTag(APP_REFRESH_WORK_TAG)
-            .setInputData(
-                workDataOf(
-                    INPUT_DATA_KEY_REGULAR to regular
-                )
-            )
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
     }

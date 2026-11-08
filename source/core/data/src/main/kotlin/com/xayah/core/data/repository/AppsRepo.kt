@@ -85,7 +85,8 @@ class AppsRepo @Inject constructor(
     fun getInstalledApps(users: Flow<List<UserInfo>>): Flow<Set<String>> = users.map { u ->
         val set = mutableSetOf<String>()
         u.forEach {
-            set.addAll(rootService.getInstalledPackagesAsUser(0, it.id).map { p -> "${p.packageName}-${it.id}" }.toSet())
+            rootService.getInstalledPackagesAsUser(0, it.id).getOrNull().orEmpty()
+                .mapTo(set) { p -> "${p.packageName}-${it.id}" }
         }
         set
     }
@@ -435,11 +436,7 @@ class AppsRepo @Inject constructor(
             pkg.packageName,
             PackageManager.GET_PERMISSIONS or PackageManager.GET_META_DATA,
             userId,
-        )
-        if (info == null) {
-            appsDao.delete(pkg.id)
-            return null
-        }
+        ) ?: return null
         val uid = info.applicationInfo?.uid ?: -1
         val stats = userHandle?.let { rootService.queryStatsForPackage(info, it) }
         return PackageUpdateEntity(
@@ -470,7 +467,7 @@ class AppsRepo @Inject constructor(
     }
 
     private suspend fun getInstalledPackages(userId: Int) =
-        rootService.getInstalledPackagesAsUser(PackageManager.GET_META_DATA, userId)
+        rootService.getInstalledPackagesAsUser(PackageManager.GET_META_DATA, userId).getOrThrow()
             .filter { it.packageName != context.packageName }
             .distinctBy { it.packageName }
 
@@ -503,34 +500,8 @@ class AppsRepo @Inject constructor(
     }
 
     private suspend fun loadLocalApps(onLoad: suspend (cur: Int, max: Int, content: String) -> Unit) {
-        val path = pathUtil.getLocalBackupAppsDir()
-        val paths = rootService.walkFileTree(path)
-        paths.forEachIndexed { index, pathParcelable ->
-            val fileName = PathUtil.getFileName(pathParcelable.pathString)
-            onLoad(index, paths.size, fileName)
-            if (fileName == ConfigsPackageRestoreName) {
-                runCatching {
-                    rootService.readJson<PackageRestoreConfig>(pathParcelable.pathString)
-                        ?.toPackageEntity(cloud = "", backupDir = context.localBackupSaveDir())
-                        ?.also { p ->
-                            parsePreserveAndUserId(pathParcelable)?.let { (preserveId, userId) ->
-                                p.indexInfo.preserveId = preserveId
-                                p.indexInfo.userId = userId
-                            }
-                        }?.apply {
-                        if (appsDao.query(packageName, indexInfo.opType, userId, preserveId, indexInfo.compressionType, indexInfo.cloud, indexInfo.backupDir) == null) {
-                            appsDao.upsert(this)
-                        }
-                    }
-                }
-            }
-        }
-        rootService.clearEmptyDirectoriesRecursively(path)
-        appsDao.queryPackages(OpType.RESTORE, "", context.localBackupSaveDir()).forEach {
-            val src = "${path}/${it.archivesRelativeDir}"
-            if (rootService.exists(src).not()) {
-                appsDao.delete(it.id)
-            }
+        appBackupRepository.rebuildLocalIndex { completed, total, _ ->
+            if (completed > 0) onLoad(completed - 1, total, "")
         }
     }
 

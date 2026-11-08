@@ -3,13 +3,11 @@ package com.xayah.core.work
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
-import com.xayah.core.data.repository.APP_REFRESH_FOLLOW_UP_WORK_NAME
 import com.xayah.core.data.repository.APP_REFRESH_WORK_NAME
 import com.xayah.core.data.repository.APP_SIZE_REFRESH_WORK_NAME
 import com.xayah.core.data.repository.FAST_INIT_AND_UPDATE_FILES_WORK_NAME
 import com.xayah.core.data.repository.LOAD_APP_BACKUPS_WORK_NAME
 import com.xayah.core.data.repository.LOAD_FILE_BACKUPS_WORK_NAME
-import com.xayah.core.work.workers.AppRefreshFollowUpWorker
 import com.xayah.core.work.workers.AppsFastInitWorker
 import com.xayah.core.work.workers.AppsFastUpdateWorker
 import com.xayah.core.work.workers.AppsSizeUpdateWorker
@@ -24,23 +22,12 @@ object WorkManagerInitializer {
     internal val processSessionId: String = UUID.randomUUID().toString()
 
     /**
-     * Fully initialize all data
-     */
-    fun fullInitialize(context: Context, regular: Boolean = true) {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(APP_REFRESH_WORK_NAME, ExistingWorkPolicy.KEEP, AppsInitWorker.buildRequest())
-            .then(AppsUpdateWorker.buildRequest(regular))
-            .then(AppRefreshFollowUpWorker.buildRequest())
-            .enqueue()
-    }
-
-    /**
      * Fully initialize, update apps
      */
-    fun fullInitializeAndUpdateApps(context: Context, regular: Boolean = false) {
+    fun fullInitializeAndUpdateApps(context: Context) {
         WorkManager.getInstance(context)
             .beginUniqueWork(APP_REFRESH_WORK_NAME, ExistingWorkPolicy.KEEP, AppsInitWorker.buildRequest())
-            .then(AppsUpdateWorker.buildRequest(regular))
+            .then(AppsUpdateWorker.buildRequest())
             .enqueue()
     }
 
@@ -64,22 +51,6 @@ object WorkManagerInitializer {
 
     fun cancelAppSizeUpdate(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(APP_SIZE_REFRESH_WORK_NAME)
-    }
-
-    fun incrementalInitialize(context: Context) {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(APP_REFRESH_WORK_NAME, ExistingWorkPolicy.KEEP, AppsFastInitWorker.buildRequest())
-            .then(AppsFastUpdateWorker.buildRequest())
-            .then(AppRefreshFollowUpWorker.buildRequest())
-            .enqueue()
-    }
-
-    internal fun enqueueAppRefreshFollowUp(context: Context) {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(APP_REFRESH_FOLLOW_UP_WORK_NAME, ExistingWorkPolicy.KEEP, FilesUpdateWorker.buildRequest())
-            .then(AppsLoadWorker.buildRequest(null))
-            .then(FilesLoadWorker.buildRequest(null))
-            .enqueue()
     }
 
     fun fastInitializeAndUpdateFiles(context: Context) {

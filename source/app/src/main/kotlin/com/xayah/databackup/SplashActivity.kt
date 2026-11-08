@@ -28,7 +28,7 @@ class SplashActivity : AppCompatActivity() {
         if (runBlocking { readAppVersionName().first() }.isEmpty()) {
             startActivity(Intent(this, SetupActivity::class.java))
         } else {
-            WorkManagerInitializer.incrementalInitialize(this)
+            WorkManagerInitializer.fastInitializeAndUpdateApps(this)
             startActivity(Intent(this, MainActivity::class.java))
         }
         finish()

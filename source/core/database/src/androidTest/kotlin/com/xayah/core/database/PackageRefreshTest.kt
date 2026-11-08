@@ -66,7 +66,7 @@ class PackageRefreshTest {
             dao.update(listOf(refresh))
             assertEquals(expected, dao.queryById(app.id))
 
-            dao.delete(app.id)
+            dao.deleteByPkgNames(OpType.BACKUP, app.userId, (1..1_000).mapTo(mutableSetOf()) { "absent.$it" } + app.packageName)
             dao.update(refresh)
             dao.update(listOf(refresh))
             assertNull(dao.queryById(app.id))

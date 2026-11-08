@@ -344,14 +344,10 @@ class RemoteRootService(private val context: Context) {
      */
     suspend fun getUidGid(path: String): Pair<UInt, UInt> = runCatching { getService().getUidGid(path).let { it[0].toUInt() to it[1].toUInt() } }.onFailure(onFailure).getOrElse { UInt.MAX_VALUE to UInt.MAX_VALUE }
 
-    suspend fun getInstalledPackagesAsUser(flags: Int, userId: Int): List<PackageInfo> = runCatching {
+    suspend fun getInstalledPackagesAsUser(flags: Int, userId: Int): Result<List<PackageInfo>> = runCatching {
         val pfd = getService().getInstalledPackagesAsUser(flags, userId)
-        val packages = mutableListOf<PackageInfo>()
-        readFromParcel(pfd) {
-            it.readTypedList(packages, PackageInfo.CREATOR)
-        }
-        packages
-    }.onFailure(onFailure).getOrElse { listOf() }
+        readFromParcel(pfd) { checkNotNull(it.createTypedArrayList(PackageInfo.CREATOR)) }
+    }.onFailure(onFailure)
 
     suspend fun getPackageInfoAsUser(packageName: String, flags: Int, userId: Int) =
         runCatching { getService().getPackageInfoAsUser(packageName, flags, userId) }.onFailure(onFailure).getOrNull()

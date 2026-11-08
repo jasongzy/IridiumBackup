@@ -35,7 +35,7 @@ class IndexViewModel @Inject constructor(
             }
             is IndexUiIntent.ToMain -> {
                 val context = intent.context
-                WorkManagerInitializer.fullInitialize(context)
+                WorkManagerInitializer.fullInitializeAndUpdateApps(context)
                 context.saveAppVersionName()
                 context.startActivity(
                     Intent(context, ActivityUtil.classMainActivity).apply {

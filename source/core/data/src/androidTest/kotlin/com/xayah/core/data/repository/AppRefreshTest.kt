@@ -58,6 +58,8 @@ class AppRefreshTest {
                 .newInstance(0, "Owner", 0)
             val binder = Binder()
             var detailsRead = 0
+            var listAvailable = true
+            var detailsAvailable = true
             val remote = Proxy.newProxyInstance(
                 IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java),
             ) { _, method, _ ->
@@ -65,6 +67,7 @@ class AppRefreshTest {
                     "asBinder" -> binder
                     "getUsers" -> listOf(user)
                     "getInstalledPackagesAsUser" -> {
+                        check(listAvailable) { "Package service unavailable" }
                         val parcel = Parcel.obtain()
                         try {
                             parcel.writeTypedList(listOf(info))
@@ -74,7 +77,7 @@ class AppRefreshTest {
                         }
                         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                     }
-                    "getPackageInfoAsUser" -> info.also { detailsRead++ }
+                    "getPackageInfoAsUser" -> info.takeIf { detailsAvailable }?.also { detailsRead++ }
                     "getUserHandle" -> null
                     "getPermissions" -> emptyList<Any>()
                     "getPackageSsaidAsUser" -> ""
@@ -117,6 +120,12 @@ class AppRefreshTest {
                 assertEquals(enabled, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().extraInfo.enabled)
                 assertEquals(reads, detailsRead)
             }
+            listAvailable = false
+            check(runCatching { repository.fastInitialize { _, _, _ -> } }.isFailure)
+            check(runCatching { repository.fullInitialize { _, _, _ -> } }.isFailure)
+            detailsAvailable = false
+            repository.fullUpdate { _, _, _ -> }
+            assertEquals(info.packageName, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().packageName)
         } finally {
             context.saveCustomSUFile(previousSu)
             database.close()

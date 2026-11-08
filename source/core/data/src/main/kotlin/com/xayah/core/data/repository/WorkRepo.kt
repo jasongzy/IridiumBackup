@@ -16,13 +16,8 @@ class WorkRepo @Inject constructor(
         workInfos.any { APP_REFRESH_WORK_TAG in it.tags && !it.state.isFinished }
     }
 
-    private fun isWorkRunning(name: String) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(name).map {
-        var allFinished = true
-        it.forEach { work ->
-            if (work.state.isFinished.not()) allFinished = false
-        }
-        allFinished.not()
-    }
+    private fun isWorkRunning(name: String) = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(name)
+        .map { jobs -> jobs.any { !it.state.isFinished } }
 
     fun getAppRefreshProgress() = appRefreshWorkInfos.map { workInfos ->
         val work = workInfos.firstOrNull {
@@ -36,40 +31,20 @@ class WorkRepo @Inject constructor(
         }
     }
 
-    fun isLoadAppBackupsRunning() = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(LOAD_APP_BACKUPS_WORK_NAME).map {
-        var allFinished = true
-        it.forEach { work ->
-            if (work.state.isFinished.not()) allFinished = false
-        }
-        allFinished.not()
-    }
+    fun isLoadAppBackupsRunning() = isWorkRunning(LOAD_APP_BACKUPS_WORK_NAME)
 
-    fun isFastInitAndUpdateFilesRunning() = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(FAST_INIT_AND_UPDATE_FILES_WORK_NAME).map {
-        var allFinished = true
-        it.forEach { work ->
-            if (work.state.isFinished.not()) allFinished = false
-        }
-        allFinished.not()
-    }
+    fun isFastInitAndUpdateFilesRunning() = isWorkRunning(FAST_INIT_AND_UPDATE_FILES_WORK_NAME)
 
-    fun isLoadFileBackupsRunning() = WorkManager.getInstance(context).getWorkInfosForUniqueWorkFlow(LOAD_FILE_BACKUPS_WORK_NAME).map {
-        var allFinished = true
-        it.forEach { work ->
-            if (work.state.isFinished.not()) allFinished = false
-        }
-        allFinished.not()
-    }
+    fun isLoadFileBackupsRunning() = isWorkRunning(LOAD_FILE_BACKUPS_WORK_NAME)
 }
 
 const val APP_REFRESH_WORK_NAME = "DbAppRefreshWork"
 const val APP_REFRESH_WORK_TAG = "DbAppRefresh"
 const val APP_SIZE_REFRESH_WORK_NAME = "DbAppSizeRefreshWork"
-const val APP_REFRESH_FOLLOW_UP_WORK_NAME = "DbAppRefreshFollowUpWork"
 const val FAST_INIT_AND_UPDATE_FILES_WORK_NAME = "DbFastInitAndUpdateFilesWork"
 const val LOAD_APP_BACKUPS_WORK_NAME = "DbLoadAppBackupsWork"
 const val LOAD_FILE_BACKUPS_WORK_NAME = "DbLoadFileBackupsWork"
 
-const val INPUT_DATA_KEY_REGULAR = "InputDataKeyRegular"
 const val INPUT_DATA_KEY_PROCESS_SESSION = "InputDataKeyProcessSession"
 const val INPUT_DATA_KEY_CLOUD_NAME = "InputDataKeyCloudName"
 const val WORK_PROGRESS_CURRENT = "WorkProgressCurrent"

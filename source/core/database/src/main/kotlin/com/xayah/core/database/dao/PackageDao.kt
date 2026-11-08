@@ -6,6 +6,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.database.PackageDataStatesEntity
@@ -99,7 +100,12 @@ interface PackageDao {
     @Query(
         "DELETE FROM PackageEntity WHERE indexInfo_opType = :opType AND indexInfo_userId = :userId AND indexInfo_packageName in (:packageNames)"
     )
-    suspend fun deleteByPkgNames(opType: OpType, userId: Int, packageNames: Set<String>)
+    suspend fun deletePackageChunk(opType: OpType, userId: Int, packageNames: List<String>)
+
+    @Transaction
+    suspend fun deleteByPkgNames(opType: OpType, userId: Int, packageNames: Set<String>) {
+        packageNames.chunked(SQLITE_BIND_LIMIT - 2).forEach { deletePackageChunk(opType, userId, it) }
+    }
 
     @Query(
         "SELECT * FROM PackageEntity WHERE" +
