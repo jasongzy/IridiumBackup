@@ -13,6 +13,7 @@ import com.xayah.core.model.database.MediaIndexInfo
 import com.xayah.core.model.database.MediaInfo
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.DateUtil
+import com.xayah.core.util.FileUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
@@ -20,6 +21,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.text.Collator
 import javax.inject.Inject
+
+internal fun MediaEntity.hasValidArchiveName(): Boolean =
+    name.isNotBlank() && name != "." && name != ".." && name.none { it == '/' || it == '\\' || it == '\u0000' } && preserveId >= 0
 
 class MediaRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -157,16 +161,15 @@ class MediaRepository @Inject constructor(
             if (failedCount > 0) ", ${context.getString(R.string.failed)}: $failedCount" else ""
     }
 
-    suspend fun delete(m: MediaEntity) {
-        val filesDir = pathUtil.getLocalBackupFilesDir()
+    suspend fun delete(m: MediaEntity): Boolean {
+        if (m.indexInfo.opType != OpType.RESTORE || !m.hasValidArchiveName()) return false
         val isSuccess = if (m.indexInfo.cloud.isEmpty()) {
-            val src = "${filesDir}/${m.archivesRelativeDir}"
-            rootService.deleteRecursively(src)
+            val backupDir = FileUtil.normalizeAbsolutePath(m.indexInfo.backupDir) ?: return false
+            rootService.deleteRecursively("$backupDir/${PathUtil.getFilesRelativeDir()}/${m.archivesRelativeDir}")
         } else {
             runCatching {
-                cloudRepository.withClient(m.indexInfo.cloud) { client, entity ->
-                    val remote = entity.remote
-                    val remoteArchivesMediumDir = pathUtil.getCloudRemoteFilesDir(remote)
+                cloudRepository.withClient(m.indexInfo.cloud) { client, _ ->
+                    val remoteArchivesMediumDir = pathUtil.getCloudRemoteFilesDir(m.indexInfo.backupDir)
                     val src = "${remoteArchivesMediumDir}/${m.archivesRelativeDir}"
                     if (client.exists(src)) client.deleteRecursively(src)
                 }
@@ -174,6 +177,7 @@ class MediaRepository @Inject constructor(
         }
 
         if (isSuccess) mediaDao.delete(m.id)
+        return isSuccess
     }
 
     suspend fun preserve(m: MediaEntity) {

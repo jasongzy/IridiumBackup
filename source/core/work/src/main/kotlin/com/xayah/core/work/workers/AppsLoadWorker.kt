@@ -10,6 +10,7 @@ import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.xayah.core.data.repository.AppsRepo
+import com.xayah.core.data.repository.INPUT_DATA_KEY_BACKUP_DIR
 import com.xayah.core.data.repository.INPUT_DATA_KEY_CLOUD_NAME
 import com.xayah.core.datastore.di.DbDispatchers.Default
 import com.xayah.core.datastore.di.Dispatcher
@@ -49,7 +50,8 @@ internal class AppsLoadWorker @AssistedInject constructor(
 
     override suspend fun doWork(): Result = withContext(defaultDispatcher) {
         val cloudName = inputData.getString(INPUT_DATA_KEY_CLOUD_NAME)
-        appsRepo.load(cloudName) { cur, max, content ->
+        val backupDir = inputData.getString(INPUT_DATA_KEY_BACKUP_DIR) ?: return@withContext Result.failure()
+        appsRepo.load(cloudName.orEmpty(), backupDir) { cur, max, content ->
             if (notificationUpdates.shouldUpdate(cur + 1, max)) {
                 mNotificationInfo = NotificationUtil.createForegroundInfo(
                     appContext,
@@ -67,10 +69,11 @@ internal class AppsLoadWorker @AssistedInject constructor(
     }
 
     companion object {
-        fun buildRequest(cloudName: String?) = OneTimeWorkRequestBuilder<AppsLoadWorker>()
+        fun buildRequest(cloudName: String, backupDir: String) = OneTimeWorkRequestBuilder<AppsLoadWorker>()
             .setInputData(
                 workDataOf(
                     INPUT_DATA_KEY_CLOUD_NAME to cloudName,
+                    INPUT_DATA_KEY_BACKUP_DIR to backupDir,
                 )
             )
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)

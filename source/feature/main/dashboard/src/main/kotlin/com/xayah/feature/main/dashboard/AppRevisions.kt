@@ -548,6 +548,7 @@ private fun RevisionDetailsDialog(
     onVerify: () -> Unit,
     onEditNote: () -> Unit,
 ) {
+    val localFiles = revision.engine == BackupEngine.LEGACY && revision.repositoryId.startsWith(':')
     val contents = buildList {
         if (revision.contentMask and 1 != 0) add(stringResource(R.string.apk))
         if (revision.contentMask and 2 != 0) add("USER")
@@ -575,8 +576,10 @@ private fun RevisionDetailsDialog(
                         text = revision.note.ifEmpty { stringResource(R.string.no_note) },
                         color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value,
                     )
-                    TooltipIconButton(tooltip = stringResource(R.string.edit_note), onClick = onEditNote) {
-                        Icon(Icons.Rounded.Edit, contentDescription = null)
+                    if (localFiles) {
+                        TooltipIconButton(tooltip = stringResource(R.string.edit_note), onClick = onEditNote) {
+                            Icon(Icons.Rounded.Edit, contentDescription = null)
+                        }
                     }
                 }
                 verificationResult?.let { result ->
@@ -606,11 +609,10 @@ private fun RevisionDetailsDialog(
         },
         confirmButton = {
             androidx.compose.foundation.layout.Row {
-                androidx.compose.material3.TextButton(
-                    enabled = revision.engine == BackupEngine.LEGACY && !isVerifying,
-                    onClick = onVerify,
-                ) {
-                    Text(stringResource(if (isVerifying) R.string.verifying else R.string.verify))
+                if (localFiles) {
+                    androidx.compose.material3.TextButton(enabled = !isVerifying, onClick = onVerify) {
+                        Text(stringResource(if (isVerifying) R.string.verifying else R.string.verify))
+                    }
                 }
                 androidx.compose.material3.TextButton(
                     enabled = revision.engine == BackupEngine.LEGACY,

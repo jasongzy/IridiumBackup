@@ -21,7 +21,6 @@ import com.xayah.core.util.ConfigsMediaRestoreName
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.withLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -102,30 +101,8 @@ class FilesRepo @Inject constructor(
         filesDao.blockByIds(ids)
     }
 
-    suspend fun deleteSelected(ids: List<Long>) {
-        val filesDir = pathUtil.getLocalBackupFilesDir()
-        val deletedIds = mutableListOf<Long>()
-        ids.forEach {
-            val file = filesDao.queryById(it)
-            if (file != null) {
-                val isSuccess = if (file.indexInfo.cloud.isEmpty()) {
-                    val src = "${filesDir}/${file.archivesRelativeDir}"
-                    rootService.deleteRecursively(src)
-                } else {
-                    runCatching {
-                        cloudRepo.withClient(file.indexInfo.cloud) { client, entity ->
-                            val remote = entity.remote
-                            val remoteArchivesMediumDir = pathUtil.getCloudRemoteFilesDir(remote)
-                            val src = "${remoteArchivesMediumDir}/${file.archivesRelativeDir}"
-                            if (client.exists(src)) client.deleteRecursively(src)
-                        }
-                    }.withLog().isSuccess
-                }
-                if (isSuccess) deletedIds.add(file.id)
-            }
-        }
-        filesDao.deleteByIds(deletedIds)
-    }
+    suspend fun deleteSelected(ids: List<Long>) =
+        ids.count { id -> filesDao.queryById(id)?.let { mediaRepo.delete(it) } == true }
 
     suspend fun initialize() {
         // Add default medium for first time
@@ -166,70 +143,42 @@ class FilesRepo @Inject constructor(
         }
     }
 
-    suspend fun load(cloudName: String?, onLoad: suspend (cur: Int, max: Int, content: String) -> Unit) {
-        if (cloudName.isNullOrEmpty().not()) {
-            cloudName?.apply {
-                loadCloudFiles(this, onLoad)
+    suspend fun load(cloudName: String, backupDir: String, onLoad: suspend (cur: Int, max: Int, content: String) -> Unit) {
+        val configs = mutableListOf<MediaEntity>()
+        fun collect(file: MediaEntity, path: String, root: String) {
+            check(file.indexInfo.opType == OpType.RESTORE && file.hasValidArchiveName() &&
+                path == "$root/${file.archivesRelativeDir}/$ConfigsMediaRestoreName") { "Invalid backup config: $path" }
+            configs += file.copy(
+                id = 0,
+                indexInfo = file.indexInfo.copy(cloud = cloudName, backupDir = backupDir),
+                extraInfo = file.extraInfo.copy(existed = true, activated = false),
+            )
+        }
+        if (cloudName.isEmpty()) {
+            check(rootService.existsChecked(backupDir)) { "Cannot read directory: $backupDir" }
+            val root = "$backupDir/${PathUtil.getFilesRelativeDir()}"
+            if (!rootService.existsChecked(root)) return
+            val dirs = rootService.readDirectory(root, includeFiles = false).directories
+            dirs.forEachIndexed { index, dir ->
+                onLoad(index, dirs.size, PathUtil.getFileName(dir))
+                val path = PathUtil.getMediaRestoreConfigDst(dir)
+                val text = rootService.readTextIfPresent(path) ?: return@forEachIndexed
+                val file = checkNotNull(rootService.gsonUtil.fromJson<MediaEntity?>(text, MediaEntity::class.java)) { "Invalid backup config: $path" }
+                collect(file, path, root)
             }
         } else {
-            loadLocalFiles(onLoad)
-        }
-    }
-
-    private suspend fun loadLocalFiles(onLoad: suspend (cur: Int, max: Int, content: String) -> Unit) {
-        val path = pathUtil.getLocalBackupFilesDir()
-        val paths = rootService.walkFileTree(path)
-        paths.forEachIndexed { index, pathParcelable ->
-            val fileName = PathUtil.getFileName(pathParcelable.pathString)
-            onLoad(index, paths.size, fileName)
-            if (fileName == ConfigsMediaRestoreName) {
-                runCatching {
-                    rootService.readJson<MediaEntity>(pathParcelable.pathString).also { m ->
-                        m?.id = 0
-                        m?.extraInfo?.existed = true
-                        m?.extraInfo?.activated = false
-                        m?.indexInfo?.cloud = ""
-                        m?.indexInfo?.backupDir = context.localBackupSaveDir()
-                    }?.apply {
-                        if (filesDao.query(indexInfo.opType, preserveId, name, indexInfo.compressionType, indexInfo.cloud, indexInfo.backupDir) == null) {
-                            filesDao.upsert(this)
-                        }
-                    }
+            cloudRepo.withClient(cloudName) { client, _ ->
+                val root = pathUtil.getCloudRemoteFilesDir(backupDir)
+                if (!client.exists(root)) return@withClient
+                val files = client.walkFileTree(root).filter { it.pathList.lastOrNull() == ConfigsMediaRestoreName }
+                files.forEachIndexed { index, entry ->
+                    onLoad(index, files.size, entry.pathString)
+                    collect(cloudRepo.readBackupConfig(client, entry.pathString, MediaEntity::class.java), entry.pathString, root)
                 }
             }
         }
+        filesDao.addRestoreFiles(configs)
     }
-
-    private suspend fun loadCloudFiles(cloud: String, onLoad: suspend (cur: Int, max: Int, content: String) -> Unit) = runCatching {
-        cloudRepo.withClient(cloud) { client, entity ->
-            val remote = entity.remote
-            val src = pathUtil.getCloudRemoteFilesDir(remote)
-            if (client.exists(src)) {
-                val paths = client.walkFileTree(src)
-                paths.forEachIndexed { index, pathParcelable ->
-                    val fileName = PathUtil.getFileName(pathParcelable.pathString)
-                    onLoad(index, paths.size, fileName)
-                    if (fileName == ConfigsMediaRestoreName) {
-                        runCatching {
-                            cloudRepo.download(client = client, src = pathParcelable.pathString) { path ->
-                                val stored = rootService.readJson<MediaEntity>(path).also { p ->
-                                    p?.id = 0
-                                    p?.extraInfo?.existed = true
-                                    p?.extraInfo?.activated = false
-                                    p?.indexInfo?.cloud = entity.name
-                                    p?.indexInfo?.backupDir = remote
-                                }?.apply {
-                                    if (filesDao.query(indexInfo.opType, preserveId, name, indexInfo.compressionType, indexInfo.cloud, indexInfo.backupDir) == null) {
-                                        filesDao.upsert(this)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }.withLog()
 
     private fun renameDuplicateFile(name: String): String {
         val nameList = name.split("_").toMutableList()
@@ -288,15 +237,15 @@ class FilesRepo @Inject constructor(
     }
 
     suspend fun calculateLocalFileSize(file: MediaEntity) {
-        file.mediaInfo.displayBytes = rootService.calculateSize(file.path)
-        filesDao.upsert(file)
+        filesDao.updateDisplaySize(file.id, rootService.calculateSize(file.path))
     }
 
     private fun getArchiveSrc(dstDir: String, ct: CompressionType) = "${dstDir}/${DataType.MEDIA_MEDIA.type}.${ct.suffix}"
 
     suspend fun calculateLocalFileArchiveSize(file: MediaEntity) {
-        file.mediaInfo.displayBytes = rootService.calculateSize(getArchiveSrc("${pathUtil.getLocalBackupFilesDir()}/${file.archivesRelativeDir}", file.indexInfo.compressionType))
-        filesDao.upsert(file)
+        if (!file.hasValidArchiveName()) return
+        val dir = "${file.indexInfo.backupDir}/${PathUtil.getFilesRelativeDir()}/${file.archivesRelativeDir}"
+        filesDao.updateDisplaySize(file.id, rootService.calculateSize(getArchiveSrc(dir, file.indexInfo.compressionType)))
     }
 
     suspend fun blockByIds(ids: List<Long>) {
@@ -323,7 +272,7 @@ class FilesRepo @Inject constructor(
 
     private suspend fun protectLocalFile(file: MediaEntity) {
         val protectedFile = file.copy(indexInfo = file.indexInfo.copy(preserveId = DateUtil.getTimestamp()))
-        val fileDir = pathUtil.getLocalBackupFilesDir()
+        val fileDir = "${file.indexInfo.backupDir}/${PathUtil.getFilesRelativeDir()}"
         val src = "${fileDir}/${file.archivesRelativeDir}"
         val dst = "${fileDir}/${protectedFile.archivesRelativeDir}"
         rootService.writeJson(data = protectedFile, dst = PathUtil.getMediaRestoreConfigDst(src))
@@ -332,9 +281,9 @@ class FilesRepo @Inject constructor(
     }
 
     private suspend fun protectCloudFile(cloudName: String, file: MediaEntity) = runCatching {
-        cloudRepo.withClient(cloudName) { client, entity ->
+        cloudRepo.withClient(cloudName) { client, _ ->
             val protectedFile = file.copy(indexInfo = file.indexInfo.copy(preserveId = DateUtil.getTimestamp()))
-            val remote = entity.remote
+            val remote = file.indexInfo.backupDir
             val remoteFilesDir = pathUtil.getCloudRemoteFilesDir(remote)
             val src = "${remoteFilesDir}/${file.archivesRelativeDir}"
             val dst = "${remoteFilesDir}/${protectedFile.archivesRelativeDir}"
@@ -347,35 +296,5 @@ class FilesRepo @Inject constructor(
         }
     }.withLog()
 
-    suspend fun deleteFile(cloudName: String?, file: MediaEntity) {
-        if (cloudName.isNullOrEmpty().not()) {
-            cloudName?.apply {
-                deleteCloudFile(this, file)
-            }
-        } else {
-            deleteLocalFile(file)
-        }
-    }
-
-    private suspend fun deleteLocalFile(file: MediaEntity) {
-        val filesDir = pathUtil.getLocalBackupFilesDir()
-        val src = "${filesDir}/${file.archivesRelativeDir}"
-        if (rootService.deleteRecursively(src)) {
-            filesDao.delete(file.id)
-        }
-    }
-
-    private suspend fun deleteCloudFile(cloudName: String, file: MediaEntity) = runCatching {
-        cloudRepo.withClient(cloudName) { client, entity ->
-            val remote = entity.remote
-            val remoteFilesDir = pathUtil.getCloudRemoteFilesDir(remote)
-            val src = "${remoteFilesDir}/${file.archivesRelativeDir}"
-            if (client.exists(src)) {
-                client.deleteRecursively(src)
-                if (client.exists(src).not()) {
-                    filesDao.delete(file.id)
-                }
-            }
-        }
-    }.withLog()
+    suspend fun deleteFile(file: MediaEntity): Boolean = mediaRepo.delete(file)
 }

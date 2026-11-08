@@ -47,5 +47,6 @@ const val LOAD_FILE_BACKUPS_WORK_NAME = "DbLoadFileBackupsWork"
 
 const val INPUT_DATA_KEY_PROCESS_SESSION = "InputDataKeyProcessSession"
 const val INPUT_DATA_KEY_CLOUD_NAME = "InputDataKeyCloudName"
+const val INPUT_DATA_KEY_BACKUP_DIR = "InputDataKeyBackupDir"
 const val WORK_PROGRESS_CURRENT = "WorkProgressCurrent"
 const val WORK_PROGRESS_MAX = "WorkProgressMax"

@@ -25,4 +25,7 @@
     <string name="force_stop">Force stop</string>
     <string name="open_settings">Open settings</string>
     <string name="backup_deleted">Backup deleted</string>
+    <string name="backup_delete_failed">Couldn’t delete this backup</string>
+    <string name="backup_note_save_failed">Couldn’t save the note. Check the backup files or rebuild the index.</string>
+    <string name="restore_revision_unavailable">This backup is no longer available. Refresh its index.</string>
 </resources>

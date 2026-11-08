@@ -213,10 +213,11 @@ class PackageRepository @Inject constructor(
         }
     }
 
-    suspend fun delete(p: PackageEntity) {
-        val relativeDir = PathUtil.getPackageArchiveRelativeDir(p.packageName, p.userId, p.preserveId) ?: return
+    suspend fun delete(p: PackageEntity): Boolean {
+        if (p.indexInfo.opType != OpType.RESTORE) return false
+        val relativeDir = PathUtil.getPackageArchiveRelativeDir(p.packageName, p.userId, p.preserveId) ?: return false
         val isSuccess = if (p.indexInfo.cloud.isEmpty()) {
-            val backupDir = FileUtil.normalizeAbsolutePath(p.indexInfo.backupDir) ?: return
+            val backupDir = FileUtil.normalizeAbsolutePath(p.indexInfo.backupDir) ?: return false
             val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
             val src = "$appsDir/$relativeDir"
             rootService.deleteRecursively(src).also { deleted ->
@@ -236,6 +237,7 @@ class PackageRepository @Inject constructor(
         }
 
         if (isSuccess) packageDao.delete(p.id)
+        return isSuccess
     }
 
     /**

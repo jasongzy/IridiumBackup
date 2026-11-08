@@ -269,10 +269,10 @@ class AppBackupRepository @Inject constructor(
     internal suspend fun calculateDisplayStats(
         revisionDir: String,
         compression: CompressionType,
-        states: PackageDataStates,
+        states: PackageDataStates? = null,
         knownFiles: List<BackupManifestFile> = emptyList(),
     ) = archiveStats { type ->
-        if (type.getSelected(states)) {
+        if (states == null || type.getSelected(states)) {
             val name = "${type.type}.${compression.suffix}"
             knownFiles.firstOrNull { it.name == name }?.sizeBytes ?: rootService.calculateSize("$revisionDir/$name")
         } else 0L
@@ -522,12 +522,18 @@ class AppBackupRepository @Inject constructor(
 
     suspend fun deleteRevision(revision: BackupRevisionEntity): Boolean = revisionMutex.withLock { removeRevision(revision) }
 
+    suspend fun deleteBackup(app: PackageEntity): Boolean = revisionMutex.withLock {
+        if (app.indexInfo.opType != OpType.RESTORE) return@withLock false
+        val repositoryId = "${app.indexInfo.cloud}:${app.indexInfo.backupDir}"
+        val revision = dao.getRevisions(repositoryId, listOf(app.archivesRelativeDir)).singleOrNull()
+        if (revision == null) packageRepository.delete(app) else removeRevision(revision)
+    }
+
     private suspend fun removeRevision(revision: BackupRevisionEntity): Boolean {
         if (!hasValidArtifactId(revision) || !dao.hasRevision(revision.id)) return false
         val packageEntity = findLegacyRevision(revision)
         val deleted = if (packageEntity != null) {
             packageRepository.delete(packageEntity)
-            packageRepository.getPackage(packageEntity.id) == null
         } else {
             val revisionDir = getLocalRevisionDir(revision) ?: return false
             rootService.deleteRecursively(revisionDir)
@@ -564,6 +570,7 @@ class AppBackupRepository @Inject constructor(
             val revisionDir = getLocalRevisionDir(revision) ?: return@withLock false
             val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
             val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return@withLock false
+            if (!manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return@withLock false
             if (!rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) return@withLock false
             dao.updateRevisionNote(revision.id, normalized)
             true

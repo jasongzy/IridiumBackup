@@ -61,7 +61,8 @@ class CloudDownloadTest {
             val repo = CloudRepository(context, RemoteRootService(context), database.cloudDao())
             val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
                 check(method.name == "download")
-                File(args!![1] as String, "config.json").writeText(args[0] as String)
+                val path = args!![0] as String
+                File(args[1] as String, "config.json").writeText(if (path == "valid/config.json") "42" else path)
                 @Suppress("UNCHECKED_CAST")
                 val progress = args[2] as (Long, Long) -> Unit
                 progress(2, -1)
@@ -86,6 +87,8 @@ class CloudDownloadTest {
             }
             assertTrue(result.isSuccess)
             assertFalse(outer.parentFile!!.exists())
+            assertEquals(42, repo.readBackupConfig(client, "valid/config.json", Int::class.javaObjectType))
+            assertTrue(runCatching { repo.readBackupConfig(client, "invalid/config.json", Int::class.javaObjectType) }.isFailure)
         } finally {
             database.close()
         }

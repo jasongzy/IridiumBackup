@@ -3,6 +3,7 @@ package com.xayah.core.database.dao
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.xayah.core.model.CompressionType
@@ -12,6 +13,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MediaDao {
+    @Query("UPDATE MediaEntity SET mediaInfo_displayBytes = :bytes WHERE id = :id")
+    suspend fun updateDisplaySize(id: Long, bytes: Long)
+
+    @Transaction
+    suspend fun addRestoreFiles(items: List<MediaEntity>) {
+        items.forEach { file ->
+            val info = file.indexInfo
+            if (query(info.opType, file.preserveId, file.name, info.compressionType, info.cloud, info.backupDir) == null) upsert(file)
+        }
+    }
+
     @Upsert(entity = MediaEntity::class)
     suspend fun upsert(items: List<MediaEntity>)
 

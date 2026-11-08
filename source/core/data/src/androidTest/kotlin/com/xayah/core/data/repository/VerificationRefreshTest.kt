@@ -72,6 +72,8 @@ class VerificationRefreshTest {
                 when (method.name) {
                     "asBinder" -> binder
                     "exists" -> File(args!![0] as String).exists()
+                    "deleteRecursively" -> FileUtil.deleteRecursively(args!![0] as String)
+                    "removeEntry" -> FileUtil.removeEntry(args!![0] as String, args[1] as Boolean)
                     "mkdirs" -> File(args!![0] as String).let { it.mkdirs() || it.isDirectory }
                     "replaceFile" -> {
                         File(args!![0] as String).copyTo(File(args[1] as String), overwrite = true)
@@ -224,13 +226,30 @@ class VerificationRefreshTest {
             revisions.insertRevision(newer)
             assertEquals(listOf(newer.id, revision.id), repository.getLocalRetentionCandidates(1).map { it.revision.id })
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
+            val manifest = checkNotNull(root.readJson<BackupManifest>(manifestPath))
+            val different = manifest.copy(versionCode = manifest.versionCode + 1)
+            check(root.writeJson(different, manifestPath).isSuccess)
+            assertEquals(false, repository.updateRevisionNote(revision, "wrong revision"))
+            assertEquals(different, root.readJson<BackupManifest>(manifestPath))
+            check(root.writeJson(manifest, manifestPath).isSuccess)
             check(repository.updateRevisionNote(revision, ""))
             assertEquals(revision.id, revisions.getOldRevision(revision.id, revision.repositoryId, 1)?.id)
             revisions.deleteRevision(newer.id)
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
             assertEquals(true, apk.exists())
             assertEquals(1, repository.rebuildLocalIndex { _, _, _ -> }.size)
-            assertEquals(3L, dao.queryRevisions(config.packageName, OpType.RESTORE, 0, config.createdAt).single().displayStats.apkBytes)
+            val selected = dao.queryRevisions(config.packageName, OpType.RESTORE, 0, config.createdAt).single()
+            assertEquals(3L, selected.displayStats.apkBytes)
+            val otherDirectory = File(directory, "other")
+            val otherApk = File(otherDirectory, "apps/${restore.archivesRelativeDir}/apk.tar").apply {
+                parentFile!!.mkdirs()
+                writeText("keep")
+            }
+            context.saveBackupSavePath(otherDirectory.path)
+            assertEquals(true, repository.deleteBackup(selected))
+            assertEquals("keep", otherApk.readText())
+            assertEquals(false, revisionDir.exists())
+            assertEquals(emptyList<BackupRevisionEntity>(), revisions.getRevisions(revision.repositoryId))
         } finally {
             context.saveBackupSavePath(previousPath)
             database.close()

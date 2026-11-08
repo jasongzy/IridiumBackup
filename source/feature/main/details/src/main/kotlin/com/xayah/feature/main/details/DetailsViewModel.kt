@@ -798,8 +798,7 @@ class DetailsViewModel @Inject constructor(
                 is Success.App -> {
                     val state = uiState.value.castTo<Success.App>()
                     val app = state.app
-                    appsRepo.deleteApp(app.indexInfo.cloud, app)
-                    showToast(R.string.deleted_successfully)
+                    showToast(if (appBackupRepository.deleteBackup(app)) R.string.deleted_successfully else R.string.failed)
                 }
 
                 is Success.File -> {
@@ -812,8 +811,7 @@ class DetailsViewModel @Inject constructor(
                         }
 
                         OpType.RESTORE -> {
-                            filesRepo.deleteFile(file.indexInfo.cloud, file)
-                            showToast(R.string.deleted_successfully)
+                            showToast(if (filesRepo.deleteFile(file)) R.string.deleted_successfully else R.string.failed)
                         }
                     }
                 }

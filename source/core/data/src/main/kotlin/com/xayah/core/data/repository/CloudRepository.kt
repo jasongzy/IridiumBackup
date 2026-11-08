@@ -112,6 +112,15 @@ class CloudRepository @Inject constructor(
         }
     }
 
+    suspend fun <T : Any> readBackupConfig(client: CloudClient, path: String, type: Class<T>): T {
+        var config: T? = null
+        val result = download(client, path) { file ->
+            config = rootService.gsonUtil.fromJson(File(file).readText(), type)
+        }
+        check(result.isSuccess) { result.outString }
+        return checkNotNull(config) { "Invalid backup config: $path" }
+    }
+
     suspend fun getClient(name: String? = null): Pair<CloudClient, CloudEntity> {
         val account = name ?: context.readCloudActivatedAccountName().first()
         val entity = checkNotNull(queryByName(account)) { "Cloud account not found: $account" }

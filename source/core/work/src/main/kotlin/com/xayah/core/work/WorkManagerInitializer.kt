@@ -58,10 +58,10 @@ object WorkManagerInitializer {
     }
 
     fun loadAppBackups(context: Context, cloudName: String, backupDir: String) {
-        WorkManager.getInstance(context).enqueueUniqueWork(LOAD_APP_BACKUPS_WORK_NAME, ExistingWorkPolicy.KEEP, AppsLoadWorker.buildRequest(cloudName))
+        WorkManager.getInstance(context).enqueueUniqueWork(LOAD_APP_BACKUPS_WORK_NAME, ExistingWorkPolicy.REPLACE, AppsLoadWorker.buildRequest(cloudName, backupDir))
     }
 
     fun loadFileBackups(context: Context, cloudName: String, backupDir: String) {
-        WorkManager.getInstance(context).enqueueUniqueWork(LOAD_FILE_BACKUPS_WORK_NAME, ExistingWorkPolicy.KEEP, FilesLoadWorker.buildRequest(cloudName))
+        WorkManager.getInstance(context).enqueueUniqueWork(LOAD_FILE_BACKUPS_WORK_NAME, ExistingWorkPolicy.REPLACE, FilesLoadWorker.buildRequest(cloudName, backupDir))
     }
 }

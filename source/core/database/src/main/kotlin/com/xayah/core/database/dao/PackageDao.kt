@@ -23,6 +23,15 @@ interface PackageDao {
         upsert(items)
     }
 
+    @Transaction
+    suspend fun applyRestoreScan(additions: List<PackageEntity>, missing: List<Long>) {
+        for (app in additions) {
+            val info = app.indexInfo
+            if (query(app.packageName, info.opType, app.userId, app.preserveId, info.compressionType, info.cloud, info.backupDir) == null) upsert(app)
+        }
+        missing.chunked(SQLITE_BIND_LIMIT).forEach { deleteByIds(it) }
+    }
+
     @Upsert(entity = PackageEntity::class)
     suspend fun upsert(items: List<PackageEntity>)
 

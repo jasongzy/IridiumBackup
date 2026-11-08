@@ -24,4 +24,7 @@
     <string name="force_stop">结束运行</string>
     <string name="open_settings">打开设置</string>
     <string name="backup_deleted">备份已删除</string>
+    <string name="backup_delete_failed">未能删除此备份</string>
+    <string name="backup_note_save_failed">备注未保存，请检查备份文件或重建索引</string>
+    <string name="restore_revision_unavailable">此备份已不可用，请刷新备份索引</string>
 </resources>

@@ -78,9 +78,8 @@ class AppRevisionsViewModel @Inject constructor(
 
     fun deleteRevision(revision: BackupRevisionEntity) {
         viewModelScope.launch {
-            if (repository.deleteRevision(revision)) {
-                Toast.makeText(context, R.string.backup_deleted, Toast.LENGTH_SHORT).show()
-            }
+            val message = if (repository.deleteRevision(revision)) R.string.backup_deleted else R.string.backup_delete_failed
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -108,9 +107,8 @@ class AppRevisionsViewModel @Inject constructor(
 
     fun updateRevisionNote(revision: BackupRevisionEntity, note: String) {
         viewModelScope.launch {
-            if (repository.updateRevisionNote(revision, note)) {
-                Toast.makeText(context, R.string.note_saved, Toast.LENGTH_SHORT).show()
-            }
+            val message = if (repository.updateRevisionNote(revision, note)) R.string.note_saved else R.string.backup_note_save_failed
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -122,7 +120,10 @@ class AppRevisionsViewModel @Inject constructor(
         viewModelScope.launch {
             val result = repository.inspectRevision(revision)
             repository.rememberVerification(result)
-            val selection = repository.selectRevisionForRestore(revision, dataStates) ?: return@launch
+            val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
+                Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             navController.navigateSingle(
                 MainRoutes.PackagesRestoreProcessingGraph.getRoute(
                     cloudName = selection.cloudName.ifEmptyEncodeURLWithSpace(),

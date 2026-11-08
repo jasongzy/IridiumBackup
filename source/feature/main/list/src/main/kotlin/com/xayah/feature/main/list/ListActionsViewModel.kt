@@ -244,8 +244,7 @@ class ListActionsViewModel @Inject constructor(
                     val state = uiState.value.castTo<Success.Apps>()
                     val ids = state.appList.filter { it.selected }.map { it.id }
                     if (ids.isNotEmpty()) {
-                        appsRepo.deleteSelected(ids)
-                        showToast(R.string.items_deleted)
+                        showDeleted(appsRepo.deleteSelected(ids), ids.size)
                     }
                 }
 
@@ -256,13 +255,10 @@ class ListActionsViewModel @Inject constructor(
                     when (opType) {
                         OpType.BACKUP -> {
                             filesRepo.delete(ids)
+                            showToast(R.string.items_deleted)
                         }
-
-                        OpType.RESTORE -> {
-                            filesRepo.deleteSelected(ids)
-                        }
+                        OpType.RESTORE -> showDeleted(filesRepo.deleteSelected(ids), ids.size)
                     }
-                    showToast(R.string.items_deleted)
                 }
 
                 else -> {}
@@ -306,6 +302,12 @@ class ListActionsViewModel @Inject constructor(
         return listDataRepo.getSelectedAppKeys().value.map { key ->
             LabelAppCrossRefEntity(label, key.packageName, key.userId, installedByKey[key]?.preserveId ?: 0)
         }
+    }
+
+    private suspend fun showDeleted(count: Int, total: Int) = withContext(Dispatchers.Main.immediate) {
+        val message = context.getString(R.string.items_deleted) + ": $count" +
+            if (count < total) ", ${context.getString(com.xayah.core.ui.R.string.failed)}: ${total - count}" else ""
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
 
     private suspend fun showToast(message: Int) = withContext(Dispatchers.Main.immediate) {
