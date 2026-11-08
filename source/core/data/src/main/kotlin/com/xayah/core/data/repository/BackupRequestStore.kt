@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.readBackupConfigs
 import com.xayah.core.datastore.readBackupItself
@@ -36,8 +37,9 @@ class BackupRequestStore @Inject constructor(
         dataStates: Map<Long, PackageDataStates> = emptyMap(),
     ) {
         require(ids.isNotEmpty())
-        val packagesById = packageDao.queryByIds(ids.toList()).associateBy(PackageEntity::id)
-        val packages = ids.mapNotNull { id ->
+        val orderedIds = ids.distinct()
+        val packagesById = orderedIds.chunked(SQLITE_BIND_LIMIT).flatMap { packageDao.queryByIds(it) }.associateBy(PackageEntity::id)
+        val packages = orderedIds.mapNotNull { id ->
             packagesById[id]?.let { app ->
                 app.copy(
                     extraInfo = app.extraInfo.copy(activated = false),

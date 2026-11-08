@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.database.dao.AppBackupDao
 import com.xayah.core.datastore.readFastSameVersionBackup
 import com.xayah.core.model.AppBackupOverview
@@ -114,7 +115,7 @@ class AppBackupRepository @Inject constructor(
     fun observeRevisions(): Flow<List<BackupRevisionEntity>> = dao.observeRevisions()
 
     suspend fun getRevisionSizeBytes(repositoryId: String, artifactIds: List<String>): Long =
-        if (artifactIds.isEmpty()) 0 else dao.getRevisionSizeBytes(repositoryId, artifactIds)
+        artifactIds.distinct().chunked(SQLITE_BIND_LIMIT - 1).sumOf { dao.getRevisionSizeBytes(repositoryId, it) }
 
     suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) {
         dao.replaceInstalledApps(userId, apps.map { it.toBackupApp() })

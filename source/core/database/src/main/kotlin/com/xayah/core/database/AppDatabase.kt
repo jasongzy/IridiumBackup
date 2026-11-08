@@ -26,6 +26,8 @@ import com.xayah.core.model.database.TaskDetailMediaEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.database.TaskEntity
 
+const val SQLITE_BIND_LIMIT = 999
+
 @Database(
     version = 10,
     exportSchema = true,

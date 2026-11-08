@@ -34,6 +34,8 @@ class BackupRequestStoreTest {
             ).toPackageEntity("", "").apply { id = 1 }
             database.packageDao().upsert(app)
             val requests = BackupRequestStore(context, database.packageDao())
+            requests.prepare((1001L downTo 1L).toList() + app.id)
+            assertEquals(listOf(app.id), requests.packages.value.map { it.id })
             for (defaults in listOf(BackupRequestStore.Options(true, false), BackupRequestStore.Options(false, true))) {
                 context.saveBackupItself(defaults.backupItself)
                 context.saveBackupConfigs(defaults.backupConfigs)
