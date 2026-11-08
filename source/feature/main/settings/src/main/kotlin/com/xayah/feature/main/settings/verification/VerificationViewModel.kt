@@ -83,11 +83,11 @@ class VerificationViewModel @Inject constructor(
 
     fun cleanFailedBackups() {
         val current = _uiState.value
-        if (current.isRunning || current.isCleaning || current.failedBackups.isEmpty()) return
+        if (current.isRunning || current.isCleaning || current.results.none { it.canClean }) return
         _uiState.value = current.copy(
             isCleaning = true,
             cleanupCompleted = 0,
-            cleanupTotal = current.failedBackups.size,
+            cleanupTotal = current.results.count { it.canClean },
             cleanupFailedCount = 0,
         )
         viewModelScope.launch(Dispatchers.IO) {
@@ -96,7 +96,7 @@ class VerificationViewModel @Inject constructor(
                     _uiState.value = _uiState.value.copy(cleanupCompleted = completed, cleanupTotal = total)
                 }
                 _uiState.value = _uiState.value.copy(
-                    results = _uiState.value.results.filterNot { it.revision.id in report.deletedRevisionIds },
+                    results = report.results,
                     total = repository.getLocalRevisionCount(),
                     cleanupFailedCount = report.failedCount,
                 )
@@ -104,9 +104,9 @@ class VerificationViewModel @Inject constructor(
                     Toast.makeText(
                         context,
                         if (report.failedCount == 0) {
-                            context.getString(R.string.backups_deleted_count, report.deletedRevisionIds.size)
+                            context.getString(R.string.backups_deleted_count, report.deletedCount)
                         } else {
-                            context.getString(R.string.cleanup_result, report.deletedRevisionIds.size, report.failedCount)
+                            context.getString(R.string.cleanup_result, report.deletedCount, report.failedCount)
                         },
                         Toast.LENGTH_SHORT,
                     ).show()

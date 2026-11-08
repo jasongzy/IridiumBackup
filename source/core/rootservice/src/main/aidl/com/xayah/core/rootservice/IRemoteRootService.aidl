@@ -3,7 +3,6 @@ package com.xayah.core.rootservice;
 import android.content.Intent;
 import com.xayah.core.rootservice.parcelables.StatFsParcelable;
 import com.xayah.core.rootservice.parcelables.StorageStatsParcelable;
-import com.xayah.core.rootservice.parcelables.DirectoryListingParcelable;
 import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable;
 import com.xayah.core.model.database.PackagePermission;
 
@@ -25,11 +24,10 @@ interface IRemoteRootService {
     boolean deleteRecursively(String path);
     boolean hasZipEntry(String path, in String[] entries);
     List<String> listFilePaths(String path, boolean listFiles, boolean listDirs);
-    DirectoryListingParcelable listFilePathsChecked(String path, boolean listFiles, boolean listDirs);
     ParcelFileDescriptor readText(String path);
     ParcelFileDescriptor readBytes(String path);
     long calculateSize(String path);
-    void clearEmptyDirectoriesRecursively(String path);
+    long fileLength(String path);
     void setAllPermissions(String src);
     int[] getUidGid(String path);
 

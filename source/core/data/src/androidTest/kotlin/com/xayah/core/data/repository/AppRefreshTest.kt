@@ -92,7 +92,7 @@ class AppRefreshTest {
             val packages = PackageRepository(context, root, clouds, database.packageDao(), paths)
             val modules = XposedModuleDetector(context, root)
             val backups = AppBackupRepository(
-                context, database.appBackupDao(), packages, AppIconRepository(context, root, paths), modules, root, paths,
+                context, database, packages, AppIconRepository(context, root, paths), modules, root,
             )
             val preferences = object : DataStore<Preferences> {
                 override val data = flowOf(emptyPreferences())

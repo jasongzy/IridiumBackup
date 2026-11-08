@@ -286,14 +286,6 @@ class RemoteRootService(private val context: Context) {
     suspend fun listFilePaths(path: String, listFiles: Boolean = true, listDirs: Boolean = true): List<String> =
         runCatching { getService().listFilePaths(path, listFiles, listDirs) }.onFailure(onFailure).getOrElse { listOf() }
 
-    suspend fun listFilePathsChecked(path: String, listFiles: Boolean = true, listDirs: Boolean = true): Result<List<String>> =
-        runCatching {
-            getService().listFilePathsChecked(path, listFiles, listDirs).let { result ->
-                check(result.successful) { "Unable to read directory: $path" }
-                result.paths
-            }
-        }.onFailure(onFailure)
-
     private fun <T> readFromParcel(pfd: ParcelFileDescriptor, block: (Parcel) -> T): T {
         val bytes = ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }
         val parcel = Parcel.obtain()
@@ -311,14 +303,11 @@ class RemoteRootService(private val context: Context) {
         return readFromParcel(pfd) { DirectoryEntries(it.createStringArrayList().orEmpty(), it.createStringArrayList().orEmpty()) }
     }
 
-    suspend fun readText(path: String): String = runCatching {
-        val pfd = getService().readText(path)
-        var text: String? = null
-        readFromParcel(pfd) {
-            text = it.readString()
-        }
-        text ?: ""
-    }.onFailure(onFailure).getOrElse { "" }
+    suspend fun readTextIfPresent(path: String): String? = readFromParcel(getService().readText(path)) { it.readString() }
+
+    suspend fun readTextChecked(path: String): String = readTextIfPresent(path) ?: throw IOException("File not found: $path")
+
+    suspend fun readText(path: String): String = runCatching { readTextChecked(path) }.onFailure(onFailure).getOrDefault("")
 
     suspend fun readBytes(src: String): ByteArray = runCatching {
         val pfd = getService().readBytes(src)
@@ -332,7 +321,7 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun calculateSize(path: String): Long = runCatching { getService().calculateSize(path) }.onFailure(onFailure).getOrElse { 0 }
 
-    suspend fun clearEmptyDirectoriesRecursively(path: String) = runCatching { getService().clearEmptyDirectoriesRecursively(path) }.onFailure(onFailure)
+    suspend fun fileLength(path: String): Long? = runCatching { getService().fileLength(path) }.onFailure(onFailure).getOrNull()
 
     suspend fun setAllPermissions(src: String) = runCatching { getService().setAllPermissions(src) }.onFailure(onFailure)
 

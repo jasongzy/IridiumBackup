@@ -76,8 +76,8 @@ interface AppBackupDao {
     )
     suspend fun deleteUninstalledAppsWithoutRevisions(userId: Int)
 
-    @Upsert
-    suspend fun upsertRevision(revision: BackupRevisionEntity)
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRevision(revision: BackupRevisionEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMissingApp(app: BackupAppEntity)
@@ -85,7 +85,7 @@ interface AppBackupDao {
     @Transaction
     suspend fun recordRevision(app: BackupAppEntity, revision: BackupRevisionEntity) {
         insertMissingApp(app)
-        upsertRevision(revision)
+        insertRevision(revision)
         syncLastBackupTime(app.packageName, app.userId, OpType.BACKUP)
     }
 
@@ -113,8 +113,11 @@ interface AppBackupDao {
     @Query("SELECT * FROM backup_revisions WHERE packageName = :packageName AND userId = :userId AND repositoryId = :repositoryId AND (contentMask & 1) != 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestApkRevision(packageName: String, userId: Int, repositoryId: String): BackupRevisionEntity?
 
-    @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC")
+    @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC, revisionId")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>
+
+    @Query("SELECT COUNT(*) FROM backup_revisions WHERE repositoryId = :repositoryId")
+    suspend fun countRevisions(repositoryId: String): Int
 
     @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM backup_revisions WHERE repositoryId = :repositoryId AND artifactId IN (:artifactIds)")
     suspend fun getRevisionSizeBytes(repositoryId: String, artifactIds: List<String>): Long
@@ -127,6 +130,9 @@ interface AppBackupDao {
 
     @Query("DELETE FROM backup_revisions WHERE revisionId = :revisionId")
     suspend fun deleteRevision(revisionId: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM backup_revisions WHERE revisionId = :revisionId)")
+    suspend fun hasRevision(revisionId: String): Boolean
 
     @Transaction
     suspend fun deleteRevisionAndSync(revision: BackupRevisionEntity) {

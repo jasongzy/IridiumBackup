@@ -50,13 +50,13 @@ class IndexViewModel @Inject constructor(
                 if (uiState.value.isLoading) return
                 updateState { it.copy(isLoading = true, completed = 0, total = 0, indexed = 0, results = emptyList()) }
                 try {
-                    val report = withContext(Dispatchers.IO) {
+                    val results = withContext(Dispatchers.IO) {
                         appBackupRepository.rebuildLocalIndex { completed, total, indexed ->
                             updateState { it.copy(completed = completed, total = total, indexed = indexed) }
                         }
                     }
                     updateState {
-                        it.copy(text = context.getString(R.string.rebuild_finished, report.results.size), results = report.results)
+                        it.copy(text = context.getString(R.string.rebuild_finished, results.size), results = results)
                     }
                     Toast.makeText(context, uiState.value.text, Toast.LENGTH_SHORT).show()
                 } catch (error: Exception) {

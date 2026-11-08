@@ -67,7 +67,8 @@ fun BackupManifest.hasValidFileEntries(): Boolean {
             !names.add(name) || file.sizeBytes < 0 || !sha256Hex.matches(file.sha256.orEmpty())
         ) return false
     }
-    return ConfigsPackageRestoreName in names && contentMask == archiveContentMask(names)
+    return ConfigsPackageRestoreName in names && contentMask != 0 && contentMask == archiveContentMask(names) &&
+        names.size == Integer.bitCount(contentMask) + 1
 }
 
 fun BackupManifest.matchesRevision(revision: BackupRevisionEntity): Boolean =

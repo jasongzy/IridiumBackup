@@ -28,9 +28,9 @@ class BackupRecordingTest {
             val packages = database.packageDao()
             val dao = database.appBackupDao()
             val repository = AppBackupRepository(
-                context, dao,
+                context, database,
                 PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), packages, paths),
-                AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root, paths,
+                AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root,
             )
             val app = PackageRestoreConfig(
                 packageName = "com.example.backup", userId = 0, createdAt = 0, compressionType = CompressionType.ZSTD,
@@ -56,8 +56,10 @@ class BackupRecordingTest {
             repository.updateAppNote(app.packageName, 0, "Current note")
             val currentMetadata = dao.getApp(app.packageName, 0)
 
-            val revision = request.copy(indexInfo = request.indexInfo.copy(preserveId = 1234))
-            repository.recordLegacyRevision(revision, 1234, ":/backup", 2, 512)
+            val revision = request.copy(id = 0, indexInfo = request.indexInfo.copy(opType = OpType.RESTORE, backupDir = "/backup", preserveId = 1234))
+            repository.recordLegacyRevision(revision, 2, 512)
+            repository.recordLegacyRevision(revision, 2, 512)
+            val stored = packages.queryRevisions(app.packageName, OpType.RESTORE, 0, 1234).single()
 
             assertEquals(currentMetadata, dao.getApp(app.packageName, 0))
             assertEquals(
@@ -66,6 +68,8 @@ class BackupRecordingTest {
             )
             assertEquals(temporaryScope, request.dataStates)
             val recorded = dao.getRevisions(":/backup").single()
+            repository.selectRevisionForRestore(recorded, temporaryScope)
+            assertEquals(stored.copy(dataStates = temporaryScope, extraInfo = stored.extraInfo.copy(activated = true)), packages.queryById(stored.id))
             assertEquals("1.0", recorded.appVersionName)
             assertEquals(1L, recorded.appVersionCode)
             assertEquals(2, recorded.contentMask)
@@ -75,7 +79,7 @@ class BackupRecordingTest {
             repository.syncInstalledApps(0, emptyList())
             val uninstalled = dao.getApp(app.packageName, 0)
             repository.recordLegacyRevision(
-                request.copy(indexInfo = request.indexInfo.copy(preserveId = 2345)), 2345, ":/backup", 2, 768,
+                revision.copy(indexInfo = revision.indexInfo.copy(preserveId = 2345)), 2, 768,
             )
             assertNull(packages.queryById(app.id))
             assertEquals(uninstalled, dao.getApp(app.packageName, 0))

@@ -39,6 +39,6 @@ dependencies {
     // Work manager
     implementation(libs.androidx.work.runtime.ktx)
 
-    androidTestImplementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
     testImplementation(libs.junit)
 }

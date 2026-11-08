@@ -262,17 +262,14 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                                 onAppIconSaved(iconPath, revisionApp.packageName)
                             }
                             withContext(NonCancellable) {
-                                mPackageDao.upsert(restoreEntity)
-                                installedApp.extraInfo.lastBackupTime = revisionCreatedAt
                                 mAppBackupRepository.recordLegacyRevision(
-                                    app = revisionApp,
-                                    createdAt = revisionCreatedAt,
-                                    repositoryId = repositoryId,
+                                    restore = restoreEntity,
                                     contentMask = manifest.contentMask,
                                     sizeBytes = manifest.files.orEmpty().sumOf { it.sizeBytes },
                                 )
                                 pendingArchiveDir = null
                             }
+                            installedApp.extraInfo.lastBackupTime = revisionCreatedAt
                             pkg.update(packageEntity = installedApp)
                             mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
                         } else {

@@ -41,7 +41,7 @@ class BackupRevisionTest {
             val app = AppKey("com.example.app", 0).toBackupApp()
             dao.upsertApps(listOf(app))
             val revision = BackupRevisionEntity(app.packageName, 0, 1234, "1.0", 1, BackupEngine.LEGACY, ":/backup", "com.example.app/user_0@1234", 1)
-            dao.upsertRevision(revision)
+            dao.insertRevision(revision)
             dao.updateRevisionNote(revision.id, "protected")
             dao.updateRevisionSize(revision.id, 512)
             assertEquals(revision.copy(note = "protected", sizeBytes = 512), dao.getRevisions(revision.repositoryId).single())

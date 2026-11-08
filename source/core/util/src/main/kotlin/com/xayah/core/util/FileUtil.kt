@@ -6,6 +6,7 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import java.io.File
+import java.io.FileInputStream
 import java.io.IOException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
@@ -89,17 +90,6 @@ object FileUtil {
         }
     }
 
-    fun clearEmptyDirectoriesRecursively(path: String): Boolean {
-        val normalized = normalizeAbsolutePath(path)?.takeUnless(::isProtectedDeletionPath) ?: return false
-        return runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                clearEmptyDirectoriesRecursivelyApi26(Paths.get(normalized))
-            } else {
-                clearEmptyDirectoriesRecursivelyApi24(File(normalized))
-            }
-        }.getOrElse { false }
-    }
-
     fun isDescendant(parent: String, child: String): Boolean {
         val normalizedParent = normalizeAbsolutePath(parent) ?: return false
         val normalizedChild = normalizeAbsolutePath(child) ?: return false
@@ -162,52 +152,6 @@ object FileUtil {
         val children = file.listFiles() ?: return false
         val childrenDeleted = children.fold(true) { result, child -> deleteEntryApi24(child) && result }
         return childrenDeleted && (file.delete() || !pathExists(file.path))
-    }
-
-    @TargetApi(Build.VERSION_CODES.O)
-    internal fun clearEmptyDirectoriesRecursivelyApi26(path: Path): Boolean {
-        if (hasSymbolicLinkParentApi26(path)) return false
-        if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return true
-        var successful = true
-        Files.walkFileTree(
-            path,
-            object : SimpleFileVisitor<Path>() {
-                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-                    successful = false
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun postVisitDirectory(dir: Path, exc: IOException?): FileVisitResult {
-                    if (exc != null) {
-                        successful = false
-                    } else {
-                        Files.newDirectoryStream(dir).use { entries ->
-                            if (!entries.iterator().hasNext()) successful = Files.deleteIfExists(dir) && successful
-                        }
-                    }
-                    return FileVisitResult.CONTINUE
-                }
-            },
-        )
-        return successful
-    }
-
-    private fun clearEmptyDirectoriesRecursivelyApi24(file: File): Boolean {
-        if (hasSymbolicLinkParentApi24(file)) return false
-        return clearEmptyDirectoryEntryApi24(file)
-    }
-
-    private fun clearEmptyDirectoryEntryApi24(file: File): Boolean {
-        val mode = try {
-            Os.lstat(file.path).st_mode
-        } catch (error: ErrnoException) {
-            return error.errno == OsConstants.ENOENT
-        }
-        if (!OsConstants.S_ISDIR(mode)) return true
-        val children = file.listFiles() ?: return false
-        val childrenCleared = children.fold(true) { result, child -> clearEmptyDirectoryEntryApi24(child) && result }
-        val remaining = file.listFiles() ?: return false
-        return childrenCleared && (remaining.isNotEmpty() || file.delete() || !pathExists(file.path))
     }
 
     @TargetApi(Build.VERSION_CODES.O)
@@ -278,5 +222,18 @@ object FileUtil {
         "/vendor",
     )
 
-    fun readText(path: String): String = runCatching { File(path).readText() }.getOrElse { "" }
+    fun readText(path: String): String? {
+        val fd = try {
+            Os.open(path, OsConstants.O_RDONLY or OsConstants.O_NONBLOCK or OsConstants.O_CLOEXEC, 0)
+        } catch (error: ErrnoException) {
+            if (error.errno == OsConstants.ENOENT) return null
+            throw IllegalStateException("Unable to read file: $path", error)
+        }
+        try {
+            check(OsConstants.S_ISREG(Os.fstat(fd).st_mode)) { "Not a regular file: $path" }
+            return FileInputStream(fd).bufferedReader().use { it.readText() }
+        } finally {
+            Os.close(fd)
+        }
+    }
 }

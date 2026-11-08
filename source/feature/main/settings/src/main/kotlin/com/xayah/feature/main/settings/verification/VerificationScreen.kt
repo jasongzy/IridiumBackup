@@ -68,7 +68,7 @@ fun PageBackupVerification(
         scrollBehavior = scrollBehavior,
         title = stringResource(R.string.verification_results),
         actions = {
-            if (uiState.failedBackups.isNotEmpty()) {
+            if (uiState.results.any { it.canClean }) {
                 IconButton(
                     icon = Icons.Outlined.DeleteSweep,
                     tooltip = stringResource(R.string.clean_failed_backups),
@@ -115,7 +115,7 @@ fun PageBackupVerification(
         AlertDialog(
             onDismissRequest = { showCleanupConfirmation = false },
             title = { Text(stringResource(R.string.clean_failed_backups)) },
-            text = { Text(stringResource(R.string.confirm_clean_failed_backups, uiState.failedBackups.size)) },
+            text = { Text(stringResource(R.string.confirm_clean_failed_backups, uiState.results.count { it.canClean })) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -319,6 +319,7 @@ private fun AppBackupRepository.VerificationIssue.description(): String {
             AppBackupRepository.VerificationIssueType.FILE_MISSING -> R.string.verification_file_missing
             AppBackupRepository.VerificationIssueType.FILE_SIZE_MISMATCH -> R.string.verification_file_size_mismatch
             AppBackupRepository.VerificationIssueType.FILE_CHECKSUM_MISMATCH -> R.string.verification_file_checksum_mismatch
+            AppBackupRepository.VerificationIssueType.UNREADABLE -> com.xayah.core.data.R.string.verification_unreadable
             AppBackupRepository.VerificationIssueType.NOT_LOCAL -> R.string.verification_not_local
         }
     )

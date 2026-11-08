@@ -37,7 +37,6 @@ import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.rootservice.IRemoteRootService
 import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable
-import com.xayah.core.rootservice.parcelables.DirectoryListingParcelable
 import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.rootservice.parcelables.StatFsParcelable
 import com.xayah.core.rootservice.parcelables.StorageStatsParcelable
@@ -325,19 +324,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         null
     }
 
-    override fun listFilePathsChecked(path: String, listFiles: Boolean, listDirs: Boolean): DirectoryListingParcelable = synchronized(lock) {
-        val directory = File(path)
-        val children = directory.listFiles()
-        if (children == null) {
-            DirectoryListingParcelable(directory.exists().not(), emptyList())
-        } else {
-            DirectoryListingParcelable(
-                true,
-                children.filter { (it.isFile && listFiles) || (it.isDirectory && listDirs) }.map { it.path },
-            )
-        }
-    }
-
     private fun writeToParcel(block: (Parcel) -> Unit): ParcelFileDescriptor {
         val parcel = Parcel.obtain()
         try {
@@ -394,10 +380,9 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         NativeLib.calculateSize(path)
     }
 
-    override fun clearEmptyDirectoriesRecursively(path: String) {
-        synchronized(lock) {
-            FileUtil.clearEmptyDirectoriesRecursively(path)
-        }
+    override fun fileLength(path: String): Long = Os.stat(path).let {
+        check(OsConstants.S_ISREG(it.st_mode)) { "Not a regular file: $path" }
+        it.st_size
     }
 
     override fun setAllPermissions(src: String): Unit = synchronized(lock) { File(src).setAllPermissions() }

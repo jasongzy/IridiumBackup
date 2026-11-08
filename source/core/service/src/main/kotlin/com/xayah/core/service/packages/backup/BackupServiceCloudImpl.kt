@@ -5,7 +5,6 @@ import com.xayah.core.data.repository.BackupRequestStore
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.BackupManifestFile
@@ -171,9 +170,6 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
             if (::mClient.isInitialized) mClient.disconnect()
         }
     }
-
-    @Inject
-    override lateinit var mPackageDao: PackageDao
 
     @Inject
     override lateinit var mPackageRepo: PackageRepository

@@ -4,7 +4,6 @@ import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.BackupRequestStore
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
@@ -63,9 +62,6 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
         t.update(dataType = type, progress = 1f)
         t.update(processingIndex = t.processingIndex + 1)
     }
-
-    @Inject
-    override lateinit var mPackageDao: PackageDao
 
     @Inject
     override lateinit var mPackageRepo: PackageRepository

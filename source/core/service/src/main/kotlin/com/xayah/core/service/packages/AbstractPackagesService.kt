@@ -1,7 +1,6 @@
 package com.xayah.core.service.packages
 
 import com.xayah.core.data.repository.PackageRepository
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.OpType
@@ -72,7 +71,6 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
         }
     }
 
-    protected abstract val mPackageDao: PackageDao
     protected abstract val mPackageRepo: PackageRepository
     protected abstract val mRootDir: String
     protected abstract val mAppsDir: String

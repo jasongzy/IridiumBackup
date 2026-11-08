@@ -1,6 +1,8 @@
 package com.xayah.feature.main.restore.reload
 
 import android.os.Binder
+import android.os.Parcel
+import android.os.ParcelFileDescriptor
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
@@ -16,7 +18,6 @@ import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.IRemoteRootService
-import com.xayah.core.rootservice.parcelables.DirectoryListingParcelable
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
@@ -48,7 +49,17 @@ class RebuildFailureTest {
                 ) { _, method, _ ->
                     when (method.name) {
                         "asBinder" -> binder
-                        "listFilePathsChecked" -> DirectoryListingParcelable(readable.get(), emptyList())
+                        "readDirectory" -> if (!readable.get()) null else ParcelFileDescriptor.createPipe().let { (read, write) ->
+                            val parcel = Parcel.obtain()
+                            try {
+                                parcel.writeStringList(emptyList())
+                                parcel.writeStringList(emptyList())
+                                ParcelFileDescriptor.AutoCloseOutputStream(write).use { it.write(parcel.marshall()) }
+                            } finally {
+                                parcel.recycle()
+                            }
+                            read
+                        }
                         else -> error("Unexpected root operation: ${method.name}")
                     }
                 }
@@ -59,8 +70,8 @@ class RebuildFailureTest {
                 val clouds = CloudRepository(context, root, database.cloudDao())
                 val packages = PackageRepository(context, root, clouds, database.packageDao(), paths)
                 val repository = AppBackupRepository(
-                    context, database.appBackupDao(), packages, AppIconRepository(context, root, paths),
-                    XposedModuleDetector(context, root), root, paths,
+                    context, database, packages, AppIconRepository(context, root, paths),
+                    XposedModuleDetector(context, root), root,
                 )
                 val app = AppKey("com.example.backup", 0).toBackupApp()
                 val revision = BackupRevisionEntity(
@@ -68,14 +79,14 @@ class RebuildFailureTest {
                     ":${context.localBackupSaveDir()}", "com.example.backup/user_0@1234", 1,
                 )
                 database.appBackupDao().upsertApps(listOf(app))
-                database.appBackupDao().upsertRevision(revision)
+                database.appBackupDao().insertRevision(revision)
                 val model = IndexViewModel(context, repository)
                 withContext(Dispatchers.Main) {
                     store.put("rebuild", model)
                     model.emitIntent(IndexUiIntent.Rebuild)
                 }
                 assertFalse(model.uiState.value.isLoading)
-                assertTrue(model.uiState.value.text.contains("Unable to read directory"))
+                assertTrue(model.uiState.value.text.contains("Cannot read directory"))
                 assertEquals(listOf(revision), database.appBackupDao().getRevisions(revision.repositoryId))
 
                 readable.set(true)

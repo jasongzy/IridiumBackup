@@ -61,17 +61,6 @@ class PackageRepository @Inject constructor(
         packageDao.queryRevisions(packageName, OpType.RESTORE, userId, preserveId)
     suspend fun getPackage(id: Long) = packageDao.queryById(id)
 
-    suspend fun selectOnlyForRestore(id: Long, dataStates: PackageDataStates) {
-        packageDao.clearActivated(OpType.RESTORE)
-        packageDao.queryById(id)?.let { app ->
-            packageDao.update(
-                app.copy(
-                    extraInfo = app.extraInfo.copy(activated = true),
-                    dataStates = dataStates,
-                )
-            )
-        }
-    }
     fun queryPackagesFlow(opType: OpType, blocked: Boolean) = packageDao.queryPackagesFlow(opType, blocked).distinctUntilChanged()
     suspend fun queryPackages(opType: OpType, blocked: Boolean) = packageDao.queryPackages(opType, blocked)
     suspend fun queryUserIds(opType: OpType) = packageDao.queryUserIds(opType)
@@ -84,17 +73,6 @@ class PackageRepository @Inject constructor(
             rootService.extractArchive(source, destination, compression, workspace).result
         } finally {
             rootService.deleteRecursively(workspace)
-        }
-    }
-    suspend fun selectOnlyForRestore(items: List<Pair<PackageEntity, PackageDataStates>>) {
-        packageDao.clearActivated(OpType.RESTORE)
-        items.forEach { (app, dataStates) ->
-            packageDao.update(
-                app.copy(
-                    extraInfo = app.extraInfo.copy(activated = true),
-                    dataStates = dataStates,
-                )
-            )
         }
     }
     suspend fun setBlocked(id: Long, blocked: Boolean) = packageDao.setBlocked(id, blocked)
@@ -205,10 +183,6 @@ class PackageRepository @Inject constructor(
         isXposedModule = isXposedModule,
     )
 
-    suspend fun replaceLocalRestoreIndex(backupDir: String, items: List<PackageEntity>) {
-        packageDao.replaceLocalRestoreIndex(backupDir, items)
-    }
-
     suspend fun preserve(p: PackageEntity) {
         val pkgEntity = p.copy(id = 0, indexInfo = p.indexInfo.copy(preserveId = DateUtil.getTimestamp()))
         val appsDir = pathUtil.getLocalBackupAppsDir()
@@ -247,9 +221,7 @@ class PackageRepository @Inject constructor(
             val src = "$appsDir/$relativeDir"
             rootService.deleteRecursively(src).also { deleted ->
                 val packageDir = "${appsDir}/${p.packageName}"
-                if (deleted && rootService.listFilePathsChecked(packageDir).getOrNull()?.isEmpty() == true) {
-                    rootService.clearEmptyDirectoriesRecursively(packageDir)
-                }
+                if (deleted) rootService.removeEntry(packageDir, directory = true)
             }
         } else {
             runCatching {

@@ -56,7 +56,7 @@ class TitaniumLabelScanTest {
             val packages = PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), database.packageDao(), paths)
             val icons = AppIconRepository(context, root, paths)
             val modules = XposedModuleDetector(context, root)
-            val backups = AppBackupRepository(context, database.appBackupDao(), packages, icons, modules, root, paths)
+            val backups = AppBackupRepository(context, database, packages, icons, modules, root)
             val labels = LabelsRepo(context, Dispatchers.Default, database.labelDao())
             val repository = TitaniumImportRepository(context, root, paths, backups, icons, modules, labels)
             val otherRefs = listOf(

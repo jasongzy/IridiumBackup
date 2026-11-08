@@ -1,6 +1,7 @@
 package com.xayah.core.service.packages.restore
 
 import android.annotation.SuppressLint
+import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.readRestorePermissions
 import com.xayah.core.datastore.readRestoreSsaid
@@ -23,6 +24,8 @@ import com.xayah.core.util.NotificationUtil
 import kotlinx.coroutines.flow.first
 
 internal abstract class AbstractRestoreService : AbstractPackagesService() {
+    protected abstract val mPackageDao: PackageDao
+
     override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) = Unit
 
     override suspend fun onInitializingPostProcessingEntities(entities: MutableList<ProcessingInfoEntity>) {

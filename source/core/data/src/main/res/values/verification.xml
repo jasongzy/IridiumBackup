@@ -1,0 +1,4 @@
+<resources>
+    <string name="rebuild_source_changed">The backup list changed during the scan. Rebuild the index again.</string>
+    <string name="verification_unreadable">Couldn’t read this backup. Check storage and root access, then verify again.</string>
+</resources>

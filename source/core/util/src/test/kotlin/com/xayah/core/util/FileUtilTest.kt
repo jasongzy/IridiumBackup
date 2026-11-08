@@ -69,38 +69,4 @@ class FileUtilTest {
         assertFalse(FileUtil.deleteRecursively("/storage/emulated/0"))
         assertFalse(FileUtil.deleteRecursively("/data/media/0/Android"))
     }
-
-    @Test
-    fun clearEmptyDirectoriesKeepsFilesAndDoesNotFollowSymbolicLinks() {
-        val external = temporaryFolder.newFolder("external-empty").toPath()
-        val externalEmpty = Files.createDirectory(external.resolve("keep"))
-        val root = temporaryFolder.newFolder("empty-root").toPath()
-        Files.createDirectories(root.resolve("empty/nested"))
-        val retainedFile = Files.write(root.resolve("keep.txt"), "keep".toByteArray())
-        try {
-            Files.createSymbolicLink(root.resolve("external"), external)
-        } catch (error: Exception) {
-            assumeNoException(error)
-        }
-
-        assertTrue(FileUtil.clearEmptyDirectoriesRecursivelyApi26(root))
-        assertFalse(Files.exists(root.resolve("empty")))
-        assertTrue(Files.exists(retainedFile))
-        assertTrue(Files.exists(externalEmpty))
-    }
-
-    @Test
-    fun clearEmptyDirectoriesRejectsSymbolicLinkParents() {
-        val external = temporaryFolder.newFolder("external-empty-parent").toPath()
-        val nested = Files.createDirectories(external.resolve("empty/nested"))
-        val workspace = temporaryFolder.newFolder("empty-parent").toPath()
-        try {
-            Files.createSymbolicLink(workspace.resolve("shared"), external)
-        } catch (error: Exception) {
-            assumeNoException(error)
-        }
-
-        assertFalse(FileUtil.clearEmptyDirectoriesRecursivelyApi26(workspace.resolve("shared/empty")))
-        assertTrue(Files.exists(nested))
-    }
 }

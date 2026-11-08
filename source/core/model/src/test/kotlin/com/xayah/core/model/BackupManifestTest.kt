@@ -31,6 +31,9 @@ class BackupManifestTest {
             assertFalse(valid.copy(files = listOf(apk, config, apk.copy(name = name))).hasValidFileEntries())
         }
         assertFalse(valid.copy(files = listOf(config)).hasValidFileEntries())
+        assertFalse(valid.copy(contentMask = 0, files = listOf(config)).hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(config, apk, apk.copy(name = "unrelated.txt"))).hasValidFileEntries())
+        assertFalse(valid.copy(files = listOf(config, apk, apk.copy(name = "apk.tar"))).hasValidFileEntries())
         assertFalse(valid.copy(files = listOf(apk)).hasValidFileEntries())
         assertFalse(valid.copy(files = listOf(apk, config, apk)).hasValidFileEntries())
         assertFalse(valid.copy(files = listOf(apk.copy(sha256 = ""), config)).hasValidFileEntries())
