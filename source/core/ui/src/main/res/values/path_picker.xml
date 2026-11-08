@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="parent_folder">Parent folder</string>
+    <string name="select_this_folder">Select this folder</string>
+    <string name="folder_empty">Nothing to select here</string>
+    <string name="folder_read_failed">Cannot read this folder. Check root access.</string>
+    <string name="retry_folder">Retry</string>
+    <string name="new_folder">New folder</string>
+    <string name="folder_name">Folder name</string>
+    <string name="folder_create_failed">Couldn’t create this folder</string>
+</resources>

@@ -51,16 +51,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.xayah.core.data.repository.TitaniumImportRepository
 import com.xayah.core.ui.component.LinearProgressIndicator
+import com.xayah.core.ui.component.LocalPathPicker
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.component.TooltipIconButton
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.util.DateUtil
-import com.xayah.core.util.getActivity
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.settings.R
 import com.xayah.feature.main.settings.SettingsScaffold
+import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class, ExperimentalAnimationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -68,8 +69,8 @@ fun PageTitaniumImport() {
     val viewModel = hiltViewModel<TitaniumImportViewModel>()
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
-    val context = androidx.compose.ui.platform.LocalContext.current
     val selectedPath = if (state.mode == ImportMode.BACKUPS) state.backupPath else state.labelPath
+    var pickingSource by rememberSaveable { mutableStateOf(false) }
     val selectedCount = if (state.mode == ImportMode.BACKUPS) state.selectedBackupIds.size else state.selectedLabels.size
     var showCancelConfirmation by rememberSaveable { mutableStateOf(false) }
     var leaveAfterCancel by rememberSaveable { mutableStateOf(false) }
@@ -85,6 +86,19 @@ fun PageTitaniumImport() {
         }
     }
     BackHandler { requestBack() }
+    if (pickingSource) {
+        val fileMode = state.mode == ImportMode.LABELS
+        LocalPathPicker(
+            title = stringResource(R.string.select_source),
+            initialDirectory = selectedPath.takeIf(String::isNotBlank)?.let { if (fileMode) File(it).parent else it },
+            selectFile = fileMode,
+            onDismiss = { pickingSource = false },
+            onSelect = {
+                pickingSource = false
+                viewModel.emitIntentOnMain(TitaniumImportIntent.SelectPath(it))
+            },
+        )
+    }
     LaunchedEffect(state.isBusy, state.cancelling, showCancelConfirmation) {
         if (leaveAfterCancel && !showCancelConfirmation && !state.isBusy && !state.cancelling) {
             leaveAfterCancel = false
@@ -129,12 +143,7 @@ fun PageTitaniumImport() {
                     .fillMaxWidth()
                     .padding(horizontal = SizeTokens.Level16),
                 enabled = !state.isBusy && !state.cancelling,
-                onClick = {
-                    viewModel.emitIntentOnMain(
-                        if (state.mode == ImportMode.BACKUPS) TitaniumImportIntent.SelectBackupPath(context.getActivity())
-                        else TitaniumImportIntent.SelectLabelPath(context.getActivity())
-                    )
-                },
+                onClick = { pickingSource = true },
             ) { Text(stringResource(R.string.select_source)) }
 
             if (state.isBusy) {

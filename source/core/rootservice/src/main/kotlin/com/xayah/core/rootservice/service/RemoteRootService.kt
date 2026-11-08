@@ -39,6 +39,7 @@ import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
+import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -47,6 +48,8 @@ data class ArchiveExtraction(
     val skippedEntries: Int,
     val pendingLinks: Int,
 )
+
+data class DirectoryEntries(val directories: List<String>, val files: List<String>)
 
 class RemoteRootService(private val context: Context) {
     private var mService: IRemoteRootService? = null
@@ -176,6 +179,9 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun mkdirs(path: String): Boolean = runCatching { getService().mkdirs(path) }.onFailure(onFailure).getOrElse { false }
 
+    suspend fun createDirectory(path: String): Boolean =
+        runCatching { getService().createDirectory(path) }.onFailure(onFailure).getOrDefault(false)
+
     suspend fun mkdirsWithin(root: String, path: String): Boolean =
         runCatching { getService().mkdirsWithin(root, path) }.onFailure(onFailure).getOrElse { false }
 
@@ -276,16 +282,21 @@ class RemoteRootService(private val context: Context) {
             }
         }.onFailure(onFailure)
 
-    private fun readFromParcel(pfd: ParcelFileDescriptor, block: (Parcel) -> Unit) = run {
+    private fun <T> readFromParcel(pfd: ParcelFileDescriptor, block: (Parcel) -> T): T {
         val bytes = ParcelFileDescriptor.AutoCloseInputStream(pfd).use { it.readBytes() }
         val parcel = Parcel.obtain()
         try {
             parcel.unmarshall(bytes, 0, bytes.size)
             parcel.setDataPosition(0)
-            block(parcel)
+            return block(parcel)
         } finally {
             parcel.recycle()
         }
+    }
+
+    suspend fun readDirectory(path: String, includeFiles: Boolean): DirectoryEntries {
+        val pfd = getService().readDirectory(path, includeFiles) ?: throw IOException("Cannot read directory: $path")
+        return readFromParcel(pfd) { DirectoryEntries(it.createStringArrayList().orEmpty(), it.createStringArrayList().orEmpty()) }
     }
 
     suspend fun readText(path: String): String = runCatching {

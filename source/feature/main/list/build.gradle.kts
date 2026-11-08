@@ -35,8 +35,5 @@ dependencies {
     // dotLottie
     implementation(libs.dotlottie.android)
 
-    // PickYou
-    implementation(libs.pickyou)
-
     testImplementation(libs.junit)
 }

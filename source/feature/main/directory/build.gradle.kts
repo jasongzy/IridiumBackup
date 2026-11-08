@@ -25,7 +25,4 @@ dependencies {
 
     // Preferences DataStore
     implementation(libs.androidx.datastore.preferences)
-
-    // PickYou
-    implementation(libs.pickyou)
 }

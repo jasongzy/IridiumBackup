@@ -1,15 +1,11 @@
 package com.xayah.feature.main.settings.titanium
 
-import android.app.Activity
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.TitaniumImportRepository
 import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
-import com.xayah.libpickyou.PickYouLauncher
-import com.xayah.libpickyou.ui.model.PermissionType
-import com.xayah.libpickyou.ui.model.PickerType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -43,8 +39,7 @@ val TitaniumImportUiState.isBusy: Boolean
     get() = stage == ImportStage.SCANNING || stage == ImportStage.IMPORTING
 
 sealed class TitaniumImportIntent : UiIntent {
-    data class SelectBackupPath(val activity: Activity) : TitaniumImportIntent()
-    data class SelectLabelPath(val activity: Activity) : TitaniumImportIntent()
+    data class SelectPath(val path: String) : TitaniumImportIntent()
     data class SetMode(val mode: ImportMode) : TitaniumImportIntent()
     data class ToggleBackup(val id: String) : TitaniumImportIntent()
     data class ToggleBackupGroup(val packageName: String) : TitaniumImportIntent()
@@ -99,11 +94,12 @@ class TitaniumImportViewModel @Inject constructor(
         if ((current.isBusy || current.cancelling) && intent !is TitaniumImportIntent.SetSearchQuery) return@withMainContext
         when (intent) {
             is TitaniumImportIntent.SetMode -> setMode(current, intent.mode)
-            is TitaniumImportIntent.SelectBackupPath -> selectPath(intent.activity, PickerType.DIRECTORY) { path ->
-                resetCurrent { it.copy(backupPath = path) }
-            }
-            is TitaniumImportIntent.SelectLabelPath -> selectPath(intent.activity, PickerType.FILE) { path ->
-                resetCurrent { it.copy(labelPath = path) }
+            is TitaniumImportIntent.SelectPath -> {
+                if (current.mode == ImportMode.BACKUPS) {
+                    if (intent.path != current.backupPath) resetCurrent { it.copy(backupPath = intent.path) }
+                } else if (intent.path != current.labelPath) {
+                    resetCurrent { it.copy(labelPath = intent.path) }
+                }
             }
             is TitaniumImportIntent.ToggleBackup -> toggleBackup(current, intent.id)
             is TitaniumImportIntent.ToggleBackupGroup -> toggleBackupGroup(current, intent.packageName)
@@ -289,21 +285,4 @@ class TitaniumImportViewModel @Inject constructor(
         super.onCleared()
     }
 
-    private suspend fun selectPath(activity: Activity, pickerType: PickerType, onSelected: suspend (String) -> Unit) {
-        withMainContext {
-            PickYouLauncher(
-                checkPermission = true,
-                title = activity.getString(com.xayah.feature.main.settings.R.string.select_source),
-                pickerType = pickerType,
-                permissionType = PermissionType.ROOT,
-            ).apply {
-                launch(activity) { path ->
-                    launchOnIO {
-                        if (pickerType == PickerType.DIRECTORY) repository.clearPreviewCache()
-                        withMainContext { onSelected(path) }
-                    }
-                }
-            }
-        }
-    }
 }

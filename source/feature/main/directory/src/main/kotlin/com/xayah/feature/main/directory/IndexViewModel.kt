@@ -1,6 +1,5 @@
 package com.xayah.feature.main.directory
 
-import android.app.Activity
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.model.StorageType
@@ -10,9 +9,6 @@ import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
-import com.xayah.libpickyou.PickYouLauncher
-import com.xayah.libpickyou.ui.model.PermissionType
-import com.xayah.libpickyou.ui.model.PickerType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,7 +21,7 @@ data class IndexUiState(
 sealed class IndexUiIntent : UiIntent {
     data object Update : IndexUiIntent()
     data class Select(val entity: DirectoryEntity) : IndexUiIntent()
-    data class Add(val context: Activity) : IndexUiIntent()
+    data class Add(val path: String) : IndexUiIntent()
     data class Delete(val entity: DirectoryEntity) : IndexUiIntent()
 }
 
@@ -60,22 +56,8 @@ class IndexViewModel @Inject constructor(
             }
 
             is IndexUiIntent.Add -> {
-                withMainContext {
-                    val context = intent.context
-                    PickYouLauncher(
-                        checkPermission = true,
-                        title = context.getString(R.string.select_target_directory),
-                        pickerType = PickerType.DIRECTORY,
-                        permissionType = PermissionType.ROOT,
-                    ).apply {
-                        launch(context) { pathString ->
-                            launchOnIO {
-                                directoryRepo.addDir(listOf(pathString))
-                                emitIntent(IndexUiIntent.Update)
-                            }
-                        }
-                    }
-                }
+                directoryRepo.addDir(listOf(intent.path))
+                emitIntent(IndexUiIntent.Update)
             }
 
             is IndexUiIntent.Delete -> {

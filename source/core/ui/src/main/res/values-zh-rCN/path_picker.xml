@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="parent_folder">上一级目录</string>
+    <string name="select_this_folder">选择此文件夹</string>
+    <string name="folder_empty">此目录中没有可选条目</string>
+    <string name="folder_read_failed">无法读取此目录，请检查 root 权限</string>
+    <string name="retry_folder">重试</string>
+    <string name="new_folder">新建文件夹</string>
+    <string name="folder_name">文件夹名称</string>
+    <string name="folder_create_failed">无法创建文件夹</string>
+</resources>

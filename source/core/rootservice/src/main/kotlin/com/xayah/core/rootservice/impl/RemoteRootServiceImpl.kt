@@ -124,6 +124,10 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         )
     }
 
+    override fun createDirectory(path: String): Boolean = synchronized(lock) {
+        File(path).mkdir()
+    }
+
     override fun mkdirsWithin(root: String, path: String): Boolean = synchronized(lock) {
         ensureDirectories(root, path)
     }
@@ -330,6 +334,20 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
             }
         } finally {
             parcel.recycle()
+        }
+    }
+
+    override fun readDirectory(path: String, includeFiles: Boolean): ParcelFileDescriptor? {
+        val children = File(path).listFiles() ?: return null
+        val dirs = mutableListOf<String>()
+        val files = mutableListOf<String>()
+        for (child in children) {
+            if (child.isDirectory) dirs.add(child.path)
+            else if (includeFiles && child.isFile) files.add(child.path)
+        }
+        return writeToParcel {
+            it.writeStringList(dirs)
+            it.writeStringList(files)
         }
     }
 

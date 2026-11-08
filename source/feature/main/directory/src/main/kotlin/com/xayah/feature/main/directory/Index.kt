@@ -15,17 +15,20 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.ui.component.ContentWithActions
+import com.xayah.core.ui.component.LocalPathPicker
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.model.getActionMenuDeleteItem
 import com.xayah.core.ui.model.getActionMenuReturnItem
 import com.xayah.core.ui.token.SizeTokens
-import com.xayah.core.util.getActivity
 
 @ExperimentalFoundationApi
 @ExperimentalLayoutApi
@@ -40,6 +43,19 @@ fun PageDirectory() {
     val externalDirectoriesState by viewModel.externalDirectoriesState.collectAsStateWithLifecycle()
     val customDirectoriesState by viewModel.customDirectoriesState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    var pickingDirectory by rememberSaveable { mutableStateOf(false) }
+
+    if (pickingDirectory) {
+        LocalPathPicker(
+            title = stringResource(R.string.select_target_directory),
+            allowCreateDirectory = true,
+            onDismiss = { pickingDirectory = false },
+            onSelect = {
+                pickingDirectory = false
+                viewModel.emitIntentOnIO(IndexUiIntent.Add(it))
+            },
+        )
+    }
 
     LaunchedEffect(null) {
         viewModel.emitIntentOnIO(IndexUiIntent.Update)
@@ -93,7 +109,7 @@ fun PageDirectory() {
 
             item {
                 CustomDirectoryCard(enabled = uiState.updating.not()) {
-                    viewModel.emitIntentOnIO(IndexUiIntent.Add(context = context.getActivity()))
+                    pickingDirectory = true
                 }
             }
 

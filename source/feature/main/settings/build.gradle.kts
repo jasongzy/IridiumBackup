@@ -32,9 +32,6 @@ dependencies {
     // dotLottie
     implementation(libs.dotlottie.android)
 
-    // PickYou
-    implementation(libs.pickyou)
-
     // Gson
     implementation(libs.gson)
 

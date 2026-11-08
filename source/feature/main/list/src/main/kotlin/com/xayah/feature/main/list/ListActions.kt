@@ -43,13 +43,11 @@ import com.xayah.core.model.AppKey
 import com.xayah.core.model.Target
 import com.xayah.core.ui.component.DropdownMenuItem
 import com.xayah.core.ui.component.IconButton
+import com.xayah.core.ui.component.LocalPathPicker
 import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.ModalDropdownMenu
 import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.token.SizeTokens
-import com.xayah.libpickyou.PickYouLauncher
-import com.xayah.libpickyou.ui.model.PermissionType
-import com.xayah.libpickyou.ui.model.PickerType
 
 @Composable
 internal fun ListActions(
@@ -73,7 +71,6 @@ internal fun ListActions(
     visibleAppKeys: List<AppKey>,
 ) {
     if (uiState is ListActionsUiState.Success) {
-        val context = LocalContext.current
         val target by remember(uiState) {
             mutableStateOf(
                 when (uiState) {
@@ -106,6 +103,18 @@ internal fun ListActions(
 
         var moreExpanded by remember { mutableStateOf(false) }
         var labelsExpanded by rememberSaveable { mutableStateOf(false) }
+        var pickingDirectory by rememberSaveable { mutableStateOf(false) }
+        if (pickingDirectory) {
+            LocalPathPicker(
+                title = stringResource(R.string.select_target_directory),
+                allowCreateDirectory = true,
+                onDismiss = { pickingDirectory = false },
+                onSelect = {
+                    pickingDirectory = false
+                    viewModel.addFiles(listOf(it))
+                },
+            )
+        }
         Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
             IconButton(icon = Icons.Rounded.MoreVert, tooltip = stringResource(R.string.more_options)) {
                 moreExpanded = true
@@ -122,12 +131,7 @@ internal fun ListActions(
                     if (target == Target.Files && uiState.opType == OpType.BACKUP) {
                         AddItem(enabled = uiState.isUpdating.not()) {
                             moreExpanded = false
-                            PickYouLauncher(
-                                checkPermission = true,
-                                title = context.getString(R.string.select_target_directory),
-                                pickerType = PickerType.DIRECTORY,
-                                permissionType = PermissionType.ROOT,
-                            ).apply { launch(context) { viewModel.addFiles(listOf(it)) } }
+                            pickingDirectory = true
                         }
                     }
                 } else when (target) {
