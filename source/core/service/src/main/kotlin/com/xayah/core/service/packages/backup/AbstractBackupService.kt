@@ -3,7 +3,8 @@ package com.xayah.core.service.packages.backup
 import android.annotation.SuppressLint
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.AppBackupRepository
-import com.xayah.core.data.repository.BackupRequestStore
+import com.xayah.core.data.repository.PackageRepository
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.saveLastBackupTime
 import com.xayah.core.model.DataType
@@ -41,7 +42,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 internal abstract class AbstractBackupService : AbstractPackagesService() {
-    private lateinit var backupOptions: BackupRequestStore.Options
+    protected abstract val mPackageRepo: PackageRepository
+    protected abstract val mConfigsDir: String
+
+    private val backupRequest get() = checkNotNull(packageRequest as? PackageTaskRequest.Backup) { mContext.getString(R.string.package_request_expired) }
 
     override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) {
         entities.apply {
@@ -79,8 +83,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
     @SuppressLint("StringFormatInvalid")
     override suspend fun onInitializing() {
-        backupOptions = mBackupRequestStore.options.value
-        val packages = mBackupRequestStore.packages.value
+        val packages = backupRequest.packages
         packages.forEach { pkg ->
             mPkgEntities.add(
                 TaskDetailPackageEntity(
@@ -97,7 +100,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 }
             )
         }
-        mBackupRequestStore.clear()
     }
 
     override suspend fun beforePreprocessing() {
@@ -130,7 +132,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
     protected abstract val mPackagesBackupUtil: PackagesBackupUtil
     protected abstract val mAppBackupRepository: AppBackupRepository
-    protected abstract val mBackupRequestStore: BackupRequestStore
 
     private lateinit var necessaryInfo: NecessaryInfo
 
@@ -304,7 +305,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     mContext.getString(R.string.backing_up),
                     mContext.getString(R.string.backup_itself)
                 )
-                if (backupOptions.backupItself) {
+                if (backupRequest.backupItself) {
                     log { "Backup itself enabled." }
                     mCommonBackupUtil.backupItself(dstDir = mRootDir).apply {
                         entity.set(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = outString)
@@ -328,7 +329,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
                 var isSuccess = true
                 val out = mutableListOf<String>()
-                if (backupOptions.backupConfigs) {
+                if (backupRequest.backupConfigs) {
                     log { "Backup configs enabled." }
                     mCommonBackupUtil.backupConfigs(dstDir = mConfigsDir).also { result ->
                         if (result.isSuccess.not()) {

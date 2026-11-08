@@ -15,7 +15,6 @@ import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.MediaEntity
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
-import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
@@ -29,7 +28,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 data class IndexUiState(
@@ -178,15 +176,5 @@ class IndexViewModel @Inject constructor(
     private val _lastRestoreTime: Flow<Long> = context.readLastRestoreTime().flowOnIO()
     val lastRestoreTimeState: StateFlow<Long> = _lastRestoreTime.stateInScope(0)
 
-    private val _accounts: Flow<List<DialogRadioItem<Any>>> = cloudRepo.clouds.map { entities ->
-        entities.map {
-            DialogRadioItem(
-                enum = Any(),
-                title = it.name,
-                desc = it.user,
-            )
-        }
-
-    }.flowOnIO()
-    val accounts: StateFlow<List<DialogRadioItem<Any>>> = _accounts.stateInScope(listOf())
+    val accounts = cloudRepo.clouds.stateInScope(emptyList())
 }

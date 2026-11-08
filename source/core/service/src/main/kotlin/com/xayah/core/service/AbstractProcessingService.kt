@@ -19,6 +19,7 @@ import com.xayah.core.datastore.readScreenOffTimeout
 import com.xayah.core.datastore.saveScreenOffCountDown
 import com.xayah.core.datastore.saveScreenOffTimeout
 import com.xayah.core.model.OperationState
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.model.database.TaskEntity
 import com.xayah.core.model.util.set
@@ -156,13 +157,16 @@ internal abstract class AbstractProcessingService : Service() {
         private set
     protected var requestedBackupDir: String? = null
         private set
+    protected var packageRequest: PackageTaskRequest? = null
+        private set
 
     @SuppressLint("StringFormatInvalid")
-    suspend fun initialize(cloudName: String? = null, backupDir: String? = null): Long {
+    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?): Long {
         mMutex.withLock {
             if (mIsInitialized.not()) {
                 requestedCloudName = cloudName
                 requestedBackupDir = backupDir
+                packageRequest = request
                 mTaskDao.deleteAllTasks()
                 mTaskDao.upsert(mTaskEntity).apply {
                     // Initialize task id.

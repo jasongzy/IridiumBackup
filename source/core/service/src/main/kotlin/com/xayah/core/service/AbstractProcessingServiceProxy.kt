@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -87,8 +88,8 @@ abstract class AbstractProcessingServiceProxy {
         }
     }
 
-    suspend fun initialize(cloudName: String? = null, backupDir: String? = null) =
-        getService().initialize(cloudName, backupDir)
+    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?) =
+        getService().initialize(cloudName, backupDir, request)
 
     suspend fun preprocessing() = getService().preprocessing()
 

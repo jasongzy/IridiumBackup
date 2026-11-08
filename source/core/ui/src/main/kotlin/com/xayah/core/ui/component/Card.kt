@@ -47,13 +47,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.xayah.core.datastore.readRestoreUser
 import com.xayah.core.model.OperationState
 import com.xayah.core.ui.R
 import com.xayah.core.ui.material3.CardColors
@@ -328,7 +325,7 @@ fun AppsReportCard(
     pagerState: PagerState,
     title: String,
     timer: String,
-    showRestoreUser: Boolean = false,
+    restoreUser: Int? = null,
     packageSize: String,
     succeed: List<ReportAppItemInfo>,
     failed: List<ReportAppItemInfo>,
@@ -373,9 +370,7 @@ fun AppsReportCard(
                         titleTint = ThemedColorSchemeKeyTokens.Primary,
                         content = timer
                     )
-                    if (showRestoreUser) {
-                        val context = LocalContext.current
-                        val restoreUser by context.readRestoreUser().collectAsStateWithLifecycle(initialValue = -1)
+                    if (restoreUser != null) {
                         ReportItem(
                             icon = Icons.Filled.AccountCircle,
                             iconTint = ThemedColorSchemeKeyTokens.YellowPrimary,
@@ -441,7 +436,7 @@ fun FilesReportCard(
     pagerState: PagerState,
     title: String,
     timer: String,
-    showRestoreUser: Boolean = false,
+    restoreUser: Int? = null,
     mediaSize: String,
     succeed: List<ReportFileItemInfo>,
     failed: List<ReportFileItemInfo>,
@@ -486,9 +481,7 @@ fun FilesReportCard(
                         titleTint = ThemedColorSchemeKeyTokens.Primary,
                         content = timer
                     )
-                    if (showRestoreUser) {
-                        val context = LocalContext.current
-                        val restoreUser by context.readRestoreUser().collectAsStateWithLifecycle(initialValue = -1)
+                    if (restoreUser != null) {
                         ReportItem(
                             icon = Icons.Filled.AccountCircle,
                             iconTint = ThemedColorSchemeKeyTokens.YellowPrimary,

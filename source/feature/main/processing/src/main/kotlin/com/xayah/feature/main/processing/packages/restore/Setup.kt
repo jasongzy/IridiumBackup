@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import com.xayah.core.datastore.KeyAutoScreenOff
-import com.xayah.core.datastore.saveRestoreUser
 import com.xayah.core.ui.component.Clickable
 import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.PackageIcons
@@ -73,7 +72,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
     val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var restoreUser by rememberSaveable { mutableIntStateOf(-1) }
-    val currentIndex = restoreUsers.indexOfFirst { it.title == restoreUser.toString() }.coerceAtLeast(0)
+    val currentIndex = restoreUsers.indexOfFirst { it.enum == restoreUser }.coerceAtLeast(0)
 
     LaunchedEffect(null) {
         viewModel.launchOnIO {
@@ -124,9 +123,6 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
             }
             Title(title = stringResource(id = R.string.settings)) {
                 val dialogState = LocalSlotScope.current!!.dialogSlot
-                LaunchedEffect(restoreUser) {
-                    context.saveRestoreUser(restoreUser)
-                }
                 Selectable(
                     enabled = restoreUsers.size != 1 && !isCheckingKeystoreRisk && !isStarting,
                     title = stringResource(id = R.string.restore_user),
@@ -140,7 +136,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                             items = restoreUsers
                         )
                         if (state.isConfirm) {
-                            restoreUser = if (selectedIndex == 0) -1 else restoreUsers[selectedIndex].title.toInt()
+                            restoreUser = restoreUsers[selectedIndex].enum ?: -1
                         }
                     }
                 }

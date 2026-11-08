@@ -16,7 +16,6 @@ import com.xayah.core.service.medium.backup.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.medium.backup.ProcessingServiceProxyLocalImpl
 import com.xayah.core.ui.material3.SnackbarDuration
 import com.xayah.core.ui.material3.SnackbarType
-import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.util.navigateSingle
@@ -30,10 +29,8 @@ import com.xayah.feature.main.processing.UpdateFiles
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 @ExperimentalCoroutinesApi
@@ -104,20 +101,11 @@ class BackupViewModelImpl @Inject constructor(
         }
     }
 
-    private val _accounts: Flow<List<DialogRadioItem<Any>>> = mCloudRepo.clouds.map { entities ->
-        entities.map {
-            DialogRadioItem(
-                enum = Any(),
-                title = it.name,
-                desc = it.user,
-            )
-        }
-    }.flowOnIO()
     private val _isTesting: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val _medium: MutableStateFlow<List<MediaEntity>> = MutableStateFlow(listOf())
     private val _mediumSize: MutableStateFlow<String> = MutableStateFlow("")
 
-    val accounts: StateFlow<List<DialogRadioItem<Any>>> = _accounts.stateInScope(listOf())
+    val accounts = mCloudRepo.clouds.stateInScope(emptyList())
     val isTesting: StateFlow<Boolean> = _isTesting.stateInScope(false)
     val medium: StateFlow<List<MediaEntity>> = _medium.stateInScope(listOf())
     val mediumSize: StateFlow<String> = _mediumSize.stateInScope("")

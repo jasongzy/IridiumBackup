@@ -2,4 +2,8 @@
     <string name="backup_revision_directory_failed">无法新建备份目录：%1$s</string>
     <string name="backup_no_content">所选项目中没有可恢复的文件</string>
     <string name="backup_metadata_failed">无法保存备份元数据</string>
+    <string name="package_request_expired">请重新选择应用并开始任务</string>
+    <string name="restore_users_unavailable">无法读取 Android 用户列表</string>
+    <string name="restore_user_missing">Android 用户 %1$d 不可用，请选择其他恢复用户</string>
+    <string name="restore_target_conflict">多份备份会将 %1$s 恢复到用户 %2$d，请分别恢复或保留各自的原用户</string>
 </resources>

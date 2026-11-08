@@ -1,9 +1,7 @@
 package com.xayah.core.service.packages.restore
 
 import com.xayah.core.data.repository.CloudRepository
-import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
@@ -51,7 +49,7 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
         )
     }
 
-    override suspend fun getPackages(): List<PackageEntity> {
+    override suspend fun prepareSource() {
         mCloudRepo.getClient(requestedCloudName).also { (c, e) ->
             mCloudEntity = e
             mClient = c
@@ -59,10 +57,7 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
 
         mRemotePath = requestedBackupDir ?: mCloudEntity.remote
         mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(mRemotePath)
-        mRemoteConfigsDir = mPathUtil.getCloudRemoteConfigsDir(mRemotePath)
         mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
-
-        return mPackageRepo.queryActivated(OpType.RESTORE, mCloudEntity.name, mRemotePath)
     }
 
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"
@@ -85,17 +80,10 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     }
 
     @Inject
-    override lateinit var mPackageDao: PackageDao
-
-    @Inject
-    override lateinit var mPackageRepo: PackageRepository
-
-    @Inject
     override lateinit var mPackagesRestoreUtil: PackagesRestoreUtil
 
     override val mRootDir by lazy { mPathUtil.newCloudTmpDir() }
     override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
-    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 
     @Inject
     lateinit var mCloudRepo: CloudRepository
@@ -104,5 +92,4 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     private lateinit var mClient: CloudClient
     private lateinit var mRemotePath: String
     private lateinit var mRemoteAppsDir: String
-    private lateinit var mRemoteConfigsDir: String
 }

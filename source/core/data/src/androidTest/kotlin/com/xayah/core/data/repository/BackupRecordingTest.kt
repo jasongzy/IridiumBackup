@@ -45,7 +45,7 @@ class BackupRecordingTest {
             val requests = BackupRequestStore(context, packages)
             val temporaryScope = app.dataStates.copy(apkState = DataState.NotSelected)
             requests.prepare(listOf(app.id), mapOf(app.id to temporaryScope))
-            val request = requests.packages.value.single()
+            val request = checkNotNull(requests.take()).packages.single()
             val current = app.copy(
                 packageInfo = app.packageInfo.copy(versionName = "2.0", versionCode = 2),
                 extraInfo = app.extraInfo.copy(blocked = true, enabled = false),

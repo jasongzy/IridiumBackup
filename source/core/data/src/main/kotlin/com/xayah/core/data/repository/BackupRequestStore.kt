@@ -5,13 +5,13 @@ import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.readBackupConfigs
 import com.xayah.core.datastore.readBackupItself
+import com.xayah.core.model.OpType
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageEntity
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -20,43 +20,32 @@ class BackupRequestStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val packageDao: PackageDao,
 ) {
-    data class Options(val backupItself: Boolean = true, val backupConfigs: Boolean = true)
+    private val pending = AtomicReference<PackageTaskRequest.Backup?>()
 
-    private val request = MutableStateFlow<List<PackageEntity>>(emptyList())
-    private val _options = MutableStateFlow(Options())
-
-    val packages: StateFlow<List<PackageEntity>> = request
-    val options = _options.asStateFlow()
-
-    fun setOptions(options: Options) {
-        _options.value = options
-    }
+    fun take() = pending.getAndSet(null)
 
     suspend fun prepare(
         ids: Collection<Long>,
         dataStates: Map<Long, PackageDataStates> = emptyMap(),
     ) {
-        require(ids.isNotEmpty())
         val orderedIds = ids.distinct()
         val packagesById = orderedIds.chunked(SQLITE_BIND_LIMIT).flatMap { packageDao.queryByIds(it) }.associateBy(PackageEntity::id)
         val packages = orderedIds.mapNotNull { id ->
-            packagesById[id]?.let { app ->
+            packagesById[id]?.takeIf { it.indexInfo.opType == OpType.BACKUP && !it.extraInfo.blocked }?.let { app ->
                 app.copy(
                     extraInfo = app.extraInfo.copy(activated = false),
                     dataStates = dataStates[id]?.copy() ?: app.dataStates.copy(),
                 )
             }
         }
-        check(packages.isNotEmpty())
-        _options.value = Options(
+        if (packages.isEmpty()) {
+            pending.set(null)
+            return
+        }
+        pending.set(PackageTaskRequest.Backup(
+            packages = packages,
             backupItself = context.readBackupItself().first(),
             backupConfigs = context.readBackupConfigs().first(),
-        )
-        request.value = packages
-    }
-
-    fun clear() {
-        request.value = emptyList()
-        _options.value = Options()
+        ))
     }
 }

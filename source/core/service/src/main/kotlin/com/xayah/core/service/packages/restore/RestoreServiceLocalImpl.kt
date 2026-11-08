@@ -1,8 +1,6 @@
 package com.xayah.core.service.packages.restore
 
-import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
@@ -49,10 +47,6 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
         )
     }
 
-    override suspend fun getPackages(): List<PackageEntity> {
-        return mPackageRepo.queryActivated(OpType.RESTORE, "", mRootDir)
-    }
-
     override suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String) {
         if (type == DataType.PACKAGE_APK) {
             mPackagesRestoreUtil.restoreApk(userId = userId, p = p, t = t, srcDir = srcDir)
@@ -62,15 +56,8 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
     }
 
     @Inject
-    override lateinit var mPackageDao: PackageDao
-
-    @Inject
-    override lateinit var mPackageRepo: PackageRepository
-
-    @Inject
     override lateinit var mPackagesRestoreUtil: PackagesRestoreUtil
 
     override val mRootDir by lazy { requestedBackupDir ?: mContext.localBackupSaveDir() }
     override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
-    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 }

@@ -6,6 +6,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.datastore.readScreenOffCountDown
 import com.xayah.core.model.OperationState
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.ProcessingType
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.CloudEntity
@@ -71,6 +72,7 @@ abstract class AbstractProcessingViewModel(
 ) {
     private val processingJob = AtomicReference<Job?>()
     private var initializationJob: Job? = null
+    protected var confirmedRequest: PackageTaskRequest? = null
 
     fun initialize(autoStart: Boolean) {
         if (initializationJob != null) return
@@ -78,7 +80,12 @@ abstract class AbstractProcessingViewModel(
             val state = uiState.value
             val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
             try {
-                _taskId.value = service.initialize(state.cloudEntity?.name, state.backupDir)
+                val restoreSource = (confirmedRequest as? PackageTaskRequest.Restore)?.packages?.firstOrNull()?.indexInfo
+                _taskId.value = service.initialize(
+                    restoreSource?.cloud ?: state.cloudEntity?.name,
+                    restoreSource?.backupDir ?: state.backupDir,
+                    confirmedRequest,
+                )
             } catch (error: Exception) {
                 releaseService(service)
                 if (error is CancellationException) throw error

@@ -10,6 +10,7 @@ import com.xayah.core.data.repository.ListDataRepo
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.model.OpType
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
@@ -33,10 +34,8 @@ import com.xayah.feature.main.processing.UpdateApps
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 @ExperimentalCoroutinesApi
@@ -99,25 +98,9 @@ class RestoreViewModelImpl @Inject constructor(
             }
 
             is GetUsers -> {
-                val users = mRootService.getUsers().map { it.id }.toMutableSet()
-                mPkgRepo.queryUserIds(OpType.RESTORE).forEach {
-                    users.add(it)
+                _restoreUsers.value = listOf(backupUser) + mRootService.getUsers().map { it.id }.distinct().sorted().map {
+                    DialogRadioItem(enum = it, title = it.toString())
                 }
-                val restoreUsers = mutableListOf(
-                    DialogRadioItem(
-                        enum = Any(),
-                        title = mContext.getString(R.string.backup_user),
-                    )
-                )
-                users.sorted().forEach {
-                    restoreUsers.add(
-                        DialogRadioItem(
-                            enum = Any(),
-                            title = it.toString(),
-                        )
-                    )
-                }
-                _restoreUsers.value = restoreUsers
             }
 
             else -> {
@@ -126,25 +109,16 @@ class RestoreViewModelImpl @Inject constructor(
         }
     }
 
-    private val _accounts: Flow<List<DialogRadioItem<Any>>> = mCloudRepo.clouds.map { entities ->
-        entities.map {
-            DialogRadioItem(
-                enum = Any(),
-                title = it.name,
-                desc = it.user,
-            )
-        }
-    }.flowOnIO()
+    private val backupUser = DialogRadioItem(enum = -1, title = mContext.getString(R.string.backup_user))
     private val _packages: MutableStateFlow<List<PackageEntity>> = MutableStateFlow(listOf())
     private val _packagesSize: MutableStateFlow<String> = MutableStateFlow(mContext.getString(R.string.loading))
-    private val _restoreUsers: MutableStateFlow<List<DialogRadioItem<Any>>> = MutableStateFlow(listOf(DialogRadioItem(enum = Any(), title = mContext.getString(R.string.backup_user))))
+    private val _restoreUsers = MutableStateFlow(listOf(backupUser))
     private val _keystoreRiskPackages = MutableStateFlow<List<KeystoreRiskPackage>>(emptyList())
     private val _isCheckingKeystoreRisk = MutableStateFlow(false)
 
-    val accounts: StateFlow<List<DialogRadioItem<Any>>> = _accounts.stateInScope(listOf())
-    val packages: StateFlow<List<PackageEntity>> = _packages.stateInScope(listOf())
-    val packagesSize: StateFlow<String> = _packagesSize.stateInScope(mContext.getString(R.string.loading))
-    val restoreUsers: StateFlow<List<DialogRadioItem<Any>>> = _restoreUsers.stateInScope(listOf(DialogRadioItem(enum = Any(), title = mContext.getString(R.string.backup_user))))
+    val packages: StateFlow<List<PackageEntity>> = _packages
+    val packagesSize: StateFlow<String> = _packagesSize
+    val restoreUsers: StateFlow<List<DialogRadioItem<Int>>> = _restoreUsers
     val keystoreRiskPackages: StateFlow<List<KeystoreRiskPackage>> = _keystoreRiskPackages
     val isCheckingKeystoreRisk: StateFlow<Boolean> = _isCheckingKeystoreRisk
 
@@ -152,11 +126,12 @@ class RestoreViewModelImpl @Inject constructor(
         if (isStarting.value || !_isCheckingKeystoreRisk.compareAndSet(false, true)) return
         launchOnIO {
             try {
-                val risks = _packages.value.filter { app ->
-                    val targetUser = restoreUser.takeIf { it != -1 } ?: app.userId
+                val request = PackageTaskRequest.Restore(_packages.value, restoreUser)
+                confirmedRequest = request
+                val risks = request.packages.filter { app ->
                     app.extraInfo.hasKeystore &&
                         app.selectionFlag and PackageEntity.FLAG_DATA != 0 &&
-                        mRootService.getPackageUid(app.packageName, targetUser) == -1
+                        mRootService.getPackageUid(app.packageName, request.targetUser(app)) == -1
                 }.map { KeystoreRiskPackage(it.packageInfo.label, it.packageName) }
                 if (risks.isEmpty()) {
                     emitIntent(FinishSetup(navController))
@@ -175,6 +150,7 @@ class RestoreViewModelImpl @Inject constructor(
     }
 
     fun dismissKeystoreRisk() {
+        confirmedRequest = null
         _keystoreRiskPackages.value = emptyList()
     }
 }

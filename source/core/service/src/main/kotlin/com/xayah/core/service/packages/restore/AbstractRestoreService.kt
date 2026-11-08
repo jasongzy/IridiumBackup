@@ -1,15 +1,14 @@
 package com.xayah.core.service.packages.restore
 
 import android.annotation.SuppressLint
-import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.readRestorePermissions
 import com.xayah.core.datastore.readRestoreSsaid
-import com.xayah.core.datastore.readRestoreUser
 import com.xayah.core.datastore.saveLastRestoreTime
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
+import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.ProcessingInfoType
 import com.xayah.core.model.ProcessingType
 import com.xayah.core.model.database.Info
@@ -21,10 +20,13 @@ import com.xayah.core.service.packages.AbstractPackagesService
 import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
+import com.xayah.core.util.PathUtil
 import kotlinx.coroutines.flow.first
 
 internal abstract class AbstractRestoreService : AbstractPackagesService() {
-    protected abstract val mPackageDao: PackageDao
+    private val restoreRequest get() = checkNotNull(packageRequest as? PackageTaskRequest.Restore) {
+        mContext.getString(R.string.package_request_expired)
+    }
 
     override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) = Unit
 
@@ -43,7 +45,22 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
 
     @SuppressLint("StringFormatInvalid")
     override suspend fun onInitializing() {
-        val packages = getPackages()
+        val request = restoreRequest
+        val packages = request.packages
+        check(packages.isNotEmpty()) { mContext.getString(R.string.package_request_expired) }
+        val users = mRootService.getUsers().mapTo(mutableSetOf()) { it.id }
+        check(users.isNotEmpty()) { mContext.getString(R.string.restore_users_unavailable) }
+        request.conflictingTarget()?.let {
+            error(mContext.getString(R.string.restore_target_conflict, it.packageName, it.userId))
+        }
+        for (app in packages) {
+            val target = request.targetUser(app)
+            check(target in users) { mContext.getString(R.string.restore_user_missing, target) }
+            check(PathUtil.getPackageArchiveRelativeDir(app.packageName, app.userId, app.preserveId) == app.archivesRelativeDir) {
+                mContext.getString(R.string.package_request_expired)
+            }
+        }
+        prepareSource()
         packages.forEach { pkg ->
             mPkgEntities.add(
                 TaskDetailPackageEntity(
@@ -66,7 +83,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
         NotificationUtil.notify(mContext, mNotificationBuilder, mContext.getString(R.string.restoring), mContext.getString(R.string.preprocessing))
     }
 
-    abstract suspend fun getPackages(): List<PackageEntity>
+    protected open suspend fun prepareSource() = Unit
     abstract suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String)
 
     protected abstract val mPackagesRestoreUtil: PackagesRestoreUtil
@@ -77,7 +94,6 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
         mTaskEntity.update(rawBytes = mPkgEntities.sumOf { it.packageEntity.selectedDisplayStatsBytes }.toDouble(), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
         log { "Task count: ${mPkgEntities.size}." }
 
-        val restoreUser = mContext.readRestoreUser().first()
         val killAppOption = mContext.readKillAppOption().first()
         log { "Kill app option: $killAppOption" }
 
@@ -85,7 +101,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
             log { "Current package: ${pkg.packageEntity}" }
 
             val p = pkg.packageEntity
-            val userId = if (restoreUser == -1) p.userId else restoreUser
+            val userId = restoreRequest.targetUser(p)
             killApp(killAppOption, pkg, userId)
 
             pkg.update(state = OperationState.PROCESSING)
@@ -125,7 +141,6 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
                     mContext.getString(R.string.wait_for_remaining_data_processing)
                 )
 
-                mPackageDao.clearActivated(OpType.RESTORE)
                 val isSuccess = cleanup()
                 entity.update(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR)
             }
