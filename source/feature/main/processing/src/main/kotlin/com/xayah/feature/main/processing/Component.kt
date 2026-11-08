@@ -16,7 +16,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TopAppBarScrollBehavior
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,13 +64,11 @@ fun ProcessingSetupScaffold(
                     onBackClick = onBackClick,
                 )
                 if (progress != -1f) {
-                    var targetProgress by remember { mutableFloatStateOf(0f) }
                     val animatedProgress = animateFloatAsState(
-                        targetValue = targetProgress,
+                        targetValue = progress,
                         animationSpec = tween(),
                         label = AnimationTokens.AnimatedProgressLabel
                     )
-                    targetProgress = if (progress.isNaN()) 0f else progress
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), progress = animatedProgress.value)
                 }
             }

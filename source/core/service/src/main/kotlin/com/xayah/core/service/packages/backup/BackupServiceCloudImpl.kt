@@ -23,11 +23,7 @@ import com.xayah.core.service.util.CommonBackupUtil
 import com.xayah.core.service.util.PackagesBackupUtil
 import com.xayah.core.util.PathUtil
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 @AndroidEntryPoint
 internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupService() {
@@ -126,41 +122,11 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
         if (mClient.exists(dir)) mClient.deleteRecursively(dir)
     }
 
-    override suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) {
-        entity.update(state = OperationState.UPLOADING)
-        var flag = true
-        var progress = 0f
-        with(CoroutineScope(coroutineContext)) {
-            launch {
-                while (flag) {
-                    entity.update(content = "${(progress * 100).toInt()}%")
-                    delay(500)
-                }
-            }
-        }
-        mCloudRepo.upload(client = mClient, src = path, dstDir = mRemotePath, onUploading = { read, total -> progress = read.toFloat() / total }).apply {
-            entity.update(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = if (isSuccess) null else outString, content = "100%")
-        }
-        flag = false
-    }
+    override suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) =
+        uploadBackupFile(mCloudRepo, mClient, path, mRemotePath, entity)
 
-    override suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) {
-        entity.update(state = OperationState.UPLOADING)
-        var flag = true
-        var progress = 0f
-        with(CoroutineScope(coroutineContext)) {
-            launch {
-                while (flag) {
-                    entity.update(content = "${(progress * 100).toInt()}%")
-                    delay(500)
-                }
-            }
-        }
-        mCloudRepo.upload(client = mClient, src = path, dstDir = mRemoteConfigsDir, onUploading = { read, total -> progress = read.toFloat() / total }).apply {
-            entity.update(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = if (isSuccess) null else outString, content = "100%")
-        }
-        flag = false
-    }
+    override suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) =
+        uploadBackupFile(mCloudRepo, mClient, path, mRemoteConfigsDir, entity)
 
     override suspend fun clear() {
         try {
@@ -183,9 +149,9 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     @Inject
     override lateinit var mBackupRequestStore: BackupRequestStore
 
-    override val mRootDir by lazy { mPathUtil.getCloudTmpDir() }
-    override val mAppsDir by lazy { mPathUtil.getCloudTmpAppsDir() }
-    override val mConfigsDir by lazy { mPathUtil.getCloudTmpConfigsDir() }
+    override val mRootDir by lazy { mPathUtil.newCloudTmpDir() }
+    override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
+    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 
     @Inject
     lateinit var mCloudRepo: CloudRepository

@@ -74,7 +74,7 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
 
     override suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String) {
         val remoteAppDir = getRemoteAppDir(p.archivesRelativeDir)
-        mPackagesRestoreUtil.download(client = mClient, p = p, t = t, dataType = type, srcDir = remoteAppDir, dstDir = srcDir) { mP, mT, _, mPath ->
+        mPackagesRestoreUtil.download(client = mClient, p = p, t = t, dataType = type, srcDir = remoteAppDir) { mP, mT, _, mPath ->
             if (type == DataType.PACKAGE_APK) {
                 mPackagesRestoreUtil.restoreApk(userId = userId, p = mP, t = mT, srcDir = mPath)
             } else {
@@ -93,9 +93,9 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     override lateinit var mPackagesRestoreUtil: PackagesRestoreUtil
 
-    override val mRootDir by lazy { mPathUtil.getCloudTmpDir() }
-    override val mAppsDir by lazy { mPathUtil.getCloudTmpAppsDir() }
-    override val mConfigsDir by lazy { mPathUtil.getCloudTmpConfigsDir() }
+    override val mRootDir by lazy { mPathUtil.newCloudTmpDir() }
+    override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
+    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 
     @Inject
     lateinit var mCloudRepo: CloudRepository

@@ -17,13 +17,9 @@ import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 class MediumRestoreUtil @Inject constructor(
     @ApplicationContext val context: Context,
@@ -112,7 +108,6 @@ class MediumRestoreUtil @Inject constructor(
         t: TaskDetailMediaEntity,
         dataType: DataType,
         srcDir: String,
-        dstDir: String,
         onDownloaded: suspend (m: MediaEntity, t: TaskDetailMediaEntity, path: String) -> Unit
     ) = run {
         val ct = m.indexInfo.compressionType
@@ -120,30 +115,14 @@ class MediumRestoreUtil @Inject constructor(
 
         t.updateInfo(state = OperationState.DOWNLOADING)
         if (client.exists(src)) {
-            var flag = true
-            var progress = 0.0
-            with(CoroutineScope(coroutineContext)) {
-                launch {
-                    while (flag) {
-                        t.updateInfo(content = progress.formatSize())
-                        delay(500)
-                    }
-                }
-            }
-
             cloudRepository.download(client = client,
                 src = src,
-                dstDir = dstDir,
-                onDownloading = { written, _ -> progress = written.toDouble() },
+                onDownloading = { written, _ -> t.updateInfo(content = written.toDouble().formatSize()) },
                 onDownloaded = {
-                    onDownloaded(m, t, dstDir)
+                    onDownloaded(m, t, PathUtil.getParentPath(it))
                 }
             ).apply {
-                flag = false
-                t.updateInfo(
-                    log = (t.getLog() + "\n${outString}").trim(),
-                    content = progress.formatSize()
-                )
+                t.updateInfo(log = (t.getLog() + "\n${outString}").trim())
                 if (isSuccess.not()) {
                     t.updateInfo(state = OperationState.ERROR)
                 }

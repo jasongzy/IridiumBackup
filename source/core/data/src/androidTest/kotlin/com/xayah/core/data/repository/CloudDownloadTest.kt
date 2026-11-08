@@ -1,0 +1,93 @@
+package com.xayah.core.data.repository
+
+import androidx.room.Room
+import androidx.test.platform.app.InstrumentationRegistry
+import com.xayah.core.database.AppDatabase
+import com.xayah.core.network.client.CloudClient
+import com.xayah.core.rootservice.service.RemoteRootService
+import java.io.File
+import java.lang.reflect.Proxy
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class CloudDownloadTest {
+    @Test
+    fun cancellationStopsTheTransferBeforeExtraction() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val started = CompletableDeferred<File>()
+        val resume = CountDownLatch(1)
+        val finished = AtomicBoolean(false)
+        val extracted = AtomicBoolean(false)
+        try {
+            val repo = CloudRepository(context, RemoteRootService(context), db.cloudDao())
+            val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
+                check(method.name == "download")
+                started.complete(File(args!![1] as String))
+                check(resume.await(5, TimeUnit.SECONDS))
+                @Suppress("UNCHECKED_CAST")
+                (args[2] as (Long, Long) -> Unit)(1, 2)
+                finished.set(true)
+            } as CloudClient
+            val job = launch { repo.download(client, "app/data.tar") { extracted.set(true) } }
+            val directory = withTimeout(5_000) { started.await() }
+            job.cancel()
+            resume.countDown()
+            job.join()
+            assertFalse(finished.get())
+            assertFalse(extracted.get())
+            assertFalse(directory.exists())
+        } finally {
+            resume.countDown()
+            db.close()
+        }
+    }
+
+    @Test
+    fun overlappingDownloadsOfTheSameNameSurviveInnerCancellation() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val repo = CloudRepository(context, RemoteRootService(context), database.cloudDao())
+            val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
+                check(method.name == "download")
+                File(args!![1] as String, "config.json").writeText(args[0] as String)
+                @Suppress("UNCHECKED_CAST")
+                val progress = args[2] as (Long, Long) -> Unit
+                progress(2, -1)
+                progress(5, -1)
+            } as CloudClient
+            lateinit var outer: File
+            val updates = mutableListOf<Long>()
+            val result = repo.download(client, "a/config.json", onDownloading = { bytes, _ -> updates += bytes }) { path ->
+                assertEquals(5L, updates.last())
+                outer = File(path)
+                lateinit var inner: File
+                val cancelled = runCatching {
+                    repo.download(client, "b/config.json") {
+                        inner = File(it)
+                        assertEquals("b/config.json", inner.readText())
+                        throw CancellationException()
+                    }
+                }
+                assertTrue(cancelled.exceptionOrNull() is CancellationException)
+                assertFalse(inner.parentFile!!.exists())
+                assertEquals("a/config.json", outer.readText())
+            }
+            assertTrue(result.isSuccess)
+            assertFalse(outer.parentFile!!.exists())
+        } finally {
+            database.close()
+        }
+    }
+}

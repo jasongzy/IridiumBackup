@@ -511,13 +511,12 @@ class AppsRepo @Inject constructor(
             val path = pathUtil.getCloudRemoteAppsDir(remote)
             if (client.exists(path)) {
                 val paths = client.walkFileTree(path)
-                val tmpDir = pathUtil.getCloudTmpDir()
                 paths.forEachIndexed { index, pathParcelable ->
                     val fileName = PathUtil.getFileName(pathParcelable.pathString)
                     onLoad(index, paths.size, fileName)
                     if (fileName == ConfigsPackageRestoreName) {
                         runCatching {
-                            cloudRepo.download(client = client, src = pathParcelable.pathString, dstDir = tmpDir) { path ->
+                            cloudRepo.download(client = client, src = pathParcelable.pathString) { path ->
                                 rootService.readJson<PackageRestoreConfig>(path)
                                     ?.toPackageEntity(cloud = entity.name, backupDir = remote)
                                     ?.also { p ->
@@ -656,7 +655,7 @@ class AppsRepo @Inject constructor(
             val remoteAppsDir = pathUtil.getCloudRemoteAppsDir(remote)
             val src = "${remoteAppsDir}/${app.archivesRelativeDir}"
             val dst = "${remoteAppsDir}/${protectedApp.archivesRelativeDir}"
-            val tmpDir = pathUtil.getCloudTmpDir()
+            val tmpDir = pathUtil.newCloudTmpDir()
             val tmpJsonPath = PathUtil.getPackageRestoreConfigDst(tmpDir)
             rootService.writeJson(data = protectedApp.toRestoreConfig(), dst = tmpJsonPath)
             cloudRepo.upload(client = client, src = tmpJsonPath, dstDir = src)

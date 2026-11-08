@@ -20,21 +20,18 @@ import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.util.formatSize
 import com.xayah.core.network.client.CloudClient
 import com.xayah.core.rootservice.service.RemoteRootService
+import com.xayah.core.util.PathUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.command.Pm
 import com.xayah.core.util.command.SELinux
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 class PackagesRestoreUtil @Inject constructor(
     @ApplicationContext val context: Context,
@@ -294,7 +291,6 @@ class PackagesRestoreUtil @Inject constructor(
         t: TaskDetailPackageEntity,
         dataType: DataType,
         srcDir: String,
-        dstDir: String,
         onDownloaded: suspend (p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, path: String) -> Unit
     ) = run {
         val ct = p.indexInfo.compressionType
@@ -306,30 +302,16 @@ class PackagesRestoreUtil @Inject constructor(
             t.updateInfo(dataType = dataType, state = OperationState.DOWNLOADING)
 
             if (client.exists(src)) {
-                var flag = true
-                var progress = 0.0
-                with(CoroutineScope(coroutineContext)) {
-                    launch {
-                        while (flag) {
-                            t.updateInfo(dataType = dataType, content = progress.formatSize())
-                            delay(500)
-                        }
-                    }
-                }
-
                 cloudRepository.download(client = client,
                     src = src,
-                    dstDir = dstDir,
-                    onDownloading = { written, _ -> progress = written.toDouble() },
+                    onDownloading = { written, _ -> t.updateInfo(dataType = dataType, content = written.toDouble().formatSize()) },
                     onDownloaded = {
-                        onDownloaded(p, t, dataType, dstDir)
+                        onDownloaded(p, t, dataType, PathUtil.getParentPath(it))
                     }
                 ).apply {
-                    flag = false
                     t.updateInfo(
                         dataType = dataType,
                         log = (t.get(dataType).log + "\n${outString}").trim(),
-                        content = progress.formatSize()
                     )
                     if (isSuccess.not()) {
                         t.updateInfo(dataType = dataType, state = OperationState.ERROR)

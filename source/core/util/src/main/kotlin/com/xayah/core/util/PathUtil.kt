@@ -8,6 +8,7 @@ import com.xayah.core.util.command.SELinux
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import java.util.UUID
 import javax.inject.Inject
 
 const val LogRelativeDir = "log"
@@ -23,7 +24,6 @@ const val AppIconName = "icon.bin"
 const val ConfigsMediaRestoreName = "media_restore_config.json"
 const val ConfigsConfigurationsName = "configurations.json"
 const val BinArchiveName = "bin.zip"
-const val CloudTmpRelativeDir = "DataBackupTmpDir"
 
 fun Context.filesDir(): String = filesDir.path
 fun Context.logDir(): String = "${filesDir()}/$LogRelativeDir"
@@ -32,7 +32,6 @@ fun Context.binArchivePath(): String = "${filesDir()}/$BinArchiveName"
 fun Context.iconDir(): String = "${filesDir()}/$IconRelativeDir"
 fun Context.tmpApksDir(): String = "${filesDir()}/$TmpRelativeDir/$ApksRelativeDir"
 fun Context.localBackupSaveDir(): String = runBlocking { readBackupSavePath().first() }
-fun Context.cloudTmpAbsoluteDir(): String = "${filesDir()}/$CloudTmpRelativeDir"
 
 class PathUtil @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -90,11 +89,17 @@ class PathUtil @Inject constructor(
         fun getBackupManifestDst(dstDir: String): String = "${dstDir}/$BackupManifestName"
         fun getMediaRestoreConfigDst(dstDir: String): String = "${dstDir}/$ConfigsMediaRestoreName"
 
-        suspend fun setFilesDirSELinux(context: Context) = SELinux.getContext(path = context.filesDir()).also { result ->
-            val pathContext = if (result.isSuccess) result.outString else ""
-            SELinux.chcon(context = pathContext, path = context.filesDir())
-            val uidGid = context.applicationInfo.uid.toUInt()
-            SELinux.chown(uid = uidGid, gid = uidGid, path = context.filesDir())
+        suspend fun prepareCloudWorkspace(context: Context, path: String) {
+            val cache = context.cacheDir.path
+            require(FileUtil.isDescendant(cache, path))
+            val workspace = path.removePrefix("$cache/").substringBefore('/')
+            require(workspace.startsWith("cloud-"))
+            if (java.io.File(path).canRead()) return
+            val root = "$cache/$workspace"
+            val label = SELinux.getContext(cache)
+            check(label.isSuccess && label.outString.isNotBlank() && SELinux.chcon(label.outString, root).isSuccess) { "Cannot label $root" }
+            val uid = context.applicationInfo.uid.toUInt()
+            check(SELinux.chown(uid, uid, root).isSuccess) { "Cannot access $root" }
         }
 
         fun getSsaidPath(userId: Int) = "/data/system/users/$userId/settings_ssaid.xml"
@@ -102,21 +107,18 @@ class PathUtil @Inject constructor(
         fun getPackageIconPath(context: Context, packageName: String, adaptive: Boolean): String = "${context.iconDir()}/${if (adaptive) getPackageAdaptiveIconRelativePath(packageName) else getPackageIconRelativePath(packageName)}"
     }
 
-    fun getCloudTmpDir(): String = context.cloudTmpAbsoluteDir()
+    fun newCloudTmpDir(): String = "${context.cacheDir}/cloud-${UUID.randomUUID()}"
     fun getPackageIconPath(packageName: String, adaptive: Boolean): String = getPackageIconPath(context, packageName, adaptive)
     private fun getConfigsDir(parent: String): String = "${parent}/${getConfigsRelativeDir()}"
     fun getLocalBackupConfigsDir(): String = getConfigsDir(parent = context.localBackupSaveDir())
-    fun getCloudTmpConfigsDir(): String = getConfigsDir(parent = context.cloudTmpAbsoluteDir())
     fun getCloudRemoteConfigsDir(remote: String): String = getConfigsDir(parent = remote)
 
     private fun getAppsDir(parent: String): String = "${parent}/${getAppsRelativeDir()}"
     private fun getFilesDir(parent: String): String = "${parent}/${getFilesRelativeDir()}"
     fun getLocalBackupAppsDir(backupDir: String = context.localBackupSaveDir()): String = getAppsDir(parent = backupDir)
     fun getLocalBackupAppIconPath(packageName: String): String = getAppIconPath(getLocalBackupAppsDir(), packageName)
-    fun getCloudTmpAppsDir(): String = getAppsDir(parent = context.cloudTmpAbsoluteDir())
     fun getCloudRemoteAppsDir(remote: String): String = getAppsDir(parent = remote)
     fun getLocalBackupFilesDir(): String = getFilesDir(parent = context.localBackupSaveDir())
-    fun getCloudTmpFilesDir(): String = getFilesDir(parent = context.cloudTmpAbsoluteDir())
     fun getCloudRemoteFilesDir(remote: String): String = getFilesDir(parent = remote)
 
 

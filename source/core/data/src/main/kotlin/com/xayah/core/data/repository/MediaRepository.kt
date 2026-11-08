@@ -191,7 +191,7 @@ class MediaRepository @Inject constructor(
                     val remoteArchivesMediumDir = pathUtil.getCloudRemoteFilesDir(remote)
                     val src = "${remoteArchivesMediumDir}/${m.archivesRelativeDir}"
                     val dst = "${remoteArchivesMediumDir}/${mediaEntity.archivesRelativeDir}"
-                    val tmpDir = pathUtil.getCloudTmpDir()
+                    val tmpDir = pathUtil.newCloudTmpDir()
                     val tmpJsonPath = PathUtil.getMediaRestoreConfigDst(tmpDir)
                     rootService.writeJson(data = mediaEntity, dst = tmpJsonPath)
                     cloudRepository.upload(client = client, src = tmpJsonPath, dstDir = src)

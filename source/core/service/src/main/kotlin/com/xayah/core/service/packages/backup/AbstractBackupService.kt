@@ -349,7 +349,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 if (!cleanup()) {
                     isSuccess = false
                 }
-                entity.set(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
+                entity.update(progress = 1f, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
             }
 
             else -> {}

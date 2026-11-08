@@ -33,7 +33,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -98,14 +97,19 @@ fun PageProcessing(
     val postItems by viewModel.postItems.collectAsStateWithLifecycle()
     val dataItems by viewModel.dataItems.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
-    val dialogState = LocalSlotScope.current!!.dialogSlot
-    val progress: Float by remember(task?.processingIndex, dataItems.size) {
-        mutableFloatStateOf(
-            if (task != null)
-                task!!.processingIndex.toFloat() / (dataItems.size + 1)
-            else
-                -1f
-        )
+    val index = task?.processingIndex
+    val currentItem = dataItems.getOrNull((index ?: 0) - 1)
+    val segmentProgress = when (index) {
+        0 -> preItemsProgress
+        dataItems.size + 1 -> postItemsProgress
+        dataItems.size + 2 -> 1f
+        else -> currentItem?.progress ?: 0f
+    }
+    val stageCount = dataItems.size + 2
+    val progress = when {
+        index == null -> -1f
+        index >= stageCount -> 1f
+        else -> (index + segmentProgress) / stageCount
     }
     val screenOffCountDown by viewModel.screenOffCountDown.collectAsStateWithLifecycle()
 
@@ -213,8 +217,6 @@ fun PageProcessing(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                val index = task?.processingIndex
-                val currentItem = dataItems.getOrNull((index ?: 0) - 1)
                 val title = when (index) {
                     null -> ""
                     0 -> stringResource(R.string.preprocessing)
@@ -234,12 +236,6 @@ fun PageProcessing(
                     else -> currentItem?.let { item ->
                         item.items.getOrNull(item.processingIndex)?.let { it.title + if (it.content.isEmpty()) "" else " (${it.content})" }
                     } ?: stringResource(R.string.necessary_remaining_data_processing)
-                }
-                val segmentProgress = when (index) {
-                    0 -> preItemsProgress
-                    dataItems.size + 1 -> postItemsProgress
-                    dataItems.size + 2 -> 1f
-                    else -> currentItem?.progress ?: 0f
                 }
                 val segments = when (index) {
                     0 -> preItems.size

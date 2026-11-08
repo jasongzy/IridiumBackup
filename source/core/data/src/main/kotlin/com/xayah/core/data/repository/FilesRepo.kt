@@ -206,13 +206,12 @@ class FilesRepo @Inject constructor(
             val src = pathUtil.getCloudRemoteFilesDir(remote)
             if (client.exists(src)) {
                 val paths = client.walkFileTree(src)
-                val tmpDir = pathUtil.getCloudTmpDir()
                 paths.forEachIndexed { index, pathParcelable ->
                     val fileName = PathUtil.getFileName(pathParcelable.pathString)
                     onLoad(index, paths.size, fileName)
                     if (fileName == ConfigsMediaRestoreName) {
                         runCatching {
-                            cloudRepo.download(client = client, src = pathParcelable.pathString, dstDir = tmpDir) { path ->
+                            cloudRepo.download(client = client, src = pathParcelable.pathString) { path ->
                                 val stored = rootService.readJson<MediaEntity>(path).also { p ->
                                     p?.id = 0
                                     p?.extraInfo?.existed = true
@@ -339,7 +338,7 @@ class FilesRepo @Inject constructor(
             val remoteFilesDir = pathUtil.getCloudRemoteFilesDir(remote)
             val src = "${remoteFilesDir}/${file.archivesRelativeDir}"
             val dst = "${remoteFilesDir}/${protectedFile.archivesRelativeDir}"
-            val tmpDir = pathUtil.getCloudTmpDir()
+            val tmpDir = pathUtil.newCloudTmpDir()
             val tmpJsonPath = PathUtil.getMediaRestoreConfigDst(tmpDir)
             rootService.writeJson(data = protectedFile, dst = tmpJsonPath)
             cloudRepo.upload(client = client, src = tmpJsonPath, dstDir = src)

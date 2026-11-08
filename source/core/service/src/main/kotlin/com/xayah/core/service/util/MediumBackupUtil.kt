@@ -19,12 +19,8 @@ import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.Tar
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 class MediumBackupUtil @Inject constructor(
     @ApplicationContext val context: Context,
@@ -125,20 +121,7 @@ class MediumBackupUtil @Inject constructor(
         val src = mediaRepository.getArchiveDst(dstDir = srcDir, ct = ct)
         t.updateInfo(state = OperationState.UPLOADING)
 
-        var flag = true
-        var progress = 0f
-        with(CoroutineScope(coroutineContext)) {
-            launch {
-                while (flag) {
-                    t.updateInfo(content = "${(progress * 100).toInt()}%")
-                    delay(500)
-                }
-            }
-        }
-
-        cloudRepository.upload(client = client, src = src, dstDir = dstDir, onUploading = { read, total -> progress = read.toFloat() / total }).apply {
-            flag = false
-            t.updateInfo(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = t.getLog() + "\n${outString}", content = "100%")
-        }
+        val result = cloudRepository.upload(client, src, dstDir) { percent -> t.updateInfo(content = "$percent%") }
+        t.updateInfo(state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR, log = t.getLog() + "\n${result.outString}")
     }
 }

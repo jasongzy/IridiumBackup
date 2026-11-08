@@ -78,7 +78,7 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
         if (m.path.isEmpty()) {
             t.update(state = OperationState.ERROR, log = "Path is empty.")
         } else {
-            mMediumRestoreUtil.download(client = mClient, m = m, t = t, dataType = DataType.PACKAGE_MEDIA, srcDir = remoteFileDir, dstDir = srcDir) { mM, mT, mPath ->
+            mMediumRestoreUtil.download(client = mClient, m = m, t = t, dataType = DataType.PACKAGE_MEDIA, srcDir = remoteFileDir) { mM, mT, mPath ->
                 mMediumRestoreUtil.restoreMedia(m = mM, t = mT, srcDir = mPath)
             }
         }
@@ -96,9 +96,9 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     override lateinit var mMediumRestoreUtil: MediumRestoreUtil
 
-    override val mRootDir by lazy { mPathUtil.getCloudTmpDir() }
-    override val mFilesDir by lazy { mPathUtil.getCloudTmpFilesDir() }
-    override val mConfigsDir by lazy { mPathUtil.getCloudTmpConfigsDir() }
+    override val mRootDir by lazy { mPathUtil.newCloudTmpDir() }
+    override val mFilesDir by lazy { "$mRootDir/${PathUtil.getFilesRelativeDir()}" }
+    override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 
     @Inject
     lateinit var mCloudRepo: CloudRepository

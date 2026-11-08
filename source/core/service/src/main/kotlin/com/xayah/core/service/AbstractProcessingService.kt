@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.IBinder
 import android.view.SurfaceControlHidden
 import androidx.core.content.ContextCompat
+import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.ConstantUtil.DEFAULT_IDLE_TIMEOUT
@@ -21,6 +22,7 @@ import com.xayah.core.model.OperationState
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.model.database.TaskEntity
 import com.xayah.core.model.util.set
+import com.xayah.core.network.client.CloudClient
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.rootservice.util.withIOContext
 import com.xayah.core.service.util.CommonBackupUtil
@@ -91,6 +93,12 @@ internal abstract class AbstractProcessingService : Service() {
     ) {
         set(bytes, log, title, content, progress, state)
         mTaskDao.upsert(this)
+    }
+
+    protected suspend fun uploadBackupFile(repo: CloudRepository, client: CloudClient, path: String, destination: String, entity: ProcessingInfoEntity) {
+        entity.update(state = OperationState.UPLOADING)
+        val result = repo.upload(client, path, destination) { percent -> entity.update(content = "$percent%") }
+        entity.update(state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR, log = if (result.isSuccess) null else result.outString)
     }
 
     protected suspend fun TaskEntity.update(
@@ -222,12 +230,23 @@ internal abstract class AbstractProcessingService : Service() {
 
             mPostProcessingEntities.forEach {
                 it.update(state = OperationState.PROCESSING)
-                onPostProcessing(it)
+                try {
+                    onPostProcessing(it)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    it.update(state = OperationState.ERROR, progress = 1f, log = e.localizedMessage ?: e.javaClass.simpleName)
+                }
                 mTaskEntity.update(postProcessingIndex = mTaskEntity.postProcessingIndex + 1)
             }
 
             mEndTimestamp = DateUtil.getTimestamp()
-            mTaskEntity.update(endTimestamp = mEndTimestamp, isProcessing = false, processingIndex = mTaskEntity.processingIndex + 1)
+            val errors = mPostProcessingEntities.filter { it.state == OperationState.ERROR }
+            mTaskEntity.update(endTimestamp = mEndTimestamp, isProcessing = false, processingIndex = if (errors.isEmpty()) mTaskEntity.processingIndex + 1 else null)
+            if (errors.isNotEmpty()) {
+                completeNotification(mContext.getString(R.string.failed), errors.joinToString { it.title })
+                throw IOException(errors.joinToString("\n") { if (it.log.isBlank()) it.title else "${it.title}: ${it.log}" })
+            }
             afterPostProcessing()
         }
     }

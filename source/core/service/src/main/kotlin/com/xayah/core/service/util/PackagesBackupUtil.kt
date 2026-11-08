@@ -27,12 +27,8 @@ import com.xayah.core.util.command.Tar
 import com.xayah.core.util.filesDir
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.coroutines.coroutineContext
 
 class PackagesBackupUtil @Inject constructor(
     @ApplicationContext val context: Context,
@@ -283,20 +279,7 @@ class PackagesBackupUtil @Inject constructor(
         val src = packageRepository.getArchiveDst(dstDir = srcDir, dataType = dataType, ct = ct)
         t.updateInfo(dataType = dataType, state = OperationState.UPLOADING)
 
-        var flag = true
-        var progress = 0f
-        with(CoroutineScope(coroutineContext)) {
-            launch {
-                while (flag) {
-                    t.updateInfo(dataType = dataType, content = "${(progress * 100).toInt()}%")
-                    delay(500)
-                }
-            }
-        }
-
-        cloudRepository.upload(client = client, src = src, dstDir = dstDir, onUploading = { read, total -> progress = read.toFloat() / total }).apply {
-            flag = false
-            t.updateInfo(dataType = dataType, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = t.get(dataType).log + "\n${outString}", content = "100%")
-        }
+        val result = cloudRepository.upload(client, src, dstDir) { percent -> t.updateInfo(dataType = dataType, content = "$percent%") }
+        t.updateInfo(dataType = dataType, state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR, log = t.get(dataType).log + "\n${result.outString}")
     }
 }

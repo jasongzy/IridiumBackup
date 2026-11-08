@@ -198,7 +198,7 @@ class PackageRepository @Inject constructor(
                     val remoteArchivesPackagesDir = pathUtil.getCloudRemoteAppsDir(remote)
                     val src = "${remoteArchivesPackagesDir}/${p.archivesRelativeDir}"
                     val dst = "${remoteArchivesPackagesDir}/${pkgEntity.archivesRelativeDir}"
-                    val tmpDir = pathUtil.getCloudTmpDir()
+                    val tmpDir = pathUtil.newCloudTmpDir()
                     val tmpJsonPath = PathUtil.getPackageRestoreConfigDst(tmpDir)
                     rootService.writeJson(data = pkgEntity, dst = tmpJsonPath)
                     cloudRepository.upload(client = client, src = tmpJsonPath, dstDir = src)
@@ -935,9 +935,8 @@ class PackageRepository @Inject constructor(
                             ssaidState = DataState.Disabled
                         )
                         val packageEntity = runCatching {
-                            val tmpDir = pathUtil.getCloudTmpDir()
                             var entity: PackageEntity? = null
-                            cloudRepository.download(client = client, src = jsonPath, dstDir = tmpDir) { path ->
+                            cloudRepository.download(client = client, src = jsonPath) { path ->
                                 entity = rootService.readJson<PackageEntity>(path).also { p ->
                                     p?.indexInfo?.packageName = packageName
                                     p?.indexInfo?.userId = userId
@@ -1005,8 +1004,7 @@ class PackageRepository @Inject constructor(
                                                 val tmpApkPath = pathUtil.getTmpApkPath(packageName = packageName)
                                                 rootService.deleteRecursively(tmpApkPath)
                                                 rootService.mkdirs(tmpApkPath)
-                                                val tmpDir = pathUtil.getCloudTmpDir()
-                                                cloudRepository.download(client = client, src = archivePath.pathString, dstDir = tmpDir) { path ->
+                                                cloudRepository.download(client = client, src = archivePath.pathString) { path ->
                                                     extractArchive(path, tmpApkPath, type.decompressPara)
                                                     rootService.listFilePaths(tmpApkPath).also { pathList ->
                                                         if (pathList.isNotEmpty()) {
@@ -1077,7 +1075,7 @@ class PackageRepository @Inject constructor(
                         }
 
                         // Write config
-                        val tmpDir = pathUtil.getCloudTmpDir()
+                        val tmpDir = pathUtil.newCloudTmpDir()
                         val tmpJsonPath = PathUtil.getPackageRestoreConfigDst(tmpDir)
                         rootService.writeJson(data = packageEntity, dst = tmpJsonPath)
                         cloudRepository.upload(client = client, src = tmpJsonPath, dstDir = PathUtil.getParentPath(jsonPath))
@@ -1145,9 +1143,8 @@ class PackageRepository @Inject constructor(
                         val jsonPath = PathUtil.getMediaRestoreConfigDst(dir)
 
                         val mediaEntity = runCatching {
-                            val tmpDir = pathUtil.getCloudTmpDir()
                             var entity: MediaEntity? = null
-                            cloudRepository.download(client = client, src = jsonPath, dstDir = tmpDir) { path ->
+                            cloudRepository.download(client = client, src = jsonPath) { path ->
                                 entity = rootService.readJson<MediaEntity>(path).also { p ->
                                     p?.indexInfo?.name = name
                                     p?.indexInfo?.preserveId = if (mainBackup) 0L else preserveId
@@ -1207,7 +1204,7 @@ class PackageRepository @Inject constructor(
                         }
 
                         // Write config
-                        val tmpDir = pathUtil.getCloudTmpDir()
+                        val tmpDir = pathUtil.newCloudTmpDir()
                         val tmpJsonPath = PathUtil.getMediaRestoreConfigDst(tmpDir)
                         rootService.writeJson(data = mediaEntity, dst = tmpJsonPath)
                         cloudRepository.upload(client = client, src = tmpJsonPath, dstDir = PathUtil.getParentPath(jsonPath))
