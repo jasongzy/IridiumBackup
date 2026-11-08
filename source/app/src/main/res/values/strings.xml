@@ -422,7 +422,7 @@
     <string name="disabled">Disabled</string>
     <string name="kill_app_options">Killing app options</string>
     <string name="kill_app_options_desc">App behavior during backup and restore</string>
-    <string name="kill_app_option_i_desc">Stops the app process with the system kill command; the app may restart itself.</string>
+    <string name="kill_app_option_i_desc">Ends the app’s processes for the selected user. The app may restart itself.</string>
     <string name="kill_app_option_ii_desc">Force-stops the app through Android package management; more reliable until the app is opened again.</string>
     <string name="kill_app_option_iii_desc">Pauses the app during backup and resumes it afterward; restores still force-stop the app.</string>
     <string name="language">Language</string>

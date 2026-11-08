@@ -26,13 +26,12 @@ import com.xayah.core.model.toRestoreConfig
 import com.xayah.core.model.util.get
 import com.xayah.core.model.util.set
 import com.xayah.core.service.R
-import com.xayah.core.service.model.NecessaryInfo
+import com.xayah.core.util.command.BackupServiceSettings
 import com.xayah.core.service.packages.AbstractPackagesService
 import com.xayah.core.service.util.PackagesBackupUtil
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.command.PreparationUtil
 import com.xayah.core.util.withLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -133,30 +132,11 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     protected abstract val mPackagesBackupUtil: PackagesBackupUtil
     protected abstract val mAppBackupRepository: AppBackupRepository
 
-    private lateinit var necessaryInfo: NecessaryInfo
-
-    override suspend fun clear() {
-        if (::necessaryInfo.isInitialized) {
-            if (necessaryInfo.inputMethods.isNotEmpty()) PreparationUtil.setInputMethods(necessaryInfo.inputMethods)
-            if (necessaryInfo.accessibilityServices.isNotEmpty()) PreparationUtil.setAccessibilityServices(necessaryInfo.accessibilityServices)
-        }
-    }
+    private val serviceSettings = BackupServiceSettings()
 
     override suspend fun onPreprocessing(entity: ProcessingInfoEntity) {
         when (entity.infoType) {
             ProcessingInfoType.NECESSARY_PREPARATIONS -> {
-                /**
-                 * Somehow the input methods and accessibility services
-                 * will be changed after backing up on some devices,
-                 * so we restore them manually.
-                 */
-                necessaryInfo = NecessaryInfo(
-                    inputMethods = PreparationUtil.getInputMethods().outString.trim().takeUnless { it == "null" }.orEmpty(),
-                    accessibilityServices = PreparationUtil.getAccessibilityServices().outString.trim().takeUnless { it == "null" }.orEmpty(),
-                )
-                log { "InputMethods: ${necessaryInfo.inputMethods}." }
-                log { "AccessibilityServices: ${necessaryInfo.accessibilityServices}." }
-
                 log { "Trying to create: $mAppsDir." }
                 log { "Trying to create: $mConfigsDir." }
                 val result = runCatching {
@@ -191,13 +171,21 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
         mPkgEntities.forEach { pkg ->
             currentCoroutineContext().ensureActive()
             var pendingArchiveDir: String? = null
+            var serviceRepairs = emptyList<suspend () -> Unit>()
             val pause = if (killAppOption == KillAppOption.OPTION_III) {
                 log { "Trying to pause ${pkg.packageEntity.packageName}." }
                 mRootService.pausePackage(pkg.packageEntity.packageName, pkg.packageEntity.userId)
             } else null
             try {
                 currentCoroutineContext().ensureActive()
-                if (pause == null) killApp(killAppOption, pkg)
+                if (pause == null) {
+                    val app = pkg.packageEntity
+                    if (killAppOption == KillAppOption.OPTION_II || killAppOption == KillAppOption.OPTION_III) {
+                        serviceRepairs = serviceSettings.stop(app.userId, app.packageName) {
+                            preparePackage(killAppOption, pkg, app.userId)
+                        } ?: return@forEach
+                    } else if (!preparePackage(killAppOption, pkg, app.userId)) return@forEach
+                }
                 log { "Current package: ${pkg.packageEntity}" }
 
                 pkg.update(state = OperationState.PROCESSING)
@@ -286,6 +274,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
             } finally {
                 withContext(NonCancellable) {
                     pause?.close()
+                    serviceRepairs.forEach { repair -> runCatchingOnService { repair() } }
                     pendingArchiveDir?.let {
                         runCatchingOnService { onBackupFailed(it) }
                         mRootService.deleteRecursively("$mAppsDir/$it")

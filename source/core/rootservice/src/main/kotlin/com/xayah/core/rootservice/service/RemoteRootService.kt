@@ -390,6 +390,8 @@ class RemoteRootService(private val context: Context) {
     suspend fun forceStopPackageAsUser(packageName: String, userId: Int) =
         runCatching { getService().forceStopPackageAsUser(packageName, userId) }.onFailure(onFailure)
 
+    suspend fun killPackageProcesses(packageName: String, userId: Int) = getService().killPackageProcesses(packageName, userId)
+
     suspend fun forceStopPackageIfRunning(packageName: String, userId: Int): Boolean? =
         runCatching { getService().forceStopPackageIfRunning(packageName, userId) }.onFailure(onFailure).getOrNull()
 

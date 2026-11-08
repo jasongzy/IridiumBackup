@@ -166,22 +166,6 @@ object BaseUtil {
         execute(command, shell = shell, timeout = -1)
     }
 
-    suspend fun killPackage(context: Context, userId: Int, packageName: String) {
-        val shell = getNewShell(context)
-        if (shell != null) {
-            val cmd = """
-            until [[ $USD(dumpsys activity processes | grep "packageList" | cut -d '{' -f2 | cut -d '}' -f1 | egrep -w "$packageName" | sed -n '1p') = "" ]]; do
-                killall -9 "$packageName" &>/dev/null
-                am force-stop --user "$userId" "$packageName" &>/dev/null
-                am kill "$packageName" &>/dev/null
-            done
-        """.trimIndent()
-            execute(cmd, shell = shell, timeout = 3)
-        } else {
-            log { "killPackage" to "Failed to get a new shell!" }
-        }
-    }
-
     suspend fun mkdirs(dst: String) = withIOContext {
         runCatching {
             val file = File(dst)

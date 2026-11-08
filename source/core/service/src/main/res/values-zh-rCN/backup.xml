@@ -6,4 +6,5 @@
     <string name="restore_users_unavailable">无法读取 Android 用户列表</string>
     <string name="restore_user_missing">Android 用户 %1$d 不可用，请选择其他恢复用户</string>
     <string name="restore_target_conflict">多份备份会将 %1$s 恢复到用户 %2$d，请分别恢复或保留各自的原用户</string>
+    <string name="package_stop_failed">无法结束 %1$s：%2$s</string>
 </resources>

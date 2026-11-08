@@ -15,6 +15,10 @@ public class ActivityManagerHidden {
         throw new RuntimeException("Stub!");
     }
 
+    public void killUid(int uid, String reason) {
+        throw new RuntimeException("Stub!");
+    }
+
     public void forceStopPackageAsUser(String packageName, int userId) {
         throw new RuntimeException("Stub!");
     }

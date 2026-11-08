@@ -26,95 +26,48 @@ object PreparationUtil {
             "-v", "mountpoint=${shellQuote(path)}", "'${USD}3 == mountpoint {print ${USD}5}'",
         )
     }
+}
 
-    suspend fun getInputMethods(): ShellResult = run {
-        // settings get secure default_input_method
-        execute(
-            "settings",
-            "get",
-            "secure",
-            "default_input_method",
-        )
+class BackupServiceSettings {
+    private val candidates = mutableMapOf<Int, Map<String, String>>()
+
+    suspend fun stop(userId: Int, packageName: String, stop: suspend () -> Boolean): List<suspend () -> Unit>? {
+        val names = candidates.getOrPut(userId) {
+            listOf(IME, ACCESSIBILITY).mapNotNull { key -> read(userId, key)?.let { key to it } }.toMap()
+        }.filterValues { value -> value.split(':').any { it.substringBefore('/') == packageName } }.keys
+        val before = names.mapNotNull { key ->
+            if (key == ACCESSIBILITY && read(userId, "accessibility_enabled") != "1") return@mapNotNull null
+            read(userId, key)?.let { key to it }
+        }
+        if (!stop()) return null
+        val repairs = mutableListOf<suspend () -> Unit>()
+        for ((key, original) in before) {
+            val after = read(userId, key) ?: continue
+            val replacement = replacement(key, packageName, original, after) ?: continue
+            repairs += {
+                if (read(userId, key) == after && (key != ACCESSIBILITY || read(userId, "accessibility_enabled") == "1")) {
+                    val result = execute("settings", "--user", userId.toString(), "put", "secure", key, shellQuote(replacement), log = false)
+                    check(result.isSuccess) { result.outString }
+                }
+            }
+        }
+        return repairs
     }
 
-    suspend fun setInputMethods(inputMethods: String): ShellResult = run {
-        var isSuccess: Boolean
-        val out = mutableListOf<String>()
+    private suspend fun read(userId: Int, key: String): String? =
+        execute("settings", "--user", userId.toString(), "get", "secure", key, log = false)
+            .takeIf { it.isSuccess }?.out?.singleOrNull()?.trim()?.let { if (it == "null") "" else it }
 
-        // ime enable "$inputMethods"
-        execute(
-            "ime",
-            "enable",
-            shellQuote(inputMethods),
-        ).also { result ->
-            isSuccess = result.isSuccess
-            out.addAll(result.out)
+    companion object {
+        private const val IME = "default_input_method"
+        private const val ACCESSIBILITY = "enabled_accessibility_services"
+
+        internal fun replacement(key: String, owner: String, before: String, after: String): String? {
+            if (before == after) return null
+            if (key == IME) return before.takeIf { it.substringBefore('/') == owner && after.isEmpty() }
+            val current = after.split(':').filter(String::isNotEmpty)
+            val lost = before.split(':').filter { it.substringBefore('/') == owner && it !in current }
+            return (current + lost).joinToString(":").takeIf { lost.isNotEmpty() }
         }
-
-        // ime set "$inputMethods"
-        execute(
-            "ime",
-            "set",
-            shellQuote(inputMethods),
-        ).also { result ->
-            isSuccess = isSuccess and result.isSuccess
-            out.addAll(result.out)
-        }
-
-        // settings put secure default_input_method "$inputMethods"
-        execute(
-            "settings",
-            "put",
-            "secure",
-            "default_input_method",
-            shellQuote(inputMethods),
-        ).also { result ->
-            isSuccess = isSuccess and result.isSuccess
-            out.addAll(result.out)
-        }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }
-
-    suspend fun getAccessibilityServices(): ShellResult = run {
-        // settings get secure enabled_accessibility_services
-        execute(
-            "settings",
-            "get",
-            "secure",
-            "enabled_accessibility_services",
-        )
-    }
-
-    suspend fun setAccessibilityServices(accessibilityServices: String): ShellResult = run {
-        var isSuccess: Boolean
-        val out = mutableListOf<String>()
-
-        // settings put secure enabled_accessibility_services "$accessibilityServices"
-        execute(
-            "settings",
-            "put",
-            "secure",
-            "enabled_accessibility_services",
-            shellQuote(accessibilityServices),
-        ).also { result ->
-            isSuccess = result.isSuccess
-            out.addAll(result.out)
-        }
-
-        // settings put secure accessibility_enabled 1
-        execute(
-            "settings",
-            "put",
-            "secure",
-            "accessibility_enabled",
-            "1",
-        ).also { result ->
-            isSuccess = isSuccess and result.isSuccess
-            out.addAll(result.out)
-        }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
-    }
-
 }

@@ -411,7 +411,7 @@
     <string name="disabled">禁用</string>
     <string name="kill_app_options">杀死应用选项</string>
     <string name="kill_app_options_desc">备份和恢复时如何处理应用</string>
-    <string name="kill_app_option_i_desc">使用系统 kill 命令结束应用进程，应用可能自行重新启动。</string>
+    <string name="kill_app_option_i_desc">结束所选用户下的应用进程，应用可能自行重启。</string>
     <string name="kill_app_option_ii_desc">通过 Android 包管理器强行停止应用，再次打开应用前通常不会重启。</string>
     <string name="kill_app_option_iii_desc">备份期间暂停应用并在完成后恢复；还原前仍会强行停止应用。</string>
     <string name="language">语言</string>

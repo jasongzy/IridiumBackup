@@ -4,13 +4,14 @@ import com.xayah.core.model.DataType
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
+import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.util.set
 import com.xayah.core.service.AbstractProcessingService
 import com.xayah.core.service.R
 import com.xayah.core.util.NotificationUtil
-import com.xayah.core.util.command.BaseUtil
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -51,22 +52,27 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
         mTaskDao.upsert(this)
     }
 
-    protected suspend fun killApp(killAppOption: KillAppOption, pkg: TaskDetailPackageEntity, userId: Int = pkg.packageEntity.userId) = run {
-        // Kill the package.
-        when (killAppOption) {
-            KillAppOption.DISABLED -> {
-                log { "Won't kill ${pkg.packageEntity.packageName}." }
+    protected suspend fun preparePackage(option: KillAppOption, task: TaskDetailPackageEntity, userId: Int): Boolean {
+        val name = task.packageEntity.packageName
+        if (name == mContext.packageName) return true
+        return try {
+            when (option) {
+                KillAppOption.OPTION_I -> mRootService.killPackageProcesses(name, userId)
+                KillAppOption.OPTION_II, KillAppOption.OPTION_III -> mRootService.forceStopPackageAsUser(name, userId).getOrThrow()
+                KillAppOption.DISABLED -> Unit
             }
-
-            KillAppOption.OPTION_I -> {
-                log { "Trying to kill ${pkg.packageEntity.packageName}." }
-                BaseUtil.killPackage(context = mContext, userId = userId, packageName = pkg.packageEntity.packageName)
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val detail = mContext.getString(R.string.package_stop_failed, name, e.message ?: e.javaClass.simpleName)
+            val failed = DataType.packageArchives.firstOrNull { it.getSelected(task.packageEntity.dataStates) } ?: DataType.PACKAGE_APK
+            DataType.packageArchives.forEach { type ->
+                task.set(type, state = if (type == failed) OperationState.ERROR else OperationState.SKIP, log = detail.takeIf { type == failed })
             }
-
-            KillAppOption.OPTION_II, KillAppOption.OPTION_III -> {
-                log { "Trying to kill ${pkg.packageEntity.packageName}." }
-                mRootService.forceStopPackageAsUser(pkg.packageEntity.packageName, userId)
-            }
+            task.update(state = OperationState.ERROR, processingIndex = DataType.packageArchives.size)
+            mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1, processingIndex = mTaskEntity.processingIndex + 1)
+            false
         }
     }
 

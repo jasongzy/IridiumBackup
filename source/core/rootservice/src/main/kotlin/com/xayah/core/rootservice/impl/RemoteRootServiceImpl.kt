@@ -636,6 +636,23 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         activityManager.forceStopPackageAsUser(packageName, userId)
     }
 
+    override fun killPackageProcesses(packageName: String, userId: Int) = synchronized(lock) {
+        require(userId >= 0 && packageName != context.packageName)
+        val uid = try {
+            requireNotNull(packageManagerHidden.getPackageInfoAsUser(packageName, 0, userId).applicationInfo).uid
+        } catch (_: PackageManager.NameNotFoundException) {
+            return@synchronized
+        }
+        check(uid / 100000 == userId) { "Unexpected UID $uid for $packageName in user $userId" }
+        if (uid % 100000 !in android.os.Process.FIRST_APPLICATION_UID..android.os.Process.LAST_APPLICATION_UID ||
+            packageManager.getPackagesForUid(uid)?.singleOrNull() != packageName
+        ) {
+            check(!isPackageRunning(packageName, userId)) { "Cannot safely end processes for $packageName (UID $uid)" }
+            return@synchronized
+        }
+        activityManager.killUid(uid, "Package backup or restore")
+    }
+
     private fun runningPackagePids(packageName: String, userId: Int): Set<Int> {
         val manager = systemContext.getSystemService(ActivityManager::class.java)
         val pids = manager.runningAppProcesses.orEmpty().filter { process ->

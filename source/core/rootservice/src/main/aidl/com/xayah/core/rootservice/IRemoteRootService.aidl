@@ -67,4 +67,5 @@ interface IRemoteRootService {
     ParcelFileDescriptor readDirectory(String path, boolean includeFiles);
     boolean createDirectory(String path);
     boolean removeEntry(String path, boolean directory);
+    void killPackageProcesses(String packageName, int userId);
 }
