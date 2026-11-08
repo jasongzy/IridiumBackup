@@ -12,7 +12,6 @@ import com.xayah.core.model.BlacklistAppItem
 import com.xayah.core.model.BlacklistFileItem
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.Configurations
-import com.xayah.core.model.ConfigurationsBlacklist
 import com.xayah.core.model.OpType
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.ConfigsConfigurationsName
@@ -97,17 +96,7 @@ class CommonBackupUtil @Inject constructor(
     ): ShellResult = run {
         log { "Backing up configs..." }
 
-        val config = Configurations(
-            blacklist = ConfigurationsBlacklist(apps = listOf(), files = listOf()),
-            cloud = listOf(),
-            labels = listOf(),
-            labelColors = emptyMap(),
-            labelAppRefs = listOf(),
-            labelFileRefs = listOf(),
-            appNotes = listOf(),
-            settings = null,
-        )
-
+        val config = Configurations(appNotes = emptyList())
 
         if (includeBlacklist) {
             config.blacklist.apps = appRepo.queryPackages(opType = OpType.BACKUP, blocked = true).map {
@@ -127,13 +116,6 @@ class CommonBackupUtil @Inject constructor(
         if (includeAppNotes) config.appNotes = appBackupRepository.getAppNotes()
         if (includeSettings) config.settings = context.readConfigurationSettings()
         val dst = getConfigsDst(dstDir)
-        var isSuccess: Boolean
-        val out = mutableListOf<String>()
-        rootService.writeJson(data = config, dst = dst).also { result ->
-            isSuccess = result.isSuccess
-            out.addAll(result.out)
-        }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
+        rootService.writeJson(data = config, dst = dst)
     }
 }

@@ -25,6 +25,7 @@ import com.xayah.core.datastore.KeyCompressionTest
 import com.xayah.core.datastore.KeyFollowSymlinks
 import com.xayah.core.datastore.KeyFastSameVersionBackup
 import com.xayah.core.datastore.readCompressionLevel
+import com.xayah.core.datastore.ConstantUtil.CompressionLevels
 import com.xayah.core.datastore.saveCompressionLevel
 import com.xayah.core.ui.component.InnerBottomSpacer
 import com.xayah.core.ui.component.Slideable
@@ -62,8 +63,8 @@ fun PageBackupSettings() {
                 Slideable(
                     title = stringResource(id = R.string.compression_level),
                     value = level.toFloat(),
-                    valueRange = 1F..22F,
-                    steps = 20,
+                    valueRange = CompressionLevels.first.toFloat()..CompressionLevels.last.toFloat(),
+                    steps = CompressionLevels.count() - 2,
                     desc = remember(level) { "${context.getString(R.string.args_current_level, level)}\n${context.getString(R.string.compression_level_desc)}" }
                 ) {
                     scope.launch {

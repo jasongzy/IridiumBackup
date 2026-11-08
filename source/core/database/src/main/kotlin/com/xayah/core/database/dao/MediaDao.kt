@@ -103,8 +103,8 @@ interface MediaDao {
     @Query("UPDATE MediaEntity SET extraInfo_activated = 0 WHERE indexInfo_opType = :opType")
     suspend fun clearActivated(opType: OpType)
 
-    @Query("UPDATE MediaEntity SET extraInfo_blocked = 0")
-    suspend fun clearBlocked()
+    @Query("UPDATE MediaEntity SET extraInfo_blocked = 0 WHERE indexInfo_opType = :opType")
+    suspend fun clearBlocked(opType: OpType)
 
     @Query(
         "UPDATE MediaEntity" +

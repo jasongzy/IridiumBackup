@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -38,10 +39,8 @@ import com.xayah.core.ui.component.Title
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
-import com.xayah.core.util.LanguageUtil
 import com.xayah.core.util.getActivity
 import com.xayah.core.util.navigateSingle
-import com.xayah.core.util.readMappedLanguage
 import com.xayah.feature.setup.MainActivity as SetupActivity
 
 @ExperimentalLayoutApi
@@ -107,7 +106,7 @@ fun PageSettings() {
                 }
                 DarkThemeSelectable()
 
-                val locale by context.readMappedLanguage().collectAsStateWithLifecycle(initialValue = LanguageUtil.getSystemLocale(context))
+                val locale = LocalConfiguration.current.locales[0]
                 Clickable(
                     title = stringResource(id = R.string.language),
                     value = locale.getDisplayName(locale)

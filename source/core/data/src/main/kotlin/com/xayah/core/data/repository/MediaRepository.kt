@@ -38,7 +38,6 @@ class MediaRepository @Inject constructor(
         msg
     }
 
-    suspend fun clearBlocked() = mediaDao.clearBlocked()
     suspend fun setBlocked(id: Long, blocked: Boolean) = mediaDao.setBlocked(id, blocked)
     fun queryFlow(opType: OpType, blocked: Boolean) = mediaDao.queryFlow(opType, blocked).distinctUntilChanged()
     suspend fun query(opType: OpType, blocked: Boolean) = mediaDao.query(opType, blocked)

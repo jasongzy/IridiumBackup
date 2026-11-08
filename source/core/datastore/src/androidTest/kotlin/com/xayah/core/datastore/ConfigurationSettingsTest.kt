@@ -35,7 +35,7 @@ class ConfigurationSettingsTest {
             restoreSsaid = !original.restoreSsaid,
         )
         try {
-            for (invalid in listOf(imported.copy(themeType = "unknown"), imported.copy(killAppOption = "unknown"))) {
+            for (invalid in listOf(imported.copy(themeType = "unknown"), imported.copy(killAppOption = "unknown"), imported.copy(compressionLevel = 23), imported.copy(language = "unknown"))) {
                 val error = runCatching { context.saveConfigurationSettings(invalid) }.exceptionOrNull()
                 assertTrue(error is IllegalArgumentException)
                 assertEquals(original, context.readConfigurationSettings())

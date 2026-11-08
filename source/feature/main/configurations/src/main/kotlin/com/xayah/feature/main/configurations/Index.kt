@@ -46,13 +46,13 @@ fun PageConfigurations() {
         scrollBehavior = scrollBehavior, snackbarHostState = viewModel.snackbarHostState,
         title = stringResource(id = R.string.configurations), actions = {
             OutlinedButton(
-                enabled = uiState.selectedCount != 0 && (
-                    uiState.settingsSelected ||
-                        blockedPackagesState.size + blockedFilesState.size + accounts.size + labels.size + labelAppRefs.size + labelFileRefs.size + appNotesCount != 0
-                    ),
-                onClick = {
-                viewModel.emitIntentOnIO(IndexUiIntent.Export)
-            }) {
+                enabled = uiState.settingsSelected ||
+                    (uiState.blacklistSelected && (blockedPackagesState.isNotEmpty() || blockedFilesState.isNotEmpty())) ||
+                    (uiState.cloudSelected && accounts.isNotEmpty()) ||
+                    (uiState.labelSelected && labels.size + labelAppRefs.size + labelFileRefs.size > 0) ||
+                    (uiState.appNotesSelected && appNotesCount > 0),
+                onClick = { viewModel.emitIntentOnIO(IndexUiIntent.Export) },
+            ) {
                 Text(
                     text = joinOf(
                         stringResource(id = R.string.export),
@@ -73,7 +73,7 @@ fun PageConfigurations() {
             value = (blockedPackagesState.size + blockedFilesState.size).toString(),
             checked = uiState.blacklistSelected,
         ) {
-            viewModel.emitStateOnMain(uiState.copy(selectedCount = if (it) uiState.selectedCount - 1 else uiState.selectedCount + 1, blacklistSelected = it.not()))
+            viewModel.emitStateOnMain(uiState.copy(blacklistSelected = it.not()))
         }
         Checkable(
             icon = Icons.Outlined.Cloud,
@@ -81,7 +81,7 @@ fun PageConfigurations() {
             value = accounts.size.toString(),
             checked = uiState.cloudSelected,
         ) {
-            viewModel.emitStateOnMain(uiState.copy(selectedCount = if (it) uiState.selectedCount - 1 else uiState.selectedCount + 1, cloudSelected = it.not()))
+            viewModel.emitStateOnMain(uiState.copy(cloudSelected = it.not()))
         }
         Checkable(
             icon = Icons.Outlined.BookmarkBorder,
@@ -89,7 +89,7 @@ fun PageConfigurations() {
             value = (labels.size + labelAppRefs.size + labelFileRefs.size).toString(),
             checked = uiState.labelSelected,
         ) {
-            viewModel.emitStateOnMain(uiState.copy(selectedCount = if (it) uiState.selectedCount - 1 else uiState.selectedCount + 1, labelSelected = it.not()))
+            viewModel.emitStateOnMain(uiState.copy(labelSelected = it.not()))
         }
         Checkable(
             icon = Icons.AutoMirrored.Outlined.Notes,
@@ -97,14 +97,14 @@ fun PageConfigurations() {
             value = appNotesCount.toString(),
             checked = uiState.appNotesSelected,
         ) {
-            viewModel.emitStateOnMain(uiState.copy(selectedCount = if (it) uiState.selectedCount - 1 else uiState.selectedCount + 1, appNotesSelected = it.not()))
+            viewModel.emitStateOnMain(uiState.copy(appNotesSelected = it.not()))
         }
         Checkable(
             icon = Icons.Outlined.Settings,
             title = stringResource(id = R.string.other_settings),
             checked = uiState.settingsSelected,
         ) {
-            viewModel.emitStateOnMain(uiState.copy(selectedCount = if (it) uiState.selectedCount - 1 else uiState.selectedCount + 1, settingsSelected = it.not()))
+            viewModel.emitStateOnMain(uiState.copy(settingsSelected = it.not()))
         }
     }
 }

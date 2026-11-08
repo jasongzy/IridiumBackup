@@ -98,7 +98,6 @@ class PackageRepository @Inject constructor(
         }
     }
     suspend fun setBlocked(id: Long, blocked: Boolean) = packageDao.setBlocked(id, blocked)
-    suspend fun clearBlocked() = packageDao.clearBlocked()
     private val localBackupSaveDir get() = context.localBackupSaveDir()
 
     fun getArchiveDst(dstDir: String, dataType: DataType, ct: CompressionType) = "${dstDir}/${dataType.type}.${ct.suffix}"

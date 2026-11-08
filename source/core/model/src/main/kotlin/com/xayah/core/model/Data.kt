@@ -19,8 +19,8 @@ data class BlacklistFileItem(
 )
 
 data class ConfigurationsBlacklist(
-    var apps: List<BlacklistAppItem>,
-    var files: List<BlacklistFileItem>,
+    var apps: List<BlacklistAppItem> = emptyList(),
+    var files: List<BlacklistFileItem> = emptyList(),
 )
 
 data class AppNoteItem(
@@ -30,14 +30,14 @@ data class AppNoteItem(
 )
 
 data class Configurations(
-    val blacklist: ConfigurationsBlacklist,
-    var cloud: List<CloudEntity>,
-    var labels: List<LabelEntity>,
-    var labelColors: Map<String, Long>,
-    var labelAppRefs: List<LabelAppCrossRefEntity>,
-    var labelFileRefs: List<LabelFileCrossRefEntity>,
+    val blacklist: ConfigurationsBlacklist = ConfigurationsBlacklist(),
+    var cloud: List<CloudEntity> = emptyList(),
+    var labels: List<LabelEntity> = emptyList(),
+    var labelColors: Map<String, Long> = emptyMap(),
+    var labelAppRefs: List<LabelAppCrossRefEntity> = emptyList(),
+    var labelFileRefs: List<LabelFileCrossRefEntity> = emptyList(),
     var appNotes: List<AppNoteItem>? = null,
-    var settings: ConfigurationSettings?,
+    var settings: ConfigurationSettings? = null,
 )
 
 data class ConfigurationSettings(

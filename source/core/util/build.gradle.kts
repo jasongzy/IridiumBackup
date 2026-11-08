@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:datastore"))
     implementation(project(":core:model"))
+    implementation(libs.androidx.appcompat)
 
     // Compose Navigation
     implementation(libs.androidx.navigation.compose)

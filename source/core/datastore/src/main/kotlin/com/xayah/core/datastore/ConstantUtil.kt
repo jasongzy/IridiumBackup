@@ -16,6 +16,8 @@ object ConstantUtil {
     const val FTP_ANONYMOUS_USERNAME = "anonymous" // https://www.rfc-editor.org/rfc/rfc1635
     const val FTP_ANONYMOUS_PASSWORD = "guest"
     const val LANGUAGE_SYSTEM = "auto"
+    val SupportedLanguages = listOf("en", "zh-CN")
+    val CompressionLevels = 1..22
     val SupportedExternalStorageFormat = listOf(
         "sdfat",
         "fuseblk",

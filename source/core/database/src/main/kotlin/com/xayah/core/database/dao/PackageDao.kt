@@ -259,9 +259,9 @@ interface PackageDao {
     suspend fun setEnabled(id: Long, enabled: Boolean)
 
     @Query(
-        "UPDATE PackageEntity SET extraInfo_blocked = 0"
+        "UPDATE PackageEntity SET extraInfo_blocked = 0 WHERE indexInfo_opType = :opType"
     )
-    suspend fun clearBlocked()
+    suspend fun clearBlocked(opType: OpType)
 
     @Query("DELETE FROM PackageEntity WHERE id = :id")
     suspend fun delete(id: Long)

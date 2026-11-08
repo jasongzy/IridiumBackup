@@ -27,15 +27,23 @@ suspend fun Context.readConfigurationSettings(): ConfigurationSettings {
     )
 }
 
+fun ConfigurationSettings.validatePreferences() {
+    ThemeType.valueOf(themeType)
+    KillAppOption.valueOf(killAppOption)
+    require(language.trim() == ConstantUtil.LANGUAGE_SYSTEM || language.trim() in ConstantUtil.SupportedLanguages) { "Unsupported language: $language" }
+    require(compressionLevel in ConstantUtil.CompressionLevels) { "Invalid compression level: $compressionLevel" }
+}
+
 suspend fun Context.saveConfigurationSettings(settings: ConfigurationSettings) {
+    settings.validatePreferences()
     dataStore.edit { preferences ->
         preferences[KeyMonet] = settings.monet
-        preferences[KeyThemeType] = ThemeType.valueOf(settings.themeType).name
+        preferences[KeyThemeType] = settings.themeType
         preferences[KeyLanguage] = settings.language.trim()
         preferences[KeyAutoScreenOff] = settings.autoScreenOff
         preferences[KeyLoadSystemApps] = settings.loadSystemApps
         preferences[KeyCompressionLevel] = settings.compressionLevel
-        preferences[KeyKillAppOption] = KillAppOption.valueOf(settings.killAppOption).name
+        preferences[KeyKillAppOption] = settings.killAppOption
         preferences[KeyFastSameVersionBackup] = settings.fastSameVersionBackup
         preferences[KeyBackupItself] = settings.backupItself
         preferences[KeyBackupConfigs] = settings.backupConfigs

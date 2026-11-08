@@ -40,7 +40,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String[]", "SUPPORTED_LOCALES", "new String[]{\"en\",\"zh-CN\"}")
     }
 
     lint {
