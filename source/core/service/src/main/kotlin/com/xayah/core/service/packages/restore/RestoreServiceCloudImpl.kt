@@ -82,8 +82,6 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
             }
         }
 
-        t.update(dataType = type, progress = 1f)
-        t.update(processingIndex = t.processingIndex + 1)
     }
 
     @Inject

@@ -2,6 +2,7 @@ package com.xayah.core.util.command
 
 import com.xayah.core.util.SymbolUtil.QUOTE
 import com.xayah.core.util.SymbolUtil.USD
+import com.xayah.core.util.shellQuote
 import com.xayah.core.util.command.BaseUtil.execute
 import com.xayah.core.util.model.ShellResult
 
@@ -22,7 +23,7 @@ object PreparationUtil {
             "mount",
             "|",
             "awk",
-            "'${USD}3 == ${QUOTE}${path}${QUOTE} {print ${USD}5}'",
+            "-v", "mountpoint=${shellQuote(path)}", "'${USD}3 == mountpoint {print ${USD}5}'",
         )
     }
 
@@ -44,7 +45,7 @@ object PreparationUtil {
         execute(
             "ime",
             "enable",
-            "${QUOTE}${inputMethods}${QUOTE}",
+            shellQuote(inputMethods),
         ).also { result ->
             isSuccess = result.isSuccess
             out.addAll(result.out)
@@ -54,7 +55,7 @@ object PreparationUtil {
         execute(
             "ime",
             "set",
-            "${QUOTE}${inputMethods}${QUOTE}",
+            shellQuote(inputMethods),
         ).also { result ->
             isSuccess = isSuccess and result.isSuccess
             out.addAll(result.out)
@@ -66,7 +67,7 @@ object PreparationUtil {
             "put",
             "secure",
             "default_input_method",
-            "${QUOTE}${inputMethods}${QUOTE}",
+            shellQuote(inputMethods),
         ).also { result ->
             isSuccess = isSuccess and result.isSuccess
             out.addAll(result.out)
@@ -95,7 +96,7 @@ object PreparationUtil {
             "put",
             "secure",
             "enabled_accessibility_services",
-            "${QUOTE}${accessibilityServices}${QUOTE}",
+            shellQuote(accessibilityServices),
         ).also { result ->
             isSuccess = result.isSuccess
             out.addAll(result.out)
@@ -116,67 +117,4 @@ object PreparationUtil {
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }
 
-    suspend fun setInstallEnv(): ShellResult = run {
-        var isSuccess: Boolean
-        val out = mutableListOf<String>()
-
-        // settings put global verifier_verify_adb_installs 0
-        execute(
-            "settings",
-            "put",
-            "global",
-            "verifier_verify_adb_installs",
-            "0",
-        ).also { result ->
-            isSuccess = result.isSuccess
-            out.addAll(result.out)
-        }
-
-        // settings put global package_verifier_enable 0
-        execute(
-            "settings",
-            "put",
-            "global",
-            "package_verifier_enable",
-            "0",
-        ).also { result ->
-            isSuccess = result.isSuccess
-            out.addAll(result.out)
-        }
-
-        // settings get global package_verifier_user_consent
-        val userConsent = execute(
-            "settings",
-            "get",
-            "global",
-            "package_verifier_user_consent",
-        ).outString.trim()
-        if (userConsent != "-1") {
-            // settings put global package_verifier_user_consent -1
-            execute(
-                "settings",
-                "put",
-                "global",
-                "package_verifier_user_consent",
-                "-1",
-            ).also { result ->
-                isSuccess = result.isSuccess
-                out.addAll(result.out)
-            }
-
-            // settings put global upload_apk_enable 0
-            execute(
-                "settings",
-                "put",
-                "global",
-                "upload_apk_enable",
-                "0",
-            ).also { result ->
-                isSuccess = result.isSuccess
-                out.addAll(result.out)
-            }
-        }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
-    }
 }

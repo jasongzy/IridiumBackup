@@ -1,6 +1,6 @@
 package com.xayah.core.util.command
 
-import com.xayah.core.util.SymbolUtil.QUOTE
+import com.xayah.core.util.shellQuote
 import com.xayah.core.util.SymbolUtil.USD
 import com.xayah.core.util.model.ShellResult
 
@@ -12,7 +12,7 @@ object SELinux {
         execute(
             "ls",
             "-Zd",
-            "$QUOTE$path$QUOTE",
+            shellQuote(path),
             "|",
             "awk 'NF>1{print ${USD}1}'"
         )
@@ -23,8 +23,8 @@ object SELinux {
         execute(
             "chown",
             "-hR",
-            "$QUOTE$uid:$gid$QUOTE",
-            "$QUOTE$path/$QUOTE",
+            "$uid:$gid",
+            shellQuote("$path/"),
         )
     }
 
@@ -33,8 +33,8 @@ object SELinux {
         execute(
             "chcon",
             "-hR",
-            "$QUOTE$context$QUOTE",
-            "$QUOTE$path/$QUOTE",
+            shellQuote(context),
+            shellQuote("$path/"),
         )
     }
 }

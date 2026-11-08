@@ -11,7 +11,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.ProcessingInfoType
 import com.xayah.core.model.ProcessingType
-import com.xayah.core.model.TaskType
 import com.xayah.core.model.database.Info
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.ProcessingInfoEntity
@@ -21,22 +20,10 @@ import com.xayah.core.service.packages.AbstractPackagesService
 import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
-import com.xayah.core.util.command.PreparationUtil
 import kotlinx.coroutines.flow.first
 
 internal abstract class AbstractRestoreService : AbstractPackagesService() {
-    override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) {
-        entities.apply {
-            add(ProcessingInfoEntity(
-                taskId = mTaskEntity.id,
-                title = mContext.getString(R.string.set_up_inst_env),
-                type = ProcessingType.PREPROCESSING,
-                infoType = ProcessingInfoType.SET_UP_INST_ENV
-            ).apply {
-                id = mTaskDao.upsert(this)
-            })
-        }
-    }
+    override suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>) = Unit
 
     override suspend fun onInitializingPostProcessingEntities(entities: MutableList<ProcessingInfoEntity>) {
         entities.apply {
@@ -77,36 +64,17 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
     }
 
     abstract suspend fun getPackages(): List<PackageEntity>
-    protected open suspend fun beforeSettingUpEnv() {}
     abstract suspend fun restore(type: DataType, userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String)
 
     protected abstract val mPackagesRestoreUtil: PackagesRestoreUtil
 
-    private var restoreUser = -1
-
-    override suspend fun onPreprocessing(entity: ProcessingInfoEntity) {
-        restoreUser = mContext.readRestoreUser().first()
-        when (entity.infoType) {
-            ProcessingInfoType.SET_UP_INST_ENV -> {
-                if (runCatchingOnService { beforeSettingUpEnv() }) {
-                    log { "Trying to grant adb install permissions." }
-                    PreparationUtil.setInstallEnv().apply {
-                        entity.update(state = if (isSuccess) OperationState.DONE else OperationState.ERROR)
-                    }
-                } else {
-                    entity.update(state = OperationState.ERROR, log = log { "Failed to grant adb install permissions." })
-                }
-                entity.update(progress = 1f)
-            }
-
-            else -> {}
-        }
-    }
+    override suspend fun onPreprocessing(entity: ProcessingInfoEntity) = Unit
 
     override suspend fun onProcessing() {
-        mTaskEntity.update(rawBytes = mTaskRepo.getRawBytes(TaskType.PACKAGE), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
+        mTaskEntity.update(rawBytes = mPkgEntities.sumOf { it.packageEntity.selectedDisplayStatsBytes }.toDouble(), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
         log { "Task count: ${mPkgEntities.size}." }
 
+        val restoreUser = mContext.readRestoreUser().first()
         val killAppOption = mContext.readKillAppOption().first()
         log { "Kill app option: $killAppOption" }
 
@@ -120,17 +88,18 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
 
                 pkg.update(state = OperationState.PROCESSING)
                 val srcDir = "${mAppsDir}/${p.archivesRelativeDir}"
-                restore(type = DataType.PACKAGE_APK, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                restore(type = DataType.PACKAGE_USER, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                restore(type = DataType.PACKAGE_USER_DE, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                restore(type = DataType.PACKAGE_DATA, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                restore(type = DataType.PACKAGE_OBB, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                restore(type = DataType.PACKAGE_MEDIA, userId = userId, p = p, t = pkg, srcDir = srcDir)
-                if (mContext.readRestorePermissions().first()) {
-                    mPackagesRestoreUtil.restorePermissions(userId = userId, p = p)
+                for (type in DataType.packageArchives) {
+                    if (pkg.apkInfo.state == OperationState.ERROR) {
+                        pkg.update(dataType = type, state = OperationState.SKIP)
+                    } else {
+                        restore(type, userId, p, pkg, srcDir)
+                    }
+                    pkg.update(dataType = type, progress = 1f)
+                    pkg.update(processingIndex = pkg.processingIndex + 1)
                 }
-                if (mContext.readRestoreSsaid().first()) {
-                    mPackagesRestoreUtil.restoreSsaid(userId = userId, p = p)
+                if (pkg.isSuccess && p.dataSelectedCount > 0) {
+                    if (mContext.readRestorePermissions().first()) mPackagesRestoreUtil.restorePermissions(userId, p)
+                    if (mContext.readRestoreSsaid().first()) mPackagesRestoreUtil.restoreSsaid(userId, p)
                 }
 
                 if (pkg.isSuccess) {

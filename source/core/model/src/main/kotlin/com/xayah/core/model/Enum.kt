@@ -139,15 +139,6 @@ fun ModeState.getLabel(context: Context) = when (this) {
     ModeState.BATCH_RESTORE -> "${context.getString(R.string.restore)}(${context.getString(R.string.batch)})"
 }
 
-enum class SelectionType {
-    DEFAULT,
-    APK,
-    DATA,
-    BOTH;
-
-    companion object
-}
-
 enum class ThemeType {
     AUTO,
     LIGHT_THEME,

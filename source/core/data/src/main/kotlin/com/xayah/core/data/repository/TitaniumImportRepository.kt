@@ -5,6 +5,7 @@ import android.content.pm.ApplicationInfo
 import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
 import com.xayah.core.data.R
+import com.xayah.core.data.util.archiveExclusions
 import com.xayah.core.model.BackupManifest
 import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.BACKUP_MANIFEST_SCHEMA_VERSION
@@ -29,6 +30,7 @@ import com.xayah.core.datastore.readCompressionLevel
 import com.xayah.core.datastore.readCompressionType
 import com.xayah.core.model.util.getCompressPara
 import com.xayah.core.rootservice.service.RemoteRootService
+import com.xayah.core.util.shellQuote
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.BackupManifestName
 import com.xayah.core.util.PathUtil
@@ -553,9 +555,9 @@ class TitaniumImportRepository @Inject constructor(
         val apkDir = "$stage/apk"
         check(rootService.mkdirs(apkDir))
         val apk = "$apkDir/base.apk"
-        check(shell("busybox gzip -dc ${quote(source)} > ${quote(apk)}")) { "Invalid APK archive" }
-        check(shell("busybox unzip -t ${quote(apk)} >/dev/null")) { "Invalid APK" }
-        val actualMd5 = BaseUtil.execute("md5sum ${quote(apk)}").outString.substringBefore(' ').trim()
+        check(shell("busybox gzip -dc ${shellQuote(source)} > ${shellQuote(apk)}")) { "Invalid APK archive" }
+        check(shell("busybox unzip -t ${shellQuote(apk)} >/dev/null")) { "Invalid APK" }
+        val actualMd5 = BaseUtil.execute("md5sum ${shellQuote(apk)}").outString.substringBefore(' ').trim()
         check(actualMd5.equals(expectedMd5, ignoreCase = true)) { "APK checksum mismatch" }
         val target = "$destination/${DataType.PACKAGE_APK.type}.${compression.suffix}"
         reserve(target)
@@ -597,14 +599,7 @@ class TitaniumImportRepository @Inject constructor(
             val parent = sourcePath.substringBeforeLast('/')
             val target = "$destination/${type.type}.${compression.suffix}"
             reserve(target)
-            val exclusions = when (type) {
-                DataType.PACKAGE_USER, DataType.PACKAGE_USER_DE ->
-                    listOf(".ota", "cache", "lib", "code_cache", "no_backup").map { "$packageName/$it" }
-                DataType.PACKAGE_DATA, DataType.PACKAGE_OBB, DataType.PACKAGE_MEDIA ->
-                    listOf("$packageName/cache", "Backup_*")
-                else -> emptyList()
-            }
-            val result = Tar.compress(exclusions, "", parent, packageName, target, compressionArgs)
+            val result = Tar.compress(type.archiveExclusions(packageName).tarPatterns, "", parent, packageName, target, compressionArgs)
             check(result.isSuccess) { result.outString.ifBlank { "Unable to convert ${type.type}" } }
             if (Tar.hasContent(target, packageName, compression.decompressPara).isSuccess) {
                 imported += type
@@ -690,5 +685,4 @@ class TitaniumImportRepository @Inject constructor(
 
     private suspend fun shell(command: String): Boolean = BaseUtil.execute(command).isSuccess
 
-    private fun quote(value: String) = "'${value.replace("'", "'\\''")}'"
 }

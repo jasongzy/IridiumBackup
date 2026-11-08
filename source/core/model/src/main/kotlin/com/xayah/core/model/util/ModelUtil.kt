@@ -7,7 +7,6 @@ import com.xayah.core.model.LZ4_SUFFIX
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.SFTPAuthMode
-import com.xayah.core.model.SelectionType
 import com.xayah.core.model.SmbAuthMode
 import com.xayah.core.model.SortType
 import com.xayah.core.model.TAR_SUFFIX
@@ -53,9 +52,6 @@ fun CompressionType.Companion.suffixOf(suffix: String): CompressionType? = when 
     LZ4_SUFFIX -> CompressionType.LZ4
     else -> null
 }
-
-fun SelectionType.Companion.of(name: String?): SelectionType =
-    runCatching { SelectionType.valueOf(name!!.uppercase()) }.getOrDefault(SelectionType.DEFAULT)
 
 fun ThemeType.Companion.of(name: String?): ThemeType =
     runCatching { ThemeType.valueOf(name!!.uppercase()) }.getOrDefault(ThemeType.AUTO)

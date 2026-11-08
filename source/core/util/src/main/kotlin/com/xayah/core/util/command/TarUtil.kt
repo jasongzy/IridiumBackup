@@ -1,7 +1,7 @@
 package com.xayah.core.util.command
 
 import com.xayah.core.common.util.toSpaceString
-import com.xayah.core.common.util.trim
+import com.xayah.core.util.shellQuote
 import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.model.ShellResult
 
@@ -18,8 +18,6 @@ internal fun ShellResult.acceptFileChangedWarnings(): ShellResult = apply {
 object Tar {
     private suspend fun execute(vararg args: String): ShellResult = BaseUtil.execute("tar", *args)
 
-    private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
-
     suspend fun compressInCur(cur: String, src: String, dst: String, extra: String): ShellResult {
         val command = mutableListOf("cd", shellQuote(cur), "&&", "tar", "--totals", "-cpf", "-", src)
         if (extra.isNotEmpty()) command += listOf("|", extra)
@@ -29,7 +27,7 @@ object Tar {
 
     suspend fun compress(exclusionList: List<String>, h: String, srcDir: String, src: String, dst: String, extra: String): ShellResult =
         run {
-            val exclusion = exclusionList.trim().map { "--exclude=$it" }.toSpaceString()
+            val exclusion = exclusionList.map { "--exclude=${shellQuote(it)}" }.toSpaceString()
             if (extra.isEmpty()) {
                 // tar --totals "$exclusion" $h -cpf - -C "$srcDir" -- "$src" > "$dst"
                 execute(

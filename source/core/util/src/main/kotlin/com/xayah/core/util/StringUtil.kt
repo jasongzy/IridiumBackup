@@ -2,6 +2,8 @@ package com.xayah.core.util
 
 import java.util.Locale
 
+fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
+
 fun String.toPathList() = split("/")
 
 /**

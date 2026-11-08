@@ -2,28 +2,30 @@ package com.xayah.core.service.util
 
 import android.app.AppOpsManagerHidden
 import android.content.Context
+import android.content.pm.PackageManager
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.util.srcDir
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.readCleanRestoring
-import com.xayah.core.datastore.readSelectionType
+import com.xayah.core.data.util.archiveExclusions
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OperationState
-import com.xayah.core.model.SelectionType
+import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
+import com.xayah.core.model.util.get
+import com.xayah.core.model.util.set
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.util.formatSize
 import com.xayah.core.network.client.CloudClient
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.LogUtil
-import com.xayah.core.util.PathUtil
-import com.xayah.core.util.command.Appops
 import com.xayah.core.util.command.Pm
 import com.xayah.core.util.command.SELinux
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -40,7 +42,6 @@ class PackagesRestoreUtil @Inject constructor(
     private val taskDao: TaskDao,
     private val packageRepository: PackageRepository,
     private val cloudRepository: CloudRepository,
-    private val pathUtil: PathUtil,
 ) {
     companion object {
         private const val TAG = "PackagesRestoreUtil"
@@ -52,32 +53,6 @@ class PackagesRestoreUtil @Inject constructor(
         msg
     }
 
-    private suspend fun PackageEntity.getDataSelected(dataType: DataType) = when (context.readSelectionType().first()) {
-        SelectionType.DEFAULT -> {
-            when (dataType) {
-                DataType.PACKAGE_APK -> apkSelected
-                DataType.PACKAGE_USER -> userSelected
-                DataType.PACKAGE_USER_DE -> userDeSelected
-                DataType.PACKAGE_DATA -> dataSelected
-                DataType.PACKAGE_OBB -> obbSelected
-                DataType.PACKAGE_MEDIA -> mediaSelected
-                else -> false
-            }
-        }
-
-        SelectionType.APK -> {
-            dataType == DataType.PACKAGE_APK
-        }
-
-        SelectionType.DATA -> {
-            dataType != DataType.PACKAGE_APK
-        }
-
-        SelectionType.BOTH -> {
-            true
-        }
-    }
-
     private suspend fun TaskDetailPackageEntity.updateInfo(
         dataType: DataType,
         state: OperationState? = null,
@@ -85,76 +60,8 @@ class PackagesRestoreUtil @Inject constructor(
         log: String? = null,
         content: String? = null,
     ) = run {
-        when (dataType) {
-            DataType.PACKAGE_APK -> {
-                apkInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            DataType.PACKAGE_USER -> {
-                userInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            DataType.PACKAGE_USER_DE -> {
-                userDeInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            DataType.PACKAGE_DATA -> {
-                dataInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            DataType.PACKAGE_OBB -> {
-                obbInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            DataType.PACKAGE_MEDIA -> {
-                mediaInfo.also {
-                    if (state != null) it.state = state
-                    if (bytes != null) it.bytes = bytes
-                    if (log != null) it.log = log
-                    if (content != null) it.content = content
-                }
-            }
-
-            else -> {}
-        }
+        set(dataType, bytes = bytes, log = log, content = content, state = state)
         taskDao.upsert(this)
-    }
-
-    private fun TaskDetailPackageEntity.getLog(
-        dataType: DataType,
-    ) = when (dataType) {
-        DataType.PACKAGE_APK -> apkInfo.log
-        DataType.PACKAGE_USER -> userInfo.log
-        DataType.PACKAGE_USER_DE -> userDeInfo.log
-        DataType.PACKAGE_DATA -> dataInfo.log
-        DataType.PACKAGE_OBB -> obbInfo.log
-        DataType.PACKAGE_MEDIA -> mediaInfo.log
-        else -> ""
     }
 
     suspend fun restoreApk(userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String): ShellResult = run {
@@ -167,7 +74,7 @@ class PackagesRestoreUtil @Inject constructor(
         var isSuccess = true
         val out = mutableListOf<String>()
 
-        if (p.getDataSelected(dataType).not()) {
+        if (!dataType.getSelected(p.dataStates)) {
             t.updateInfo(dataType = dataType, state = OperationState.SKIP)
         } else {
             // Return if the archive doesn't exist.
@@ -175,11 +82,10 @@ class PackagesRestoreUtil @Inject constructor(
                 val sizeBytes = rootService.calculateSize(src)
                 t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = sizeBytes)
                 // Decompress apk archive
-                val tmpApkPath = pathUtil.getTmpApkPath(packageName = packageName)
-                rootService.deleteRecursively(tmpApkPath)
-                rootService.mkdirs(tmpApkPath)
                 val workspace = "${context.cacheDir}/archive-${UUID.randomUUID()}"
+                val tmpApkPath = "$workspace/apks"
                 try {
+                    check(rootService.mkdirsWithin(context.cacheDir.path, tmpApkPath)) { "Unable to create APK workspace" }
                     rootService.extractArchive(
                         source = src,
                         destination = tmpApkPath,
@@ -190,32 +96,25 @@ class PackagesRestoreUtil @Inject constructor(
                         out.addAll(result.out)
                     }
                     // Install apks
-                    if (isSuccess) rootService.listFilePaths(tmpApkPath).also { apksPath ->
-                        when (apksPath.size) {
-                            0 -> {
-                                isSuccess = false
-                                out.add(log { "$tmpApkPath is empty." })
-                            }
-
-                            1 -> {
-                                Pm.install(userId = userId, src = apksPath.first()).also { result ->
-                                    isSuccess = isSuccess && result.isSuccess
-                                    out.addAll(result.out)
-                                }
-                            }
-
-                            else -> {
-                                Pm.Install.install(userId, apksPath).also { result ->
-                                    isSuccess = result.isSuccess
-                                    out.addAll(result.out)
-                                }
-                            }
+                    if (isSuccess) {
+                        val apks = rootService.listFilePaths(tmpApkPath, listDirs = false).filter { it.endsWith(".apk") }
+                        if (apks.none { rootService.getPackageArchiveInfo(it)?.packageName == packageName }) {
+                            isSuccess = false
+                            out.add(log { "Archive does not contain an APK for $packageName" })
+                        } else {
+                            val result = Pm.install(userId, apks)
+                            isSuccess = result.isSuccess
+                            out.addAll(result.out)
                         }
                     }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    isSuccess = false
+                    out.add(log { e.message ?: e.javaClass.simpleName })
                 } finally {
                     withContext(NonCancellable) {
                         rootService.deleteRecursively(workspace)
-                        rootService.deleteRecursively(tmpApkPath)
                     }
                 }
 
@@ -223,7 +122,7 @@ class PackagesRestoreUtil @Inject constructor(
                 rootService.queryInstalled(packageName = packageName, userId = userId).also {
                     if (it.not()) {
                         isSuccess = false
-                        log { "Not installed: $packageName." }
+                        out.add(log { "Not installed: $packageName." })
                     }
                 }
             } else {
@@ -247,13 +146,13 @@ class PackagesRestoreUtil @Inject constructor(
         val src = packageRepository.getArchiveDst(dstDir = srcDir, dataType = dataType, ct = ct)
         val dstDir = packageRepository.getDataSrcDir(dataType, userId)
         val dst = packageRepository.getDataSrc(dstDir, packageName)
-        val uid = rootService.getPackageUid(packageName = packageName, userId = userId)
         var isSuccess = true
         val out = mutableListOf<String>()
 
-        if (p.getDataSelected(dataType).not()) {
+        if (!dataType.getSelected(p.dataStates)) {
             t.updateInfo(dataType = dataType, state = OperationState.SKIP)
         } else {
+            val uid = rootService.getPackageUid(packageName = packageName, userId = userId)
             if (uid == -1) {
                 isSuccess = false
                 out.add(log { "Failed to get uid of $packageName." })
@@ -262,22 +161,7 @@ class PackagesRestoreUtil @Inject constructor(
                 if (rootService.exists(src)) {
                     val sizeBytes = rootService.calculateSize(src)
                     t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = sizeBytes)
-                    // Generate exclusion items.
-                    val excludedPathPrefixes = mutableListOf<String>()
-                    val excludedNamePrefixes = mutableListOf<String>()
-                    when (dataType) {
-                        DataType.PACKAGE_USER, DataType.PACKAGE_USER_DE, DataType.PACKAGE_DATA, DataType.PACKAGE_OBB, DataType.PACKAGE_MEDIA -> {
-                            val folders = listOf(".ota", "cache", "lib", "code_cache", "no_backup")
-                            excludedPathPrefixes.addAll(folders.map { "$packageName/$it" })
-                            if (dataType == DataType.PACKAGE_DATA || dataType == DataType.PACKAGE_OBB || dataType == DataType.PACKAGE_MEDIA) {
-                                excludedNamePrefixes.add("Backup_")
-                            }
-
-                        }
-
-                        else -> {}
-                    }
-                    log { "Excluded paths: $excludedPathPrefixes, names: $excludedNamePrefixes." }
+                    val exclusions = dataType.archiveExclusions(packageName)
 
                     // Get the SELinux context of the path.
                     val pathContext: String
@@ -297,8 +181,8 @@ class PackagesRestoreUtil @Inject constructor(
                             workspace = linkDir,
                             cleanDestination = dst.takeIf { context.readCleanRestoring().first() }.orEmpty(),
                             requiredPrefix = packageName,
-                            excludedPathPrefixes = excludedPathPrefixes,
-                            excludedNamePrefixes = excludedNamePrefixes,
+                            excludedPathPrefixes = exclusions.paths,
+                            excludedNamePrefixes = exclusions.namePrefixes,
                             ignoreModificationTime = true,
                         )
                         isSuccess = extraction.result.isSuccess
@@ -345,16 +229,8 @@ class PackagesRestoreUtil @Inject constructor(
                     }
 
                 } else {
-                    if (dataType == DataType.PACKAGE_USER) {
-                        isSuccess = false
-                        out.add(log { "Not exist: $src" })
-                        t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = out.toLineString())
-                        return@run ShellResult(code = -1, input = listOf(), out = out)
-                    } else {
-                        out.add(log { "Not exist and skip: $src" })
-                        t.updateInfo(dataType = dataType, state = OperationState.SKIP, log = out.toLineString())
-                        return@run ShellResult(code = -2, input = listOf(), out = out)
-                    }
+                    isSuccess = false
+                    out.add(log { "Not exist: $src" })
                 }
             }
             t.updateInfo(dataType = dataType, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
@@ -363,38 +239,29 @@ class PackagesRestoreUtil @Inject constructor(
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }
 
-    suspend fun restorePermissions(userId: Int, p: PackageEntity) = run {
-        log { "Restoring permissions..." }
+    suspend fun restorePermissions(userId: Int, p: PackageEntity) {
+        if (!p.permissionSelected || p.extraInfo.permissions.isEmpty()) return
 
         val packageName = p.packageName
-        val uid = rootService.getPackageUid(packageName = packageName, userId = userId)
+        val info = rootService.getPackageInfoAsUser(packageName, PackageManager.GET_PERMISSIONS, userId)
+        val uid = info?.applicationInfo?.uid
         val user = rootService.getUserHandle(userId)
-        val permissions = p.extraInfo.permissions
+        if (info == null || uid == null || user == null) {
+            log { "Unable to restore permissions for $packageName (user $userId)." }
+            return
+        }
 
-        if (p.permissionSelected) {
-            if (uid != -1) {
-                Appops.reset(userId = userId, packageName = packageName)
-                log { "Permissions size: ${permissions.size}..." }
-                permissions.forEach {
-                    log { "Permission name: ${it.name}, isGranted: ${it.isGranted}, op: ${it.op}, mode: ${it.mode}" }
-                    runCatching {
-                        if (it.isGranted) {
-                            rootService.grantRuntimePermission(packageName, it.name, user!!)
-                        } else {
-                            rootService.revokeRuntimePermission(packageName, it.name, user!!)
-                        }
-                        if (it.op != AppOpsManagerHidden.OP_NONE) {
-                            it.mode?.also { mode ->
-                                rootService.setOpsMode(it.op, uid, packageName, mode)
-                            }
-                        }
-                    }
-                }
-            } else {
-                log { "Failed to get uid of $packageName." }
+        val requested = rootService.getPermissions(info).associateBy { it.name }
+        for (saved in p.extraInfo.permissions) {
+            val current = requested[saved.name] ?: continue
+            if (current.isGranted != saved.isGranted) {
+                if (saved.isGranted) rootService.grantRuntimePermission(packageName, saved.name, user)
+                else rootService.revokeRuntimePermission(packageName, saved.name, user)
             }
-        } else {
-            log { "Skip." }
+            val mode = saved.mode
+            if (mode != null && current.op != AppOpsManagerHidden.OP_NONE && current.op == saved.op) {
+                rootService.setOpsMode(current.op, uid, packageName, mode)
+            }
         }
     }
 
@@ -433,7 +300,7 @@ class PackagesRestoreUtil @Inject constructor(
         val ct = p.indexInfo.compressionType
         val src = packageRepository.getArchiveDst(dstDir = srcDir, dataType = dataType, ct = ct)
 
-        if (p.getDataSelected(dataType).not()) {
+        if (!dataType.getSelected(p.dataStates)) {
             t.updateInfo(dataType = dataType, state = OperationState.SKIP)
         } else {
             t.updateInfo(dataType = dataType, state = OperationState.DOWNLOADING)
@@ -461,7 +328,7 @@ class PackagesRestoreUtil @Inject constructor(
                     flag = false
                     t.updateInfo(
                         dataType = dataType,
-                        log = (t.getLog(dataType) + "\n${outString}").trim(),
+                        log = (t.get(dataType).log + "\n${outString}").trim(),
                         content = progress.formatSize()
                     )
                     if (isSuccess.not()) {
@@ -469,11 +336,7 @@ class PackagesRestoreUtil @Inject constructor(
                     }
                 }
             } else {
-                if (dataType == DataType.PACKAGE_USER || dataType == DataType.PACKAGE_APK) {
-                    t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = log { "Failed to connect to cloud or file not exist: $src" })
-                } else {
-                    t.updateInfo(dataType = dataType, state = OperationState.SKIP, log = log { "Failed to connect to cloud or file not exist, skip: $src" })
-                }
+                t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = log { "Remote archive not found: $src" })
             }
         }
     }

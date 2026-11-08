@@ -59,8 +59,6 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
         } else {
             mPackagesRestoreUtil.restoreData(userId = userId, p = p, t = t, dataType = type, srcDir = srcDir)
         }
-        t.update(dataType = type, progress = 1f)
-        t.update(processingIndex = t.processingIndex + 1)
     }
 
     @Inject

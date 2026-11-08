@@ -19,13 +19,13 @@ class PmUtilTest {
     @Test
     fun commitsOnlyAfterAllApksAreWritten() = runBlocking {
         val commands = mutableListOf<List<String>>()
-        val installed = installApkSession(apks, { result(text = "42") }) {
+        val installed = installApkSession(apks, { result(text = "Success: created install session [42]") }) {
             commands += it
             result()
         }
         assertTrue(installed.isSuccess)
         assertEquals(listOf("install-write", "install-write", "install-commit"), commands.map { it.first() })
-        assertEquals(listOf("install-write", "\"42\"", "\"base.apk\"", "\"/apk/base.apk\""), commands.first())
+        assertEquals(listOf("install-write", "42", "base.apk", "/apk/base.apk"), commands.first())
     }
 
     @Test
@@ -38,7 +38,7 @@ class PmUtilTest {
     fun writeAndCommitFailuresAbandonTheSession() = runBlocking {
         for (failure in listOf("install-write", "install-commit")) {
             val commands = mutableListOf<String>()
-            val installed = installApkSession(apks, { result(text = "42") }) {
+            val installed = installApkSession(apks, { result(text = "Success: created install session [42]") }) {
                 commands += it.first()
                 result(if (it.first() == failure) -1 else 0)
             }
@@ -57,7 +57,7 @@ class PmUtilTest {
                 val caller = currentCoroutineContext()
                 installApkSession(apks, {
                     if (cancelDuringCreation) caller.cancel()
-                    result(text = "42")
+                    result(text = "Success: created install session [42]")
                 }) {
                     commands += it.first()
                     if (it.first() == "install-write") throw CancellationException()
