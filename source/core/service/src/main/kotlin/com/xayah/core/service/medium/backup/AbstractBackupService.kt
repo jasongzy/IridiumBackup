@@ -107,49 +107,47 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
         log { "Task count: ${mMediaEntities.size}." }
 
         mMediaEntities.forEachIndexed { index, media ->
-            executeAtLeast {
-                NotificationUtil.notify(
-                    mContext,
-                    mNotificationBuilder,
-                    mContext.getString(R.string.backing_up),
-                    media.mediaEntity.name,
-                    mMediaEntities.size,
-                    index
-                )
-                log { "Current media: ${media.mediaEntity}" }
+            NotificationUtil.notify(
+                mContext,
+                mNotificationBuilder,
+                mContext.getString(R.string.backing_up),
+                media.mediaEntity.name,
+                mMediaEntities.size,
+                index
+            )
+            log { "Current media: ${media.mediaEntity}" }
 
-                media.update(state = OperationState.PROCESSING)
-                val m = media.mediaEntity
-                val dstDir = "${mFilesDir}/${m.archivesRelativeDir}"
-                var restoreEntity = mMediaDao.query(OpType.RESTORE, m.preserveId, m.name, m.indexInfo.compressionType, mTaskEntity.cloud, mTaskEntity.backupDir)
-                if (createDirectory(dstDir) && onFileDirCreated(archivesRelativeDir = m.archivesRelativeDir)) {
-                    backup(m = m, r = restoreEntity, t = media, dstDir = dstDir)
+            media.update(state = OperationState.PROCESSING)
+            val m = media.mediaEntity
+            val dstDir = "${mFilesDir}/${m.archivesRelativeDir}"
+            var restoreEntity = mMediaDao.query(OpType.RESTORE, m.preserveId, m.name, m.indexInfo.compressionType, mTaskEntity.cloud, mTaskEntity.backupDir)
+            if (createDirectory(dstDir) && onFileDirCreated(archivesRelativeDir = m.archivesRelativeDir)) {
+                backup(m = m, r = restoreEntity, t = media, dstDir = dstDir)
 
-                    if (media.isSuccess) {
-                        // Save config
-                        m.extraInfo.lastBackupTime = DateUtil.getTimestamp()
-                        val id = restoreEntity?.id ?: 0
-                        restoreEntity = m.copy(
-                            id = id,
-                            indexInfo = m.indexInfo.copy(opType = OpType.RESTORE, cloud = mTaskEntity.cloud, backupDir = mTaskEntity.backupDir),
-                            extraInfo = m.extraInfo.copy(existed = true, activated = false)
-                        )
-                        val configDst = PathUtil.getMediaRestoreConfigDst(dstDir = dstDir)
-                        mRootService.writeJson(data = restoreEntity, dst = configDst)
-                        onConfigSaved(path = configDst, archivesRelativeDir = m.archivesRelativeDir)
-                        mMediaDao.upsert(restoreEntity)
-                        mMediaDao.upsert(m)
-                        media.update(mediaEntity = m)
-                        mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
-                    } else {
-                        mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
-                    }
+                if (media.isSuccess) {
+                    // Save config
+                    m.extraInfo.lastBackupTime = DateUtil.getTimestamp()
+                    val id = restoreEntity?.id ?: 0
+                    restoreEntity = m.copy(
+                        id = id,
+                        indexInfo = m.indexInfo.copy(opType = OpType.RESTORE, cloud = mTaskEntity.cloud, backupDir = mTaskEntity.backupDir),
+                        extraInfo = m.extraInfo.copy(existed = true, activated = false)
+                    )
+                    val configDst = PathUtil.getMediaRestoreConfigDst(dstDir = dstDir)
+                    mRootService.writeJson(data = restoreEntity, dst = configDst)
+                    onConfigSaved(path = configDst, archivesRelativeDir = m.archivesRelativeDir)
+                    mMediaDao.upsert(restoreEntity)
+                    mMediaDao.upsert(m)
+                    media.update(mediaEntity = m)
+                    mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
                 } else {
-                    media.update(progress = 1f, state = OperationState.ERROR)
                     mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                 }
-                media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
+            } else {
+                media.update(progress = 1f, state = OperationState.ERROR)
+                mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
             }
+            media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
             mTaskEntity.update(processingIndex = mTaskEntity.processingIndex + 1)
         }
     }

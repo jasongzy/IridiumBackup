@@ -34,7 +34,6 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -114,27 +113,6 @@ internal abstract class AbstractProcessingService : Service() {
         mTaskDao.upsert(this)
     }
 
-    /**
-     * To wait for animation.
-     */
-    protected suspend fun executeAtLeast(
-        minTime: Int = 1000,
-        finalizer: suspend () -> Unit = {},
-        block: suspend () -> Unit,
-    ) {
-        val startTimestamp = DateUtil.getTimestamp()
-        try {
-            block()
-        } finally {
-            finalizer()
-        }
-        val endTimestamp = DateUtil.getTimestamp()
-        val diff = endTimestamp - startTimestamp
-        if (diff < minTime) {
-            delay(minTime - diff)
-        }
-    }
-
     abstract suspend fun onInitializingPreprocessingEntities(entities: MutableList<ProcessingInfoEntity>)
     abstract suspend fun onInitializingPostProcessingEntities(entities: MutableList<ProcessingInfoEntity>)
     abstract suspend fun onInitializing()
@@ -212,9 +190,7 @@ internal abstract class AbstractProcessingService : Service() {
 
             mPreprocessingEntities.forEach {
                 it.update(state = OperationState.PROCESSING)
-                executeAtLeast {
-                    onPreprocessing(it)
-                }
+                onPreprocessing(it)
                 if (it.state == OperationState.ERROR) throw IOException(it.log.ifBlank { it.title })
                 mTaskEntity.update(preprocessingIndex = mTaskEntity.preprocessingIndex + 1)
             }
@@ -246,9 +222,7 @@ internal abstract class AbstractProcessingService : Service() {
 
             mPostProcessingEntities.forEach {
                 it.update(state = OperationState.PROCESSING)
-                executeAtLeast {
-                    onPostProcessing(it)
-                }
+                onPostProcessing(it)
                 mTaskEntity.update(postProcessingIndex = mTaskEntity.postProcessingIndex + 1)
             }
 

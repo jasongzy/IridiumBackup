@@ -194,15 +194,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 log { "Trying to pause ${pkg.packageEntity.packageName}." }
                 mRootService.pausePackage(pkg.packageEntity.packageName, pkg.packageEntity.userId)
             } else null
-            executeAtLeast(finalizer = {
-                withContext(NonCancellable) {
-                    pause?.close()
-                    pendingArchiveDir?.let {
-                        runCatchingOnService { onBackupFailed(it) }
-                        mRootService.deleteRecursively("$mAppsDir/$it")
-                    }
-                }
-            }) {
+            try {
                 currentCoroutineContext().ensureActive()
                 if (pause == null) killApp(killAppOption, pkg)
                 log { "Current package: ${pkg.packageEntity}" }
@@ -290,6 +282,14 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                 }
                 pkg.update(state = if (pkg.isSuccess) OperationState.DONE else OperationState.ERROR)
+            } finally {
+                withContext(NonCancellable) {
+                    pause?.close()
+                    pendingArchiveDir?.let {
+                        runCatchingOnService { onBackupFailed(it) }
+                        mRootService.deleteRecursively("$mAppsDir/$it")
+                    }
+                }
             }
             mTaskEntity.update(processingIndex = mTaskEntity.processingIndex + 1)
         }

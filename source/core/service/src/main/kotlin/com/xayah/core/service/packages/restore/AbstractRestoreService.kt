@@ -82,37 +82,35 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
         log { "Kill app option: $killAppOption" }
 
         mPkgEntities.forEach { pkg ->
-            executeAtLeast {
-                log { "Current package: ${pkg.packageEntity}" }
+            log { "Current package: ${pkg.packageEntity}" }
 
-                val p = pkg.packageEntity
-                val userId = if (restoreUser == -1) p.userId else restoreUser
-                killApp(killAppOption, pkg, userId)
+            val p = pkg.packageEntity
+            val userId = if (restoreUser == -1) p.userId else restoreUser
+            killApp(killAppOption, pkg, userId)
 
-                pkg.update(state = OperationState.PROCESSING)
-                val srcDir = "${mAppsDir}/${p.archivesRelativeDir}"
-                for (type in DataType.packageArchives) {
-                    if (pkg.apkInfo.state == OperationState.ERROR) {
-                        pkg.update(dataType = type, state = OperationState.SKIP)
-                    } else {
-                        restore(type, userId, p, pkg, srcDir)
-                    }
-                    pkg.update(dataType = type, progress = 1f)
-                    pkg.update(processingIndex = pkg.processingIndex + 1)
-                }
-                if (pkg.isSuccess && p.dataSelectedCount > 0) {
-                    if (mContext.readRestorePermissions().first()) mPackagesRestoreUtil.restorePermissions(userId, p)
-                    if (mContext.readRestoreSsaid().first()) mPackagesRestoreUtil.restoreSsaid(userId, p)
-                }
-
-                if (pkg.isSuccess) {
-                    pkg.update(packageEntity = p)
-                    mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
+            pkg.update(state = OperationState.PROCESSING)
+            val srcDir = "${mAppsDir}/${p.archivesRelativeDir}"
+            for (type in DataType.packageArchives) {
+                if (pkg.apkInfo.state == OperationState.ERROR) {
+                    pkg.update(dataType = type, state = OperationState.SKIP)
                 } else {
-                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
+                    restore(type, userId, p, pkg, srcDir)
                 }
-                pkg.update(state = if (pkg.isSuccess) OperationState.DONE else OperationState.ERROR)
+                pkg.update(dataType = type, progress = 1f)
+                pkg.update(processingIndex = pkg.processingIndex + 1)
             }
+            if (pkg.isSuccess && p.dataSelectedCount > 0) {
+                if (mContext.readRestorePermissions().first()) mPackagesRestoreUtil.restorePermissions(userId, p)
+                if (mContext.readRestoreSsaid().first()) mPackagesRestoreUtil.restoreSsaid(userId, p)
+            }
+
+            if (pkg.isSuccess) {
+                pkg.update(packageEntity = p)
+                mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
+            } else {
+                mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
+            }
+            pkg.update(state = if (pkg.isSuccess) OperationState.DONE else OperationState.ERROR)
             mTaskEntity.update(processingIndex = mTaskEntity.processingIndex + 1)
         }
     }

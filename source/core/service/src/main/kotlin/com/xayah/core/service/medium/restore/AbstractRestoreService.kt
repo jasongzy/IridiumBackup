@@ -86,30 +86,28 @@ internal abstract class AbstractRestoreService : AbstractMediumService() {
         log { "Task count: ${mMediaEntities.size}." }
 
         mMediaEntities.forEachIndexed { index, media ->
-            executeAtLeast {
-                NotificationUtil.notify(
-                    mContext,
-                    mNotificationBuilder,
-                    mContext.getString(R.string.restoring),
-                    media.mediaEntity.name,
-                    mMediaEntities.size,
-                    index
-                )
-                log { "Current media: ${media.mediaEntity}" }
+            NotificationUtil.notify(
+                mContext,
+                mNotificationBuilder,
+                mContext.getString(R.string.restoring),
+                media.mediaEntity.name,
+                mMediaEntities.size,
+                index
+            )
+            log { "Current media: ${media.mediaEntity}" }
 
-                media.update(state = OperationState.PROCESSING)
-                val m = media.mediaEntity
-                val srcDir = "${mFilesDir}/${m.archivesRelativeDir}"
-                restore(m = m, t = media, srcDir = srcDir)
+            media.update(state = OperationState.PROCESSING)
+            val m = media.mediaEntity
+            val srcDir = "${mFilesDir}/${m.archivesRelativeDir}"
+            restore(m = m, t = media, srcDir = srcDir)
 
-                if (media.isSuccess) {
-                    media.update(mediaEntity = m)
-                    mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
-                } else {
-                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
-                }
-                media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
+            if (media.isSuccess) {
+                media.update(mediaEntity = m)
+                mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
+            } else {
+                mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
             }
+            media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
             mTaskEntity.update(processingIndex = mTaskEntity.processingIndex + 1)
         }
     }
