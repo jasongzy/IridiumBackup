@@ -14,7 +14,7 @@ interface IRemoteRootService {
     boolean copyRecursively(String path, String targetPath, boolean overwrite);
     boolean copyTo(String path, String targetPath, boolean overwrite);
     boolean replaceFile(String path, String targetPath);
-    boolean archiveApks(in String[] paths, String targetPath);
+    boolean exportApks(in String[] paths, String targetPath);
     boolean createHardLink(String path, String targetPath);
     int restoreArchiveLinks(String linkDir, String destination);
     ArchiveExtractionParcelable extractArchive(String source, String destination, String compression, String workspace, String cleanDestination, String requiredPrefix, in String[] excludedPathPrefixes, in String[] excludedNamePrefixes, boolean preservePermissions, boolean ignoreModificationTime);
@@ -28,7 +28,6 @@ interface IRemoteRootService {
     ParcelFileDescriptor readBytes(String path);
     long calculateSize(String path);
     long fileLength(String path);
-    void setAllPermissions(String src);
     int[] getUidGid(String path);
 
     ParcelFileDescriptor getInstalledPackagesAsUser(int flags, int userId);

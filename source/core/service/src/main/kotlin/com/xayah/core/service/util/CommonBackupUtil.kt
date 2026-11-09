@@ -49,7 +49,7 @@ class CommonBackupUtil @Inject constructor(
         val packageName = context.packageName
         val sourceDirList = rootService.getPackageSourceDir(packageName, android.os.Process.myUid() / 100000)
         val targetPath = getItselfDst(dstDir)
-        val isSuccess = sourceDirList.isNotEmpty() && rootService.archiveApks(sourceDirList, targetPath)
+        val isSuccess = sourceDirList.isNotEmpty() && rootService.exportApks(sourceDirList, targetPath)
         val message = when {
             sourceDirList.isEmpty() -> "Failed to get APK paths of $packageName."
             isSuccess -> "Saved APK archive to $targetPath."

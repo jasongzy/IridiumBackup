@@ -200,8 +200,8 @@ class RemoteRootService(private val context: Context) {
     suspend fun copyTo(path: String, targetPath: String, overwrite: Boolean): Boolean =
         runCatching { getService().copyTo(path, targetPath, overwrite) }.onFailure(onFailure).getOrElse { false }
 
-    suspend fun archiveApks(paths: List<String>, targetPath: String): Boolean = withIOContext {
-        runCatching { getService().archiveApks(paths.toTypedArray(), targetPath) }.onFailure(onFailure).getOrDefault(false)
+    suspend fun exportApks(paths: List<String>, targetPath: String): Boolean = withIOContext {
+        runCatching { getService().exportApks(paths.toTypedArray(), targetPath) }.onFailure(onFailure).getOrDefault(false)
     }
 
     suspend fun hasZipEntry(path: String, entries: List<String>): Boolean =
@@ -322,8 +322,6 @@ class RemoteRootService(private val context: Context) {
     suspend fun calculateSize(path: String): Long = runCatching { getService().calculateSize(path) }.onFailure(onFailure).getOrElse { 0 }
 
     suspend fun fileLength(path: String): Long? = runCatching { getService().fileLength(path) }.onFailure(onFailure).getOrNull()
-
-    suspend fun setAllPermissions(src: String) = runCatching { getService().setAllPermissions(src) }.onFailure(onFailure)
 
     /**
      * Get the uid and gid of the file/directory

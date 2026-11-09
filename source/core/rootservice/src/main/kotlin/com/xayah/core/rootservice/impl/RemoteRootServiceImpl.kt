@@ -48,7 +48,6 @@ import com.xayah.core.util.HashUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.archive.TarHeaderInspector.Link
 import com.xayah.core.util.archive.TarHeaderInspector.LinkType
-import com.xayah.core.util.command.BaseUtil.setAllPermissions
 import com.xayah.libnative.NativeLib
 import java.io.File
 import java.io.IOException
@@ -143,8 +142,8 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         }
     }
 
-    override fun archiveApks(paths: Array<out String>, targetPath: String): Boolean = synchronized(lock) {
-        tryWithBoolean { writeApkArchive(paths.map(::File), File(targetPath)) }
+    override fun exportApks(paths: Array<out String>, targetPath: String): Boolean = synchronized(lock) {
+        tryWithBoolean { exportApks(paths.map(::File), File(targetPath)) }
     }
 
     override fun replaceFile(path: String, targetPath: String): Boolean = synchronized(lock) {
@@ -384,8 +383,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         check(OsConstants.S_ISREG(it.st_mode)) { "Not a regular file: $path" }
         it.st_size
     }
-
-    override fun setAllPermissions(src: String): Unit = synchronized(lock) { File(src).setAllPermissions() }
 
     override fun getUidGid(path: String): IntArray = synchronized(lock) {
         NativeLib.getUidGid(path)

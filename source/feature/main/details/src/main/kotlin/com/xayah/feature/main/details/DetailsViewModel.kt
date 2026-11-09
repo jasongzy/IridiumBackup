@@ -19,7 +19,6 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.annotation.StringRes
-import androidx.core.content.FileProvider
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -32,7 +31,6 @@ import com.xayah.core.data.repository.LabelsRepo
 import com.xayah.core.data.repository.ListDataRepo
 import com.xayah.core.data.util.srcDir
 import com.xayah.core.hiddenapi.castTo
-import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.model.OpType
 import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.CompressionType
@@ -56,6 +54,7 @@ import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.util.PathUtil
+import com.xayah.core.util.sharedFileUri
 import com.xayah.core.util.command.BaseUtil
 import com.xayah.feature.main.details.DetailsUiState.Error
 import com.xayah.feature.main.details.DetailsUiState.Loading
@@ -74,6 +73,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -105,7 +106,7 @@ class DetailsViewModel @Inject constructor(
         ?: Target.Apps
     private val isRefreshing: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val appRuntimeInfo = MutableStateFlow(AppRuntimeInfo())
-    private val shareMutex = Mutex()
+    private var shareJob: Job? = null
     private val refreshMutex = Mutex()
     private var initialRefreshRequested = false
     private val _furtherOperations = MutableStateFlow<FurtherOperationsUiState>(FurtherOperationsUiState.Idle)
@@ -542,34 +543,30 @@ class DetailsViewModel @Inject constructor(
     }
 
     fun shareApk() {
-        viewModelScope.launch {
+        if (shareJob?.isActive == true) return
+        shareJob = viewModelScope.launch(Dispatchers.IO) {
             val app = (uiState.value as? Success.App)?.app ?: return@launch
-            val file = withContext(Dispatchers.IO) {
-                shareMutex.withLock {
-                    prepareAppShareFile(context.externalCacheDir ?: context.cacheDir, app, rootService)
-                }
-            }
+            val file = prepareAppShareFile(context.externalCacheDir ?: context.cacheDir, app, rootService)
             if (file == null) {
                 showToast(R.string.share_apk_failed)
                 return@launch
             }
-            val uri = FileProvider.getUriForFile(
-                context,
-                fileProviderAuthority,
-                file,
-            )
-            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                type = if (file.extension.equals("apk", ignoreCase = true)) APK_MIME_TYPE else BINARY_MIME_TYPE
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            var launched = false
+            try {
+                withContext(Dispatchers.Main.immediate) {
+                    launched = runCatching {
+                        val share = Intent(Intent.ACTION_SEND).apply {
+                            type = if (file.extension == "apk") APK_MIME_TYPE else BINARY_MIME_TYPE
+                            putExtra(Intent.EXTRA_STREAM, context.sharedFileUri(file))
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(share, context.getString(R.string.share)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }.isSuccess
+                }
+                if (!launched) showToast(R.string.share_apk_failed)
+            } finally {
+                if (!launched) withContext(NonCancellable) { rootService.deleteRecursively(file.parentFile!!.path) }
             }
-            val chooser = Intent.createChooser(shareIntent, context.getString(R.string.share)).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            val launched = withContext(Dispatchers.Main.immediate) {
-                runCatching { context.startActivity(chooser) }.isSuccess
-            }
-            if (!launched) showToast(R.string.share_apk_failed)
         }
     }
 
@@ -839,9 +836,6 @@ class DetailsViewModel @Inject constructor(
         const val BINARY_MIME_TYPE = "application/octet-stream"
         val fileUriExposureAttempted = AtomicBoolean(false)
     }
-
-    private val fileProviderAuthority: String
-        get() = "com.xayah.core.provider.FileSharingProvider.${BuildConfigUtil.FLAVOR_feature.lowercase()}"
 }
 
 data class FurtherOperation(

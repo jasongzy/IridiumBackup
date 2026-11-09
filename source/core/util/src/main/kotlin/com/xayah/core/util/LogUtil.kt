@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
-import androidx.core.content.FileProvider.getUriForFile
 import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.datastore.readCustomSUFile
 import com.xayah.core.util.SymbolUtil.LF
@@ -79,8 +78,7 @@ object LogUtil {
 
     fun shareLog(context: Context, name: String) {
         val sharingLog = File(cacheDir, name)
-        val sharingUri =
-            getUriForFile(context, "com.xayah.core.provider.FileSharingProvider.${BuildConfigUtil.FLAVOR_feature.lowercase()}", sharingLog)
+        val sharingUri = context.sharedFileUri(sharingLog)
         val sharingIntent = Intent().apply {
             action = Intent.ACTION_SEND
             type = "*/*"

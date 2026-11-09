@@ -18,20 +18,18 @@ class ApkArchiveTest {
     val temporary = TemporaryFolder(InstrumentationRegistry.getInstrumentation().targetContext.cacheDir)
 
     @Test
-    fun replacesArchiveWithCurrentBaseAndSplitApks() {
-        val source = temporary.newFile("base.apk")
-        val split = temporary.newFile("split_config.apk").apply { writeText("split") }
-        val output = temporary.newFolder("output")
-        val archive = File(output, "IridiumBackup.zip")
-        for (content in listOf("original", "replacement")) {
-            source.writeText(content)
-            writeApkArchive(listOf(source, split), archive)
-            ZipFile(archive).use { zip ->
-                assertEquals(2, zip.size())
-                assertEquals(content, zip.getInputStream(zip.getEntry("IridiumBackup.apk")).bufferedReader().use { it.readText() })
-                assertEquals("split", zip.getInputStream(zip.getEntry(split.name)).bufferedReader().use { it.readText() })
-            }
-            assertEquals(listOf(archive.name), output.list()!!.toList())
+    fun sharesRawApksAndKeepsSplitsWithMatchingFilenames() {
+        val base = temporary.newFile("base.apk").apply { writeText("base") }
+        val split = temporary.newFolder("split").resolve("base.apk").apply { writeText("split") }
+        val single = File(temporary.root, "Example.apk")
+        exportApks(listOf(base), single)
+        assertArrayEquals(base.readBytes(), single.readBytes())
+
+        val archive = File(temporary.root, "Example.apks")
+        exportApks(listOf(base, split), archive)
+        ZipFile(archive).use { zip ->
+            assertEquals("base", zip.getInputStream(zip.getEntry("base.apk")).bufferedReader().use { it.readText() })
+            assertEquals("split", zip.getInputStream(zip.getEntry("split_1.apk")).bufferedReader().use { it.readText() })
         }
     }
 
@@ -40,10 +38,10 @@ class ApkArchiveTest {
         val source = temporary.newFile("base.apk").apply { writeText("apk") }
         val output = temporary.newFolder("output")
         val archive = File(output, "IridiumBackup.zip")
-        writeApkArchive(listOf(source), archive)
+        exportApks(listOf(source), archive)
         val original = archive.readBytes()
         assertThrows(IOException::class.java) {
-            writeApkArchive(listOf(source, File(temporary.root, "missing.apk")), archive)
+            exportApks(listOf(source, File(temporary.root, "missing.apk")), archive)
         }
         assertArrayEquals(original, archive.readBytes())
         assertEquals(listOf(archive.name), output.list()!!.toList())
@@ -56,7 +54,7 @@ class ApkArchiveTest {
         val output = temporary.newFolder("output")
         val archive = File(output, "IridiumBackup.zip")
         Os.symlink(outside.path, archive.path)
-        writeApkArchive(listOf(source), archive)
+        exportApks(listOf(source), archive)
         assertEquals("keep", outside.readText())
         ZipFile(archive).use { assertEquals(1, it.size()) }
         assertEquals(listOf(archive.name), output.list()!!.toList())
@@ -68,24 +66,27 @@ class ApkArchiveTest {
         val output = temporary.newFolder("output")
         val archive = File(output, "IridiumBackup.zip").apply { mkdir() }
         val existing = File(archive, "keep").apply { writeText("keep") }
-        assertThrows(ErrnoException::class.java) { writeApkArchive(listOf(source), archive) }
+        assertThrows(ErrnoException::class.java) { exportApks(listOf(source), archive) }
         assertEquals("keep", existing.readText())
         assertEquals(listOf(archive.name), output.list()!!.toList())
     }
 
     @Test
-    fun replacesArchiveOnSharedStorage() {
+    fun replacesBaseAndSplitApksOnSharedStorage() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val output = TemporaryFolder(requireNotNull(context.externalCacheDir))
         output.create()
         try {
             val source = temporary.newFile("base.apk")
+            val split = temporary.newFile("split_config.apk").apply { writeText("split") }
             val archive = File(output.root, "IridiumBackup.zip")
             for (content in listOf("original", "replacement")) {
                 source.writeText(content)
-                writeApkArchive(listOf(source), archive)
+                exportApks(listOf(source, split), archive)
                 ZipFile(archive).use { zip ->
+                    assertEquals(2, zip.size())
                     assertEquals(content, zip.getInputStream(zip.getEntry("IridiumBackup.apk")).bufferedReader().use { it.readText() })
+                    assertEquals("split", zip.getInputStream(zip.getEntry(split.name)).bufferedReader().use { it.readText() })
                 }
                 assertEquals(listOf(archive.name), output.root.list()!!.toList())
             }
