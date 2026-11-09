@@ -1,7 +1,9 @@
 package com.xayah.core.datastore
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import kotlinx.coroutines.flow.map
 
 // -----------------------------------------Keys-----------------------------------------
 val KeyMonet = booleanPreferencesKey("monet")
@@ -18,18 +20,30 @@ val KeyRestoreSsaid = booleanPreferencesKey("restore_ssaid")
 val KeyFastSameVersionBackup = booleanPreferencesKey("fast_same_version_backup")
 
 // -----------------------------------------Read-----------------------------------------
-fun Context.readMonet() = readStoreBoolean(key = KeyMonet, defValue = true)
-fun Context.readBackupItself() = readStoreBoolean(key = KeyBackupItself, defValue = true)
-fun Context.readCompressionTest() = readStoreBoolean(key = KeyCompressionTest, defValue = true)
-fun Context.readFollowSymlinks() = readStoreBoolean(key = KeyFollowSymlinks, defValue = false)
-fun Context.readCleanRestoring() = readStoreBoolean(key = KeyCleanRestoring, defValue = true)
-fun Context.readLoadSystemApps() = readStoreBoolean(key = KeyLoadSystemApps, defValue = true)
+internal val Preferences.monet get() = this[KeyMonet] ?: true
+internal val Preferences.backupItself get() = this[KeyBackupItself] ?: true
+internal val Preferences.compressionTest get() = this[KeyCompressionTest] ?: true
+internal val Preferences.followSymlinks get() = this[KeyFollowSymlinks] ?: false
+internal val Preferences.cleanRestoring get() = this[KeyCleanRestoring] ?: true
+internal val Preferences.loadSystemApps get() = this[KeyLoadSystemApps] ?: true
+internal val Preferences.autoScreenOff get() = this[KeyAutoScreenOff] ?: false
+internal val Preferences.backupConfigs get() = this[KeyBackupConfigs] ?: true
+internal val Preferences.restorePermissions get() = this[KeyRestorePermissions] ?: false
+internal val Preferences.restoreSsaid get() = this[KeyRestoreSsaid] ?: true
+internal val Preferences.fastSameVersionBackup get() = this[KeyFastSameVersionBackup] ?: true
+
+fun Context.readMonet() = dataStore.data.map { it.monet }
+fun Context.readBackupItself() = dataStore.data.map { it.backupItself }
+fun Context.readCompressionTest() = dataStore.data.map { it.compressionTest }
+fun Context.readFollowSymlinks() = dataStore.data.map { it.followSymlinks }
+fun Context.readCleanRestoring() = dataStore.data.map { it.cleanRestoring }
+fun Context.readLoadSystemApps() = dataStore.data.map { it.loadSystemApps }
 fun Context.readReloadDumpApk() = readStoreBoolean(key = KeyReloadDumpApk, defValue = true)
-fun Context.readAutoScreenOff() = readStoreBoolean(key = KeyAutoScreenOff, defValue = false)
-fun Context.readBackupConfigs() = readStoreBoolean(key = KeyBackupConfigs, defValue = true)
-fun Context.readRestorePermissions() = readStoreBoolean(key = KeyRestorePermissions, defValue = false)
-fun Context.readRestoreSsaid() = readStoreBoolean(key = KeyRestoreSsaid, defValue = true)
-fun Context.readFastSameVersionBackup() = readStoreBoolean(key = KeyFastSameVersionBackup, defValue = true)
+fun Context.readAutoScreenOff() = dataStore.data.map { it.autoScreenOff }
+fun Context.readBackupConfigs() = dataStore.data.map { it.backupConfigs }
+fun Context.readRestorePermissions() = dataStore.data.map { it.restorePermissions }
+fun Context.readRestoreSsaid() = dataStore.data.map { it.restoreSsaid }
+fun Context.readFastSameVersionBackup() = dataStore.data.map { it.fastSameVersionBackup }
 
 // -----------------------------------------Write-----------------------------------------
 suspend fun Context.saveMonet(value: Boolean) = saveStoreBoolean(key = KeyMonet, value = value)

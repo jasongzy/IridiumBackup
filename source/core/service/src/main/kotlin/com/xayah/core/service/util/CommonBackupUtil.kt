@@ -1,6 +1,8 @@
 package com.xayah.core.service.util
 
 import android.content.Context
+import androidx.room.withTransaction
+import com.xayah.core.database.AppDatabase
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.LabelsRepo
@@ -29,6 +31,7 @@ class CommonBackupUtil @Inject constructor(
     private val fileRepo: MediaRepository,
     private val cloudRepo: CloudRepository,
     private val labelsRepo: LabelsRepo,
+    private val database: AppDatabase,
     private val appBackupRepository: AppBackupRepository,
     private val rootService: RemoteRootService,
 ) {
@@ -84,22 +87,27 @@ class CommonBackupUtil @Inject constructor(
 
         val config = Configurations(appNotes = emptyList())
 
-        if (includeBlacklist) {
-            config.blacklist.apps = appRepo.queryPackages(opType = OpType.BACKUP, blocked = true).map {
-                BlacklistAppItem(it.packageName, it.userId)
+        database.withTransaction {
+            if (includeBlacklist) {
+                config.blacklist.apps = appRepo.queryPackages(opType = OpType.BACKUP, blocked = true).map {
+                    BlacklistAppItem(it.packageName, it.userId)
+                }
+                config.blacklist.files = fileRepo.query(opType = OpType.BACKUP, blocked = true).map {
+                    BlacklistFileItem(it.name, it.path)
+                }
             }
-            config.blacklist.files = fileRepo.query(opType = OpType.BACKUP, blocked = true).map {
-                BlacklistFileItem(it.name, it.path)
+            if (includeCloud) config.cloud = cloudRepo.query()
+            if (includeLabels) {
+                config.labels = labelsRepo.getLabels()
+                config.labelAppRefs = labelsRepo.getAppRefs()
+                config.labelFileRefs = labelsRepo.getFileRefs()
             }
+            if (includeAppNotes) config.appNotes = appBackupRepository.getAppNotes()
         }
-        if (includeCloud) config.cloud = cloudRepo.query()
         if (includeLabels) {
-            config.labels = labelsRepo.getLabels()
-            config.labelColors = labelsRepo.getLabelColors()
-            config.labelAppRefs = labelsRepo.getAppRefs()
-            config.labelFileRefs = labelsRepo.getFileRefs()
+            val names = config.labels.mapTo(mutableSetOf()) { it.label }
+            config.labelColors = labelsRepo.getLabelColors().filterKeys(names::contains)
         }
-        if (includeAppNotes) config.appNotes = appBackupRepository.getAppNotes()
         if (includeSettings) config.settings = context.readConfigurationSettings()
         val dst = getConfigsDst(dstDir)
         rootService.writeJson(data = config, dst = dst)

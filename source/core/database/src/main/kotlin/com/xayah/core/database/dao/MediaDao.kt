@@ -119,13 +119,6 @@ interface MediaDao {
     @Query("UPDATE MediaEntity SET extraInfo_blocked = 0 WHERE indexInfo_opType = :opType")
     suspend fun clearBlocked(opType: OpType)
 
-    @Query(
-        "UPDATE MediaEntity" +
-                " SET extraInfo_blocked = :blocked" +
-                " WHERE id = :id"
-    )
-    suspend fun setBlocked(id: Long, blocked: Boolean)
-
     @Delete(entity = MediaEntity::class)
     suspend fun delete(item: MediaEntity)
 
@@ -180,12 +173,11 @@ interface MediaDao {
     suspend fun reverseChunk(ids: List<Long>)
 
     @Transaction
-    suspend fun blockByIds(ids: List<Long>) {
-        ids.chunked(SQLITE_BIND_LIMIT).forEach { blockChunk(it) }
-    }
+    suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean): Int =
+        ids.chunked(SQLITE_BIND_LIMIT - 1).sumOf { setBlockedChunk(it, blocked) }
 
-    @Query("UPDATE MediaEntity SET extraInfo_activated = 0, extraInfo_blocked = 1 WHERE id in (:ids)")
-    suspend fun blockChunk(ids: List<Long>)
+    @Query("UPDATE MediaEntity SET extraInfo_activated = 0, extraInfo_blocked = :blocked WHERE id IN (:ids)")
+    suspend fun setBlockedChunk(ids: List<Long>, blocked: Boolean): Int
 
     @Query("SELECT * FROM MediaEntity WHERE id = :id")
     suspend fun queryById(id: Long): MediaEntity?

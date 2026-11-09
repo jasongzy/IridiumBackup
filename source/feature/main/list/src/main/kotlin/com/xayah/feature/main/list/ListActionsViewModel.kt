@@ -208,7 +208,7 @@ class ListActionsViewModel @Inject constructor(
                     val state = uiState.value.castTo<Success.Apps>()
                     val ids = state.appList.filter { it.selected }.map { it.id }
                     if (ids.isNotEmpty()) {
-                        appsRepo.blockByIds(ids)
+                        appsRepo.setBlocked(ids, true)
                         showToast(R.string.items_added_to_blacklist)
                     }
                 }
@@ -217,7 +217,7 @@ class ListActionsViewModel @Inject constructor(
                     val state = uiState.value.castTo<Success.Files>()
                     val ids = state.fileList.filter { it.selected }.map { it.id }
                     if (ids.isNotEmpty()) {
-                        filesRepo.blockByIds(ids)
+                        filesRepo.setBlocked(ids, true)
                         showToast(R.string.items_added_to_blacklist)
                     }
                 }

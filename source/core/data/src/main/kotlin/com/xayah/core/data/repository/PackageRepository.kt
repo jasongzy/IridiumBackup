@@ -73,7 +73,7 @@ class PackageRepository @Inject constructor(
             rootService.deleteRecursively(workspace)
         }
     }
-    suspend fun setBlocked(id: Long, blocked: Boolean) = packageDao.setBlocked(id, blocked)
+    suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean) = packageDao.setBlocked(ids, blocked)
     private val localBackupSaveDir get() = context.localBackupSaveDir()
 
     fun getArchiveDst(dstDir: String, dataType: DataType, ct: CompressionType) = "${dstDir}/${dataType.type}.${ct.suffix}"

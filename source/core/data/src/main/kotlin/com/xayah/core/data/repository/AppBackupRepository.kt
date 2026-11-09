@@ -136,17 +136,16 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun updateAppNote(packageName: String, userId: Int, note: String) {
-        dao.updateAppNote(packageName, userId, note.trim())
-        removeUnusedApps(userId)
+        saveAppNotes(listOf(AppNoteItem(packageName, userId, note)))
     }
 
     suspend fun getAppNotes(): List<AppNoteItem> = dao.getAppsWithNotes().map {
         AppNoteItem(it.packageName, it.userId, it.note)
     }
 
-    suspend fun importAppNotes(notes: List<AppNoteItem>) {
+    suspend fun saveAppNotes(notes: List<AppNoteItem>) {
         require(notes.all { PathUtil.isValidPackageName(it.packageName) && it.userId >= 0 })
-        dao.importAppNotes(notes)
+        dao.saveAppNotes(notes)
     }
 
     suspend fun recordLegacyRevision(

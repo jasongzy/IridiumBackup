@@ -65,14 +65,9 @@ class IndexViewModel @Inject constructor(
             }
 
             is IndexUiIntent.RemoveSelected -> {
-                state.appIds.forEach { id ->
-                    packageRepo.setBlocked(id, false)
-                    updateState { it.copy(appIds = it.appIds - id) }
-                }
-                state.fileIds.forEach { id ->
-                    mediaRepo.setBlocked(id, false)
-                    updateState { it.copy(fileIds = it.fileIds - id) }
-                }
+                packageRepo.setBlocked(state.appIds, false)
+                mediaRepo.setBlocked(state.fileIds, false)
+                updateState { it.copy(appIds = it.appIds - state.appIds, fileIds = it.fileIds - state.fileIds) }
             }
         }
     }

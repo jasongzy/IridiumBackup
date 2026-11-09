@@ -125,20 +125,24 @@ class IndexViewModel @Inject constructor(
                     val selected = items.filterIndexed { index, _ -> selection[index] }.map { it.enum }
                     val settings = config.settings?.takeIf { ConstantUtil.CONFIGURATIONS_KEY_SETTINGS in selected }
                     settings?.validatePreferences()
+                    val labelColors = if (ConstantUtil.CONFIGURATIONS_KEY_LABEL in selected) {
+                        val labelNames = config.labels.mapTo(mutableSetOf(), LabelEntity::label)
+                        require(labelNames.none(String::isBlank) && config.labelAppRefs.all { it.label in labelNames } && config.labelFileRefs.all { it.label in labelNames }) {
+                            context.getString(R.string.config_file_may_be_broken)
+                        }
+                        requireNotNull(config.labelColors) { context.getString(R.string.config_file_may_be_broken) }.filterKeys(labelNames::contains)
+                    } else null
                     database.withTransaction {
                         if (ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST in selected) database.importBlacklist(config.blacklist)
                         if (ConstantUtil.CONFIGURATIONS_KEY_CLOUD in selected) cloudRepo.upsert(config.cloud)
-                        if (ConstantUtil.CONFIGURATIONS_KEY_LABEL in selected) {
+                        if (labelColors != null) {
                             labelsRepo.addLabels(config.labels)
                             labelsRepo.addLabelAppCrossRefs(config.labelAppRefs)
                             labelsRepo.addLabelFileCrossRefs(config.labelFileRefs)
                         }
-                        if (ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES in selected) appBackupRepository.importAppNotes(config.appNotes.orEmpty())
+                        if (ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES in selected) appBackupRepository.saveAppNotes(config.appNotes.orEmpty())
                     }
-                    if (ConstantUtil.CONFIGURATIONS_KEY_LABEL in selected) {
-                        val names = config.labels.mapTo(mutableSetOf()) { it.label }
-                        labelsRepo.setLabelColors(config.labelColors.filterKeys(names::contains))
-                    }
+                    if (labelColors != null) labelsRepo.setLabelColors(labelColors)
                     if (settings != null) {
                         context.saveConfigurationSettings(settings)
                         withMainContext { LanguageUtil.applyLanguage(settings.language.trim()) }

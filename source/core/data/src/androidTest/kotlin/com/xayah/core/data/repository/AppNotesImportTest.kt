@@ -36,20 +36,20 @@ class AppNotesImportTest {
             dao.upsertApps(listOf(installed, secondary))
             val valid = AppNoteItem(installed.packageName, 0, " imported ")
             listOf(valid.copy(packageName = "../invalid"), valid.copy(userId = -1)).forEach { invalid ->
-                val result = runCatching { repository.importAppNotes(listOf(valid, invalid)) }
+                val result = runCatching { repository.saveAppNotes(listOf(valid, invalid)) }
                 assertTrue(result.exceptionOrNull() is IllegalArgumentException)
                 assertEquals(installed, dao.getApp(installed.packageName, 0))
             }
 
             val missing = AppKey("com.example.missing", 0).toBackupApp()
-            repository.importAppNotes(listOf(valid, AppNoteItem(missing.packageName, 0, " retained ")))
+            repository.saveAppNotes(listOf(valid, AppNoteItem(missing.packageName, 0, " retained ")))
             assertEquals(installed.copy(note = "imported"), dao.getApp(installed.packageName, 0))
             assertEquals(secondary, dao.getApp(installed.packageName, 10))
             assertEquals(missing.copy(note = "retained"), dao.getApp(missing.packageName, 0))
 
-            repository.importAppNotes(listOf(valid.copy(note = " "), AppNoteItem("com.example.empty", 0, " ")))
+            repository.saveAppNotes(listOf(valid.copy(note = " "), AppNoteItem(missing.packageName, 0, " ")))
             assertEquals(installed.copy(note = ""), dao.getApp(installed.packageName, 0))
-            assertNull(dao.getApp("com.example.empty", 0))
+            assertNull(dao.getApp(missing.packageName, 0))
         } finally {
             database.close()
         }

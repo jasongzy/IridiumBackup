@@ -306,23 +306,18 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun block(blocked: Boolean) {
+    fun setBlocked(blocked: Boolean) {
         viewModelScope.launchOnDefault {
-            when (uiState.value) {
-                is Success.App -> {
-                    val state = uiState.value.castTo<Success.App>()
-                    appsRepo.blockByIds(listOf(state.app.id))
-                    showToast(if (blocked) R.string.removed_from_blacklist else R.string.added_to_blacklist)
-                }
-
-                is Success.File -> {
-                    val state = uiState.value.castTo<Success.File>()
-                    filesRepo.blockByIds(listOf(state.file.id))
-                    showToast(if (blocked) R.string.removed_from_blacklist else R.string.added_to_blacklist)
-                }
-
-                else -> {}
+            val updated = when (val state = uiState.value) {
+                is Success.App -> appsRepo.setBlocked(listOf(state.app.id), blocked)
+                is Success.File -> filesRepo.setBlocked(listOf(state.file.id), blocked)
+                else -> return@launchOnDefault
             }
+            showToast(when {
+                updated == 0 -> R.string.failed
+                blocked -> R.string.added_to_blacklist
+                else -> R.string.removed_from_blacklist
+            })
         }
     }
 

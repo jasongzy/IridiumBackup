@@ -102,7 +102,7 @@ internal fun AppDetailsScreen(uiState: DetailsUiState, viewModel: DetailsViewMod
                                 onAddLabel = viewModel::addLabel,
                                 onDeleteLabel = viewModel::deleteLabel,
                                 onSelectLabel = viewModel::selectFileLabel,
-                                onBlock = viewModel::block,
+                                onSetBlocked = viewModel::setBlocked,
                                 onProtect = viewModel::protect,
                                 onDelete = viewModel::delete,
                             )

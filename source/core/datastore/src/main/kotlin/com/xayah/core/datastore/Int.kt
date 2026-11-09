@@ -11,7 +11,8 @@ val KeyCompressionLevel = intPreferencesKey("compression_level")
 
 // -----------------------------------------Read-----------------------------------------
 fun Context.readScreenOffTimeout() = readStoreInt(key = KeyScreenOffTimeout, defValue = DEFAULT_IDLE_TIMEOUT)
-fun Context.readCompressionLevel() = readStoreInt(key = KeyCompressionLevel, defValue = 1)
+internal const val DEFAULT_COMPRESSION_LEVEL = 1
+fun Context.readCompressionLevel() = readStoreInt(key = KeyCompressionLevel, defValue = DEFAULT_COMPRESSION_LEVEL)
 
 
 // -----------------------------------------Write-----------------------------------------

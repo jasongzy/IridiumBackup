@@ -37,8 +37,7 @@ suspend fun AppDatabase.importBlacklist(blacklist: ConfigurationsBlacklist) = wi
                 dataStates = PackageDataStates(), storageStats = PackageStorageStats(), dataStats = PackageDataStats(), displayStats = PackageDataStats(),
             ))
         } else {
-            packages.setBlocked(existing.id, true)
-            packages.activateById(existing.id, false)
+            packages.setBlocked(listOf(existing.id), true)
         }
     }
     val media = mediaDao()
@@ -52,8 +51,7 @@ suspend fun AppDatabase.importBlacklist(blacklist: ConfigurationsBlacklist) = wi
                 extraInfo = MediaExtraInfo(0, blocked = true, activated = false, existed = false),
             ))
         } else {
-            media.setBlocked(existing.id, true)
-            media.activateById(existing.id, false)
+            media.setBlocked(listOf(existing.id), true)
         }
     }
 }

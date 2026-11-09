@@ -269,7 +269,7 @@ fun AppRevisionsRoute(
                 androidx.compose.material3.TextButton(
                     onClick = {
                         blacklistConfirmation = null
-                        detailsViewModel.block(blocked)
+                        detailsViewModel.setBlocked(!blocked)
                     },
                 ) {
                     Text(stringResource(R.string.confirm))

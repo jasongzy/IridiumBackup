@@ -85,7 +85,7 @@ internal fun FileDetails(
     onAddLabel: (String) -> Unit,
     onDeleteLabel: (String) -> Unit,
     onSelectLabel: (Boolean, LabelFileCrossRefEntity?) -> Unit,
-    onBlock: (Boolean) -> Unit,
+    onSetBlocked: (Boolean) -> Unit,
     onProtect: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -117,7 +117,7 @@ internal fun FileDetails(
 
         Spacer(Modifier.height(SizeTokens.Level12))
 
-        ActionsRow(opType = opType, blocked = file.extraInfo.blocked, protected = file.preserveId != 0L, onBlock = onBlock, onProtect = onProtect, onDelete = onDelete)
+        ActionsRow(opType = opType, blocked = file.extraInfo.blocked, protected = file.preserveId != 0L, onSetBlocked = onSetBlocked, onProtect = onProtect, onDelete = onDelete)
 
         Spacer(Modifier.height(SizeTokens.Level12))
 
@@ -299,7 +299,7 @@ private fun ActionsRow(
     opType: OpType,
     blocked: Boolean,
     protected: Boolean,
-    onBlock: (Boolean) -> Unit,
+    onSetBlocked: (Boolean) -> Unit,
     onProtect: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -312,7 +312,7 @@ private fun ActionsRow(
     ) {
         when (opType) {
             OpType.BACKUP -> {
-                BackupActions(blocked, onBlock, onDelete)
+                BackupActions(blocked, onSetBlocked, onDelete)
             }
 
             OpType.RESTORE -> {
@@ -324,7 +324,7 @@ private fun ActionsRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SingleChoiceSegmentedButtonRowScope.BackupActions(blocked: Boolean, onBlock: (Boolean) -> Unit, onDelete: () -> Unit) {
+private fun SingleChoiceSegmentedButtonRowScope.BackupActions(blocked: Boolean, onSetBlocked: (Boolean) -> Unit, onDelete: () -> Unit) {
     val context = LocalContext.current
     val dialogState = LocalSlotScope.current!!.dialogSlot
     ActionItem(
@@ -337,7 +337,7 @@ private fun SingleChoiceSegmentedButtonRowScope.BackupActions(blocked: Boolean, 
             title = context.getString(R.string.prompt),
             text = context.getString(if (blocked) R.string.confirm_remove_from_blacklist else R.string.confirm_add_to_blacklist),
             onConfirm = {
-                onBlock(blocked)
+                onSetBlocked(!blocked)
             }
         )
     }

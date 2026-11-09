@@ -54,10 +54,10 @@ class BlacklistSelectionTest {
                 val removalStarted = CompletableDeferred<Unit>()
                 val continueRemoval = CompletableDeferred<Unit>()
                 val delayed = object : PackageDao by dao {
-                    override suspend fun setBlocked(id: Long, blocked: Boolean) {
+                    override suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean): Int {
                         removalStarted.complete(Unit)
                         continueRemoval.await()
-                        dao.setBlocked(id, blocked)
+                        return dao.setBlocked(ids, blocked)
                     }
                 }
                 val root = RemoteRootService(context)

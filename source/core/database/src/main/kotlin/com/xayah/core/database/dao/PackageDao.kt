@@ -125,16 +125,12 @@ interface PackageDao {
     )
     suspend fun query(packageName: String, opType: OpType, userId: Int, preserveId: Long, ct: CompressionType, cloud: String, backupDir: String): PackageEntity?
 
-    @Query("UPDATE PackageEntity SET extraInfo_activated = :activated WHERE id = :id")
-    suspend fun activateById(id: Long, activated: Boolean)
-
     @Transaction
-    suspend fun blockByIds(ids: List<Long>) {
-        ids.chunked(SQLITE_BIND_LIMIT).forEach { blockChunk(it) }
-    }
+    suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean): Int =
+        ids.chunked(SQLITE_BIND_LIMIT - 1).sumOf { setBlockedChunk(it, blocked) }
 
-    @Query("UPDATE PackageEntity SET extraInfo_activated = 0, extraInfo_blocked = 1 WHERE id in (:ids)")
-    suspend fun blockChunk(ids: List<Long>)
+    @Query("UPDATE PackageEntity SET extraInfo_activated = 0, extraInfo_blocked = :blocked WHERE id IN (:ids)")
+    suspend fun setBlockedChunk(ids: List<Long>, blocked: Boolean): Int
 
     @Query("DELETE FROM PackageEntity WHERE id in (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
@@ -237,13 +233,6 @@ interface PackageDao {
                 " indexInfo_opType = :opType AND indexInfo_cloud = :cloud AND indexInfo_backupDir = :backupDir"
     )
     suspend fun queryPackages(opType: OpType, cloud: String, backupDir: String): List<PackageEntity>
-
-    @Query(
-        "UPDATE PackageEntity" +
-                " SET extraInfo_blocked = :blocked" +
-                " WHERE id = :id"
-    )
-    suspend fun setBlocked(id: Long, blocked: Boolean)
 
     @Query(
         "UPDATE PackageEntity" +

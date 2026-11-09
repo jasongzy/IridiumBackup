@@ -5,25 +5,27 @@ import androidx.datastore.preferences.core.edit
 import com.xayah.core.model.ConfigurationSettings
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.ThemeType
+import com.xayah.core.model.util.of
 import kotlinx.coroutines.flow.first
 
 suspend fun Context.readConfigurationSettings(): ConfigurationSettings {
+    val snapshot = dataStore.data.first()
     return ConfigurationSettings(
-        monet = readMonet().first(),
-        themeType = readThemeType().first().name,
-        language = readLanguage().first(),
-        autoScreenOff = readAutoScreenOff().first(),
-        loadSystemApps = readLoadSystemApps().first(),
-        compressionLevel = readCompressionLevel().first(),
-        killAppOption = readKillAppOption().first().name,
-        fastSameVersionBackup = readFastSameVersionBackup().first(),
-        backupItself = readBackupItself().first(),
-        backupConfigs = readBackupConfigs().first(),
-        compressionTest = readCompressionTest().first(),
-        followSymlinks = readFollowSymlinks().first(),
-        cleanRestoring = readCleanRestoring().first(),
-        restorePermissions = readRestorePermissions().first(),
-        restoreSsaid = readRestoreSsaid().first(),
+        monet = snapshot.monet,
+        themeType = ThemeType.of(snapshot[KeyThemeType]).name,
+        language = snapshot[KeyLanguage] ?: ConstantUtil.LANGUAGE_SYSTEM,
+        autoScreenOff = snapshot.autoScreenOff,
+        loadSystemApps = snapshot.loadSystemApps,
+        compressionLevel = snapshot[KeyCompressionLevel] ?: DEFAULT_COMPRESSION_LEVEL,
+        killAppOption = KillAppOption.of(snapshot[KeyKillAppOption]).name,
+        fastSameVersionBackup = snapshot.fastSameVersionBackup,
+        backupItself = snapshot.backupItself,
+        backupConfigs = snapshot.backupConfigs,
+        compressionTest = snapshot.compressionTest,
+        followSymlinks = snapshot.followSymlinks,
+        cleanRestoring = snapshot.cleanRestoring,
+        restorePermissions = snapshot.restorePermissions,
+        restoreSsaid = snapshot.restoreSsaid,
     )
 }
 

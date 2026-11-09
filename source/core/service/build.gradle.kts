@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:util"))
     implementation(project(":core:database"))
+    implementation(libs.androidx.room.ktx)
     implementation(project(":core:datastore"))
     implementation(project(":core:rootservice"))
     implementation(project(":core:data"))

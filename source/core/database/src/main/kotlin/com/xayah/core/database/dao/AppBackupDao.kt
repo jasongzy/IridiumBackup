@@ -43,7 +43,7 @@ interface AppBackupDao {
     suspend fun updateAppNote(packageName: String, userId: Int, note: String)
 
     @Transaction
-    suspend fun importAppNotes(notes: List<AppNoteItem>) {
+    suspend fun saveAppNotes(notes: List<AppNoteItem>) {
         notes.forEach { item ->
             val note = item.note.trim()
             if (note.isNotEmpty()) {
@@ -51,6 +51,7 @@ interface AppBackupDao {
             }
             updateAppNote(item.packageName, item.userId, note)
         }
+        notes.filter { it.note.isBlank() }.map { it.userId }.distinct().forEach { deleteUninstalledAppsWithoutRevisions(it) }
     }
 
     @Query("SELECT * FROM backup_apps WHERE note != ''")

@@ -242,9 +242,7 @@ class FilesRepo @Inject constructor(
         filesDao.updateDisplaySize(file.id, rootService.calculateSize(getArchiveSrc(dir, file.indexInfo.compressionType)))
     }
 
-    suspend fun blockByIds(ids: List<Long>) {
-        filesDao.blockByIds(ids)
-    }
+    suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean) = filesDao.setBlocked(ids, blocked)
 
     suspend fun delete(id: Long) {
         filesDao.delete(id)

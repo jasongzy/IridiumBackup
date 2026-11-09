@@ -165,9 +165,7 @@ class AppsRepo @Inject constructor(
         appsDao.selectDataItemsById(id, apk.name, user.name, userDe.name, data.name, obb.name, media.name)
     }
 
-    suspend fun blockByIds(ids: List<Long>) {
-        appsDao.blockByIds(ids)
-    }
+    suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean) = appsDao.setBlocked(ids, blocked)
 
     suspend fun setEnabled(id: Long, enabled: Boolean) {
         appsDao.setEnabled(id, enabled)

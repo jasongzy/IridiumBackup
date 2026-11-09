@@ -32,7 +32,7 @@ class PackageRefreshTest {
     )
 
     @Test
-    fun batchBlockIncludesEntriesAcrossTheBindLimit() = runBlocking {
+    fun blacklistChangesApplyAcrossTheBindLimit() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
@@ -41,8 +41,10 @@ class PackageRefreshTest {
             val second = first.copy(id = 2, indexInfo = first.indexInfo.copy(packageName = "second.app"))
             dao.upsert(listOf(first, second))
             val ids = listOf(first.id) + (1..SQLITE_BIND_LIMIT).map { -it.toLong() } + second.id
-            dao.blockByIds(ids)
+            dao.setBlocked(ids, true)
             assertEquals(setOf(first.id, second.id), dao.queryPackages(OpType.BACKUP, true).map { it.id }.toSet())
+            dao.setBlocked(listOf(first.id), false)
+            assertEquals(listOf(second.id), dao.queryPackages(OpType.BACKUP, true).map { it.id })
         } finally {
             database.close()
         }
@@ -67,8 +69,7 @@ class PackageRefreshTest {
                 firstUpdated = true,
                 enabled = false,
             )
-            dao.setBlocked(app.id, true)
-            dao.activateById(app.id, true)
+            dao.setBlocked(listOf(app.id), true)
             val displayStats = PackageDataStats(apkBytes = 123)
             dao.updateDisplayStats(PackageDisplayStatsEntity(app.id, displayStats))
             val selections = DataState.NotSelected.name
