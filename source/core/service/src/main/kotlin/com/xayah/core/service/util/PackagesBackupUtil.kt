@@ -275,9 +275,7 @@ class PackagesBackupUtil @Inject constructor(
         val uid = p.extraInfo.uid
         val userId = p.userId
 
-        val ssaid = rootService.getPackageSsaidAsUser(packageName = packageName, uid = uid, userId = userId)
-        log { "Ssaid: $ssaid" }
-        p.extraInfo.ssaid = ssaid
+        p.extraInfo.ssaid = rootService.getPackageSsaidAsUser(packageName = packageName, uid = uid, userId = userId)
     }
 
     suspend fun upload(client: CloudClient, p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, srcDir: String, dstDir: String) = run {

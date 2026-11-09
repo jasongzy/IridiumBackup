@@ -186,7 +186,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         } ?: return@forEach
                     } else if (!preparePackage(killAppOption, pkg, app.userId)) return@forEach
                 }
-                log { "Current package: ${pkg.packageEntity}" }
+                log { "Current package: ${pkg.packageEntity.packageName} (user ${pkg.packageEntity.userId})" }
 
                 pkg.update(state = OperationState.PROCESSING)
                 val installedApp = pkg.packageEntity

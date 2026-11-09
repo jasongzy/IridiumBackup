@@ -33,6 +33,8 @@ data class PackageRestoreConfig(
     val displayStats: PackageDataStats,
 )
 
+private fun appSsaid(packageName: String, value: String) = if (packageName == "android") "" else value
+
 fun PackageEntity.toRestoreConfig() = PackageRestoreConfig(
     packageName = packageName,
     userId = userId,
@@ -44,7 +46,7 @@ fun PackageEntity.toRestoreConfig() = PackageRestoreConfig(
     isSystemApp = isSystemApp,
     hasKeystore = extraInfo.hasKeystore,
     permissions = extraInfo.permissions,
-    ssaid = extraInfo.ssaid,
+    ssaid = appSsaid(packageName, extraInfo.ssaid),
     dataStates = dataStates.copy(),
     dataStats = dataStats.copy(),
     displayStats = displayStats.copy(),
@@ -73,7 +75,7 @@ fun PackageRestoreConfig.toPackageEntity(cloud: String, backupDir: String) = Pac
         uid = -1,
         hasKeystore = hasKeystore,
         permissions = permissions,
-        ssaid = ssaid,
+        ssaid = appSsaid(packageName, ssaid),
         lastBackupTime = createdAt,
         blocked = false,
         activated = false,

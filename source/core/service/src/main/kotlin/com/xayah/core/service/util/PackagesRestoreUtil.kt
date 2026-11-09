@@ -276,7 +276,6 @@ class PackagesRestoreUtil @Inject constructor(
         if (p.ssaidSelected) {
             if (uid != -1) {
                 if (ssaid.isNotEmpty()) {
-                    log { "Ssaid: $ssaid" }
                     rootService.setPackageSsaidAsUser(packageName, uid, userId, ssaid)
                 } else {
                     log { "Ssaid is empty, skip." }

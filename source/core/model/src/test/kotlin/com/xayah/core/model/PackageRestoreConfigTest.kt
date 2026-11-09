@@ -27,6 +27,15 @@ class PackageRestoreConfigTest {
     }
 
     @Test
+    fun androidSystemBackupsDoNotPropagateTheUserSeed() {
+        val oldConfig = config().copy(packageName = "android", ssaid = "test-seed")
+        val app = oldConfig.toPackageEntity("", "/backup")
+        assertEquals("", app.extraInfo.ssaid)
+        app.extraInfo.ssaid = oldConfig.ssaid
+        assertEquals("", app.toRestoreConfig().ssaid)
+    }
+
+    @Test
     fun apkReuseRequiresMatchingVersionsAndContent() {
         val previous = config().toPackageEntity("", "/backup")
         assertTrue(previous.canReuseApkFrom(previous))

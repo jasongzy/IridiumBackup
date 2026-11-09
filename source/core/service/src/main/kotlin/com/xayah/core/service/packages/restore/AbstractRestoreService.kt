@@ -101,7 +101,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
 
         mPkgEntities.forEach { pkg ->
             currentCoroutineContext().ensureActive()
-            log { "Current package: ${pkg.packageEntity}" }
+            log { "Current package: ${pkg.packageEntity.packageName} (user ${pkg.packageEntity.userId})" }
 
             val p = pkg.packageEntity
             val userId = restoreRequest.targetUser(p)
