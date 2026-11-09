@@ -37,7 +37,8 @@ jobs:
       - name: Test, lint, and build
         run: >-
           ./gradlew --no-daemon
-          :app:testUniversalFossDebugUnitTest
+          :core:model:testDebugUnitTest :core:util:testDebugUnitTest :core:data:testDebugUnitTest
+          :core:network:testDebugUnitTest :feature:main:list:testDebugUnitTest :feature:main:settings:testDebugUnitTest
           :app:lintUniversalFossDebug
           :app:assembleUniversalFossDebug
       - uses: actions/upload-artifact@v7

@@ -30,6 +30,4 @@ dependencies {
 
     // Preferences DataStore
     implementation(libs.androidx.datastore.preferences)
-
-    testImplementation(libs.junit)
 }
