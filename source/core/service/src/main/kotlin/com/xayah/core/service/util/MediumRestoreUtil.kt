@@ -36,11 +36,7 @@ class MediumRestoreUtil @Inject constructor(
         private const val TAG = "MediumRestoreUtil"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     private suspend fun TaskDetailMediaEntity.updateInfo(
         state: OperationState? = null,

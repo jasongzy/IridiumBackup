@@ -51,11 +51,7 @@ class PackageRepository @Inject constructor(
         private const val TAG = "PackageRepository"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     suspend fun getPackage(packageName: String, opType: OpType, userId: Int) = packageDao.query(packageName, opType, userId)
     suspend fun getRevisions(packageName: String, userId: Int, preserveId: Long) =

@@ -44,7 +44,7 @@ class FilesRepo @Inject constructor(
         private const val TAG = "FilesRepo"
     }
 
-    private fun log(block: () -> String): String = block().also { LogUtil.log { TAG to it } }
+    private fun log(block: () -> String) = LogUtil.log(TAG, block())
 
     fun getFile(id: Long) = filesDao.queryFileFlow(id)
 

@@ -1,7 +1,4 @@
 <paths>
-    <files-path
-        name="sharing_log"
-        path="log" />
     <cache-path
         name="shared_apk_internal"
         path="shared_apk" />

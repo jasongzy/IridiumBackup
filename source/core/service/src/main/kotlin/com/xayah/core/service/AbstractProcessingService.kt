@@ -75,11 +75,7 @@ internal abstract class AbstractProcessingService : Service() {
         fun getService(): AbstractProcessingService = this@AbstractProcessingService
     }
 
-    protected fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { mTAG to msg }
-        msg
-    }
+    protected fun log(onMsg: () -> String) = LogUtil.log(mTAG, onMsg())
 
     protected fun completionSummary(time: String): String =
         "$time, ${mTaskEntity.successCount} ${mContext.getString(R.string.succeed)}" +

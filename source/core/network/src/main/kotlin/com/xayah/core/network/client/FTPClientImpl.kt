@@ -23,10 +23,7 @@ import javax.security.auth.login.LoginException
 class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra) : CloudClient {
     private var client: FTPClient? = null
 
-    private fun log(msg: () -> String): String = run {
-        LogUtil.log { "FTPClientImpl" to msg() }
-        msg()
-    }
+    private fun log(msg: () -> String) = LogUtil.log("FTPClientImpl", msg())
 
     private fun <T> withClient(block: (FTPClient) -> T): T = block(checkNotNull(client))
 

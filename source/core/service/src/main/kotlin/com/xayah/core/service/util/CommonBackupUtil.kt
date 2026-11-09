@@ -39,11 +39,7 @@ class CommonBackupUtil @Inject constructor(
         private const val TAG = "CommonBackupUtil"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     fun getItselfDst(dstDir: String) = "${dstDir}/IridiumBackup.zip"
 

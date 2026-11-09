@@ -78,7 +78,7 @@ object BaseUtil {
         val shellResult = ShellResult(code = -1, input = args.toList().trim(), out = listOf())
 
         if (log) {
-            log { TAG_SHELL_IN to shellResult.inputString }
+            log(TAG_SHELL_IN, shellResult.inputString)
         }
 
         Shell.cmd(shellResult.inputString).exec().also { result ->
@@ -88,8 +88,8 @@ object BaseUtil {
 
         if (log) {
             if (shellResult.outString.trim().isNotEmpty())
-                log { TAG_SHELL_OUT to shellResult.outString }
-            log { TAG_SHELL_CODE to shellResult.code.toString() }
+                log(TAG_SHELL_OUT, shellResult.outString)
+            log(TAG_SHELL_CODE, shellResult.code.toString())
         }
 
         shellResult

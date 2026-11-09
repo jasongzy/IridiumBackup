@@ -32,10 +32,7 @@ class CloudRepository @Inject constructor(
     private val rootService: RemoteRootService,
     private val cloudDao: CloudDao,
 ) {
-    private fun log(msg: () -> String): String = run {
-        LogUtil.log { "CloudRepository" to msg() }
-        msg()
-    }
+    private fun log(msg: () -> String) = LogUtil.log("CloudRepository", msg())
 
     fun getString(@StringRes resId: Int) = context.getString(resId)
     suspend fun add(item: CloudEntity) = cloudDao.insert(item) != -1L

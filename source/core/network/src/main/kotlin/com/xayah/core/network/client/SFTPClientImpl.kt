@@ -27,10 +27,7 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
     private var sshClient: SSHClient? = null
     private var sftpClient: SFTPClient? = null
 
-    private fun log(msg: () -> String): String = run {
-        LogUtil.log { "SFTPClientImpl" to msg() }
-        msg()
-    }
+    private fun log(msg: () -> String) = LogUtil.log("SFTPClientImpl", msg())
 
     private fun <T> withSFTPClient(block: (SFTPClient) -> T) = block(checkNotNull(sftpClient))
 

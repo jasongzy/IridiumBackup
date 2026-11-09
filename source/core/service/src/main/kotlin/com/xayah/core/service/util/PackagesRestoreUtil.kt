@@ -44,11 +44,7 @@ class PackagesRestoreUtil @Inject constructor(
         private const val TAG = "PackagesRestoreUtil"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     private suspend fun TaskDetailPackageEntity.updateInfo(
         dataType: DataType,

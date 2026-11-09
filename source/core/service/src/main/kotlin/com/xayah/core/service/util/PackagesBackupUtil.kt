@@ -54,11 +54,7 @@ class PackagesBackupUtil @Inject constructor(
         private const val TAG = "PackagesBackupUtil"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     private fun PackageEntity.setDataBytes(dataType: DataType, sizeBytes: Long) = when (dataType) {
         DataType.PACKAGE_APK -> dataStats.apkBytes = sizeBytes

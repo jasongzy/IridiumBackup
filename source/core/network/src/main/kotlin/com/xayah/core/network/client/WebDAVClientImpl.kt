@@ -39,10 +39,7 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
     private var client: OkHttpSardine? = null
     private var uploadProgress: ((Long, Long) -> Unit)? = null
 
-    private fun log(msg: () -> String): String = run {
-        LogUtil.log { "WebDAVClientImpl" to msg() }
-        msg()
-    }
+    private fun log(msg: () -> String) = LogUtil.log("WebDAVClientImpl", msg())
 
     private fun getPath(path: String): String {
         val url = entity.host.toHttpUrl().newBuilder()

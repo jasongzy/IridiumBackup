@@ -36,11 +36,7 @@ class MediaRepository @Inject constructor(
         private const val TAG = "PackageRepository"
     }
 
-    private fun log(onMsg: () -> String): String = run {
-        val msg = onMsg()
-        LogUtil.log { TAG to msg }
-        msg
-    }
+    private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
     suspend fun setBlocked(ids: Collection<Long>, blocked: Boolean) = mediaDao.setBlocked(ids, blocked)
     fun queryFlow(opType: OpType, blocked: Boolean) = mediaDao.queryFlow(opType, blocked).distinctUntilChanged()

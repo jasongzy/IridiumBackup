@@ -40,10 +40,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
     private var session: Session? = null
     private var share: Share? = null
 
-    private fun log(msg: () -> String): String = run {
-        LogUtil.log { "SMBClientImpl" to msg() }
-        msg()
-    }
+    private fun log(msg: () -> String) = LogUtil.log("SMBClientImpl", msg())
 
     private fun <R> withDiskShare(block: (DiskShare) -> R): R = block(checkNotNull(share as? DiskShare))
 

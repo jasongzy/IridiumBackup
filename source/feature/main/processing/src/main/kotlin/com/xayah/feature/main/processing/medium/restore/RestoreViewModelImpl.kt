@@ -64,8 +64,8 @@ class RestoreViewModelImpl @Inject constructor(
                     backupSaveDir = uiState.value.cloudEntity!!.remote
                 }
                 val medium = mMediaRepo.queryActivated(OpType.RESTORE, cloud, backupSaveDir)
-                LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Query activated files, cloud: $cloud, backupDir: $backupSaveDir" }
-                LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Queried files count: ${medium.size}" }
+                LogUtil.log("RestoreViewModelImpl.UpdateApps", "Query activated files, cloud: $cloud, backupDir: $backupSaveDir")
+                LogUtil.log("RestoreViewModelImpl.UpdateApps", "Queried files count: ${medium.size}")
                 var bytes = 0.0
                 medium.forEach {
                     bytes += it.displayStatsBytes

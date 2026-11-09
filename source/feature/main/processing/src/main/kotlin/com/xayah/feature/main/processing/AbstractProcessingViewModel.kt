@@ -129,7 +129,7 @@ abstract class AbstractProcessingViewModel(
     }
 
     private suspend fun fail(error: Exception) {
-        LogUtil.log { "Processing" to error.stackTraceToString() }
+        LogUtil.log("Processing", error.stackTraceToString())
         emitState(uiState.value.copy(state = OperationState.ERROR, failure = error.localizedMessage ?: error.javaClass.simpleName))
     }
 
