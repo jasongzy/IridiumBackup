@@ -116,10 +116,8 @@ class ListViewModel @Inject constructor(
             if ((uiState.value as? ListUiState.Success)?.isUpdating == true || opType != OpType.BACKUP) return@launchOnDefault
             when (target) {
                 Target.Apps -> {
-                    WorkManagerInitializer.fastInitializeAndUpdateApps(context)
-                    if (initial.not() && (listDataRepo.getListData().first() as? ListData.Apps)?.sortIndex == 2) {
-                        WorkManagerInitializer.updateAppSizes(context)
-                    }
+                    val includeSizes = !initial && (listDataRepo.getListData().first() as? ListData.Apps)?.sortIndex == 2
+                    WorkManagerInitializer.refreshAppList(context, includeSizes)
                 }
                 Target.Files -> WorkManagerInitializer.fastInitializeAndUpdateFiles(context)
             }

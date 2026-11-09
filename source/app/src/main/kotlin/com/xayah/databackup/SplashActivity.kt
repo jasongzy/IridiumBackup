@@ -8,7 +8,6 @@ import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import com.xayah.core.datastore.readAppVersionName
-import com.xayah.core.work.WorkManagerInitializer
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -28,7 +27,6 @@ class SplashActivity : AppCompatActivity() {
         if (runBlocking { readAppVersionName().first() }.isEmpty()) {
             startActivity(Intent(this, SetupActivity::class.java))
         } else {
-            WorkManagerInitializer.fastInitializeAndUpdateApps(this)
             startActivity(Intent(this, MainActivity::class.java))
         }
         finish()

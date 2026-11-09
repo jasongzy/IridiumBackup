@@ -1,7 +1,6 @@
 package com.xayah.core.work.workers
 
 import android.content.Context
-import androidx.core.content.ContextCompat
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.OneTimeWorkRequestBuilder
@@ -22,33 +21,24 @@ import kotlinx.coroutines.withContext
 
 @HiltWorker
 internal class AppsSizeUpdateWorker @AssistedInject constructor(
-    @Assisted private val appContext: Context,
+    @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     @Dispatcher(Default) private val defaultDispatcher: CoroutineDispatcher,
     private val appsRepo: AppsRepo,
 ) : CoroutineWorker(appContext, workerParams) {
     private val notificationUpdates = NotificationProgressThrottle()
-    private val notificationBuilder by lazy { NotificationUtil.getProgressNotificationBuilder(appContext) }
+    private val notification = WorkerNotification(this, R.string.calculating_app_total_size, NotificationUtil.APP_SIZE_ID)
 
     override suspend fun doWork(): Result = withContext(defaultDispatcher) {
         if (inputData.getString(INPUT_DATA_KEY_PROCESS_SESSION) != WorkManagerInitializer.processSessionId) return@withContext Result.success()
+        setForeground(notification.info())
         appsRepo.updateLocalAppSizes { cur, max, content ->
             if (notificationUpdates.shouldUpdate(cur + 1, max)) {
-                setForeground(createForegroundInfo(content, max, cur + 1))
+                setForeground(notification.info(content, max, cur + 1))
             }
         }
         Result.success()
     }
-
-    private fun createForegroundInfo(content: String, max: Int, current: Int) = NotificationUtil.createForegroundInfo(
-        appContext,
-        notificationBuilder,
-        ContextCompat.getString(appContext, R.string.calculating_app_total_size),
-        content,
-        max,
-        current,
-        notificationId = NotificationUtil.APP_SIZE_ID,
-    )
 
     companion object {
         fun buildRequest(sessionId: String) = OneTimeWorkRequestBuilder<AppsSizeUpdateWorker>()

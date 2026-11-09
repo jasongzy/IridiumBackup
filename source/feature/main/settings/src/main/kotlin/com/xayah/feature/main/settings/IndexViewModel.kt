@@ -35,7 +35,7 @@ class IndexViewModel @Inject constructor(
 ) : BaseViewModel<IndexUiState, IndexUiIntent, IndexUiEffect>(IndexUiState) {
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
-            IndexUiIntent.LoadSystemApps -> WorkManagerInitializer.fastInitializeAndUpdateApps(context)
+            IndexUiIntent.LoadSystemApps -> WorkManagerInitializer.reloadSystemApps(context)
             IndexUiIntent.ClearCache -> {
                 val directories = buildList {
                     add(context.cacheDir)

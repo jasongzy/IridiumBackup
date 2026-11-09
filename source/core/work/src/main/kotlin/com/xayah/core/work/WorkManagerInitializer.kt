@@ -2,7 +2,9 @@ package com.xayah.core.work
 
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.await
 import com.xayah.core.data.repository.APP_REFRESH_WORK_NAME
 import com.xayah.core.data.repository.APP_SIZE_REFRESH_WORK_NAME
 import com.xayah.core.data.repository.FAST_INIT_AND_UPDATE_FILES_WORK_NAME
@@ -17,6 +19,7 @@ import com.xayah.core.work.workers.AppsUpdateWorker
 import com.xayah.core.work.workers.FilesLoadWorker
 import com.xayah.core.work.workers.FilesUpdateWorker
 import java.util.UUID
+import kotlinx.coroutines.flow.first
 
 object WorkManagerInitializer {
     internal val processSessionId: String = UUID.randomUUID().toString()
@@ -31,18 +34,23 @@ object WorkManagerInitializer {
             .enqueue()
     }
 
-    /**
-     * Initialize only newly installed apps or remove uninstalled apps and update newly installed apps
-     */
-    fun fastInitializeAndUpdateApps(context: Context) {
-        WorkManager.getInstance(context)
-            .beginUniqueWork(APP_REFRESH_WORK_NAME, ExistingWorkPolicy.KEEP, AppsFastInitWorker.buildRequest())
+    private fun WorkManager.enqueueAppRefresh(policy: ExistingWorkPolicy) =
+        beginUniqueWork(APP_REFRESH_WORK_NAME, policy, AppsFastInitWorker.buildRequest())
             .then(AppsFastUpdateWorker.buildRequest())
             .enqueue()
+
+    fun reloadSystemApps(context: Context) {
+        WorkManager.getInstance(context).enqueueAppRefresh(ExistingWorkPolicy.REPLACE)
     }
 
-    fun updateAppSizes(context: Context) {
-        WorkManager.getInstance(context).enqueueUniqueWork(
+    suspend fun refreshAppList(context: Context, includeSizes: Boolean = false) {
+        val manager = WorkManager.getInstance(context)
+        val refresh = manager.enqueueAppRefresh(ExistingWorkPolicy.KEEP)
+        if (!includeSizes) return
+        refresh.await()
+        val jobs = manager.getWorkInfosForUniqueWorkFlow(APP_REFRESH_WORK_NAME).first { chain -> chain.all { it.state.isFinished } }
+        if (jobs.isEmpty() || jobs.any { it.state != WorkInfo.State.SUCCEEDED }) return
+        manager.enqueueUniqueWork(
             APP_SIZE_REFRESH_WORK_NAME,
             ExistingWorkPolicy.KEEP,
             AppsSizeUpdateWorker.buildRequest(processSessionId),

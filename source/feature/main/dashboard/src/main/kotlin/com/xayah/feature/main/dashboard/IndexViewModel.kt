@@ -5,7 +5,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.datastore.ConstantUtil
-import com.xayah.core.datastore.readLastBackupTime
 import com.xayah.core.model.database.DirectoryEntity
 import com.xayah.core.network.model.Release
 import com.xayah.core.network.retrofit.GitHubRepository
@@ -59,9 +58,6 @@ class IndexViewModel @Inject constructor(
             }
         }
     }
-
-    private val _lastBackupTime: Flow<Long> = context.readLastBackupTime().flowOnIO()
-    val lastBackupTimeState: StateFlow<Long> = _lastBackupTime.stateInScope(0)
 
     private val _directory: Flow<DirectoryEntity?> = directoryRepo.querySelectedByDirectoryTypeFlow().flowOnIO()
     val directoryState: StateFlow<DirectoryEntity?> = _directory.stateInScope(null)

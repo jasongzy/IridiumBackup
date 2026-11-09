@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.datastore.readBackupConfigs
 import com.xayah.core.datastore.readBackupItself
-import com.xayah.core.datastore.saveLastBackupTime
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
@@ -218,7 +217,6 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
     }
 
     override suspend fun afterPostProcessing() {
-        mContext.saveLastBackupTime(mEndTimestamp)
         val time = DateUtil.getShortRelativeTimeSpanString(context = mContext, time1 = mStartTimestamp, time2 = mEndTimestamp)
         completeNotification(mContext.getString(R.string.backup_completed), completionSummary(time))
     }

@@ -6,7 +6,6 @@ import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.datastore.readKillAppOption
-import com.xayah.core.datastore.saveLastBackupTime
 import com.xayah.core.model.DataType
 import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.KillAppOption
@@ -349,7 +348,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     }
 
     override suspend fun afterPostProcessing() {
-        mContext.saveLastBackupTime(mEndTimestamp)
         val time = DateUtil.getShortRelativeTimeSpanString(context = mContext, time1 = mStartTimestamp, time2 = mEndTimestamp)
         completeNotification(mContext.getString(R.string.backup_completed), completionSummary(time))
     }

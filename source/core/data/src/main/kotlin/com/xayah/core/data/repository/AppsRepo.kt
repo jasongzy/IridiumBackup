@@ -374,8 +374,8 @@ class AppsRepo @Inject constructor(
             .flatMap { appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, it) }
             .filter { scope.includes(it.packageName, it.userId, it.isSystemApp) }
         installedApps.forEachIndexed { index, app ->
-            onUpdate(index, installedApps.size, app.packageName)
             calculateLocalAppSize(app)
+            onUpdate(index, installedApps.size, app.packageName)
         }
     }
 
