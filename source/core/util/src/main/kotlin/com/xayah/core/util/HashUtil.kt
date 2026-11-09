@@ -1,27 +1,10 @@
 package com.xayah.core.util
 
-import android.annotation.TargetApi
-import android.os.Build
 import org.apache.commons.codec.digest.DigestUtils
-import java.io.FileInputStream
-import java.nio.file.Files
-import java.nio.file.Paths
+import java.io.File
 
 object HashUtil {
-    fun calculateMD5(src: String): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        calculateMD5Api26(src)
-    } else {
-        calculateMD5Api24(src)
-    }
+    fun calculateMD5(src: String): String = File(src).inputStream().use { DigestUtils.md5Hex(it) }
 
-    private fun calculateMD5Api24(src: String) = DigestUtils.md5Hex(FileInputStream(src))
-
-    @TargetApi(Build.VERSION_CODES.O)
-    private fun calculateMD5Api26(src: String) = DigestUtils.md5Hex(Files.newInputStream(Paths.get(src)))
-
-    fun calculateSHA256(src: String): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        Files.newInputStream(Paths.get(src)).use { DigestUtils.sha256Hex(it) }
-    } else {
-        FileInputStream(src).use { DigestUtils.sha256Hex(it) }
-    }
+    fun calculateSHA256(src: String): String = File(src).inputStream().use { DigestUtils.sha256Hex(it) }
 }

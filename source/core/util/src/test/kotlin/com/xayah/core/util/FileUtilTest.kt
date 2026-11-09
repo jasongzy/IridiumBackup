@@ -24,6 +24,8 @@ class FileUtilTest {
 
     @Test
     fun isDescendantRequiresARealChildPath() {
+        assertFalse(FileUtil.isDescendant("/", "/"))
+        assertTrue(FileUtil.isDescendant("/", "/storage"))
         assertTrue(FileUtil.isDescendant("/storage/emulated/0", "/storage/emulated/0/IridiumBackup"))
         assertFalse(FileUtil.isDescendant("/storage/emulated/0", "/storage/emulated/01"))
         assertFalse(FileUtil.isDescendant("/storage/emulated/0", "/storage/emulated/0"))
@@ -64,9 +66,13 @@ class FileUtilTest {
     }
 
     @Test
-    fun deleteRecursivelyRejectsCriticalRoots() {
-        assertFalse(FileUtil.deleteRecursively("/"))
-        assertFalse(FileUtil.deleteRecursively("/storage/emulated/0"))
-        assertFalse(FileUtil.deleteRecursively("/data/media/0/Android"))
+    fun protectsSharedDirectoriesForEachAndroidUser() {
+        assertTrue(FileUtil.isProtectedDeletionPath("/"))
+        assertTrue(FileUtil.isProtectedDeletionPath("/storage/emulated/0"))
+        assertTrue(FileUtil.isProtectedDeletionPath("/data/media/0/Android"))
+        assertTrue(FileUtil.isProtectedDeletionPath("/storage/emulated/10/DCIM"))
+        assertTrue(FileUtil.isProtectedDeletionPath("/data/media/10/Pictures"))
+        assertFalse(FileUtil.isProtectedDeletionPath("/storage/emulated/10/Pictures/album"))
+        assertFalse(FileUtil.isProtectedDeletionPath("/storage/emulated/10/IridiumBackup"))
     }
 }

@@ -107,7 +107,7 @@ class MediumBackupUtil @Inject constructor(
                 if (result.isSuccess) {
                     m.setDataBytes(sizeBytes)
                     m.setDisplayBytes(rootService.calculateSize(dst))
-                }
+                } else rootService.removeEntry(dst)
             }
         }
 

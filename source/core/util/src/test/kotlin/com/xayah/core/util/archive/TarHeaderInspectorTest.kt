@@ -8,6 +8,9 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 
 class TarHeaderInspectorTest {
     @Test
@@ -17,14 +20,16 @@ class TarHeaderInspectorTest {
             Entry("./", TarConstants.LF_DIR),
             Entry("pkg/", TarConstants.LF_DIR),
             Entry("pkg/name with spaces.txt", data = "spaces".toByteArray()),
+            Entry("pkg/name with spaces.txt", data = "new".toByteArray()),
+            Entry("./pkg/name with spaces.txt", data = "newer".toByteArray()),
             Entry("pkg/line\nbreak.txt", data = "newline".toByteArray()),
             Entry(longName, data = "long".toByteArray()),
         )
         val approved = mutableListOf<String>()
 
-        val result = TarHeaderInspector.inspect(ByteArrayInputStream(archive), requiredPrefix = "pkg", onApprovedEntry = approved::add)
+        val result = TarHeaderInspector.inspect(ByteArrayInputStream(archive), requiredPrefix = "pkg/", cleanRestore = true, onApprovedEntry = approved::add)
 
-        assertEquals(listOf("./", "pkg/", "pkg/name with spaces.txt", "pkg/line\nbreak.txt", longName), approved)
+        assertEquals(listOf("pkg/", "pkg/name with spaces.txt", "./pkg/name with spaces.txt", "pkg/line\nbreak.txt", longName), approved)
         assertEquals(emptyList<TarHeaderInspector.Link>(), result.links)
         assertEquals(0, result.skippedEntries)
     }
@@ -40,6 +45,43 @@ class TarHeaderInspectorTest {
         assertThrows(IllegalStateException::class.java) {
             TarHeaderInspector.inspect(ByteArrayInputStream(wrongRoot), requiredPrefix = "pkg") {}
         }
+    }
+
+    @Test
+    fun aListedPathCannotAlsoSelectALinkOrSpecialFile() {
+        val file = Entry("pkg/value", data = byteArrayOf(1))
+        for (type in listOf(TarConstants.LF_SYMLINK, TarConstants.LF_LINK, TarConstants.LF_FIFO)) {
+            val other = Entry("./pkg/value", type, target = "outside")
+            for (order in listOf(arrayOf(file, other), arrayOf(other, file))) {
+                assertThrows(IllegalStateException::class.java) {
+                    TarHeaderInspector.inspect(ByteArrayInputStream(archive(*order)), "pkg") {}
+                }
+            }
+        }
+    }
+
+    @Test
+    fun rejectsCorruptHeadersAndCompressionTrailers() {
+        val tar = archive(Entry("pkg/data", data = byteArrayOf(1)))
+        val gzip = ByteArrayOutputStream().apply {
+            GZIPOutputStream(this).use { it.write(tar); it.write(ByteArray(128 * 1024)) }
+        }.toByteArray()
+        gzip[gzip.size - 8] = gzip[gzip.size - 8].inc()
+        assertThrows(IOException::class.java) {
+            TarHeaderInspector.inspect(GZIPInputStream(gzip.inputStream()), "pkg") {}
+        }
+        tar[0] = tar[0].inc()
+        assertThrows(IllegalStateException::class.java) { TarHeaderInspector.inspect(tar.inputStream()) {} }
+    }
+
+    @Test
+    fun cleanRestoreRequiresAnEndMarkerButAcceptsAnUnpaddedArchive() {
+        val tar = archive(Entry("pkg/file", data = byteArrayOf(1)))
+        TarHeaderInspector.inspect(tar.copyOf(1536).inputStream(), cleanRestore = true) {}
+        assertThrows(IOException::class.java) {
+            TarHeaderInspector.inspect(tar.copyOf(1024).inputStream(), cleanRestore = true) {}
+        }
+        TarHeaderInspector.inspect(tar.copyOf(1024).inputStream()) {}
     }
 
     @Test
@@ -71,7 +113,7 @@ class TarHeaderInspectorTest {
             Entry("pkg/fifo", TarConstants.LF_FIFO),
         )
 
-        val result = TarHeaderInspector.inspect(ByteArrayInputStream(archive), requiredPrefix = "pkg") {}
+        val result = TarHeaderInspector.inspect(ByteArrayInputStream(archive), requiredPrefix = "pkg/") {}
 
         assertEquals(
             listOf(

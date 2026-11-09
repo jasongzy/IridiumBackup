@@ -175,9 +175,7 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         runCatching { File(src).renameTo(File(dst)) }.getOrElse { false }
     }
 
-    override fun exists(path: String): Boolean = synchronized(lock) {
-        tryOn(block = { File(path).exists() }, onException = { false })
-    }
+    override fun exists(path: String): Boolean = FileUtil.statIfPresent(path) != null
 
     override fun createNewFile(path: String): Boolean = synchronized(lock) {
         tryOn(block = { File(path).createNewFile() }, onException = { false })
@@ -338,13 +336,18 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         }
     }
 
-    override fun readDirectory(path: String, includeFiles: Boolean): ParcelFileDescriptor? {
+    override fun readDirectory(path: String, includeFiles: Boolean, strict: Boolean): ParcelFileDescriptor? {
         val children = File(path).listFiles() ?: return null
         val dirs = mutableListOf<String>()
         val files = mutableListOf<String>()
         for (child in children) {
-            if (child.isDirectory) dirs.add(child.path)
-            else if (includeFiles && child.isFile) files.add(child.path)
+            val mode = try {
+                FileUtil.statIfPresent(child.path)?.st_mode ?: continue
+            } catch (error: IllegalStateException) {
+                if (strict) throw error else continue
+            }
+            if (OsConstants.S_ISDIR(mode)) dirs.add(child.path)
+            else if (includeFiles && OsConstants.S_ISREG(mode)) files.add(child.path)
         }
         return writeToParcel {
             it.writeStringList(dirs)
@@ -378,10 +381,10 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         NativeLib.calculateSize(path)
     }
 
-    override fun fileLength(path: String): Long = Os.stat(path).let {
+    override fun fileLength(path: String): Long = FileUtil.statIfPresent(path)?.let {
         check(OsConstants.S_ISREG(it.st_mode)) { "Not a regular file: $path" }
         it.st_size
-    }
+    } ?: -1
 
     override fun fileGroupId(path: String): Int =
         checkNotNull(FileUtil.statIfPresent(path)) { "Directory not found: $path" }.st_gid

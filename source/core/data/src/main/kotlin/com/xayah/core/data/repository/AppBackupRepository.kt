@@ -432,11 +432,11 @@ class AppBackupRepository @Inject constructor(
     suspend fun rebuildLocalIndex(backupDir: String = context.localBackupSaveDir(), onProgress: suspend (Int, Int, Int) -> Unit): List<RebuildResult> {
         val repositoryId = ":$backupDir"
         val original = dao.getRevisions(repositoryId)
-        val appsDir = rootService.readDirectory(backupDir, includeFiles = false).directories
-            .firstOrNull { PathUtil.getFileName(it) == PathUtil.getAppsRelativeDir() }
+        check(rootService.existsChecked(backupDir)) { "Cannot read directory: $backupDir" }
+        val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
         val rebuilt = mutableListOf<Pair<PackageEntity, BackupManifest>>()
         val revisionDirs = buildList {
-            if (appsDir != null) {
+            if (rootService.existsChecked(appsDir)) {
                 rootService.readDirectory(appsDir, includeFiles = false).directories.forEach { packageDir ->
                     addAll(rootService.readDirectory(packageDir, includeFiles = false).directories)
                 }

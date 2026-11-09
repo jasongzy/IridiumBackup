@@ -47,8 +47,10 @@ internal class ArchiveExtractor(private val context: Context) {
                 requiredPrefix = requiredPrefix,
                 excludedPathPrefixes = excludedPathPrefixes,
                 excludedNamePrefixes = excludedNamePrefixes,
+                cleanRestore = cleanDestination.isNotEmpty(),
             )
             if (cleanDestination.isNotEmpty()) {
+                check(inspection.entriesFile.length() > 0 || inspection.pendingLinks > 0) { "Archive has no entries to restore" }
                 val normalizedDestination = FileUtil.normalizeAbsolutePath(destination)
                     ?: error("Invalid extraction destination")
                 val normalizedCleanDestination = FileUtil.normalizeAbsolutePath(cleanDestination)
@@ -88,6 +90,7 @@ internal class ArchiveExtractor(private val context: Context) {
         requiredPrefix: String,
         excludedPathPrefixes: Array<String>,
         excludedNamePrefixes: Array<String>,
+        cleanRestore: Boolean,
     ): Inspection {
         val entriesFile = File(workspace, ENTRIES_FILE)
         openArchive(source, compression, workspace).use { archive ->
@@ -97,6 +100,7 @@ internal class ArchiveExtractor(private val context: Context) {
                     requiredPrefix = requiredPrefix,
                     excludedPathPrefixes = excludedPathPrefixes.toSet(),
                     excludedNamePrefixes = excludedNamePrefixes.toSet(),
+                    cleanRestore = cleanRestore,
                 ) { entry -> writeEntry(entries, entry) }
                 ArchiveLinkStore.write(File(workspace, LINKS_FILE), inspection.links)
                 check(archive.finish()) { archive.error() }
@@ -130,19 +134,17 @@ internal class ArchiveExtractor(private val context: Context) {
             if (preservePermissions) append('p')
             append('f')
         }
-        tarArgs += if (compression.isEmpty()) source else "-"
+        tarArgs += source
+        when (compression) {
+            "gzip" -> tarArgs += "--use-compress-program=${context.binDir()}/busybox gzip"
+            "zstd" -> tarArgs += "--use-compress-program=${context.binDir()}/zstd"
+        }
         tarArgs += listOf("-C", destination, "-T", entriesFile.path)
 
-        val tar = ProcessBuilder(tarArgs).redirectErrorStream(true).start()
+        val diagnostics = File(workspace, "tar.log")
+        val tar = ProcessBuilder(tarArgs).redirectErrorStream(true).redirectOutput(diagnostics).start()
         return try {
-            if (compression.isNotEmpty()) {
-                openArchive(source, compression, workspace).use { archive ->
-                    tar.outputStream.use { output -> archive.stream.copyTo(output) }
-                    check(archive.finish()) { archive.error() }
-                }
-            }
-            val output = tar.inputStream.bufferedReader().readLines()
-            tar.waitFor() to output
+            tar.waitFor() to diagnostics.useLines { it.take(32).toList() }
         } finally {
             tar.destroy()
         }

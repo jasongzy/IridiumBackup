@@ -58,30 +58,13 @@ class CommonBackupUtil @Inject constructor(
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = listOf(log { message }))
     }
 
-    suspend fun testArchive(src: String, ct: CompressionType) = run {
-        var code: Int
-        var input: List<String>
-        val out = mutableListOf<String>()
-
-        if (context.readCompressionTest().first()) {
-            Tar.test(src = src, extra = ct.decompressPara)
-                .also { result ->
-                    code = result.code
-                    input = result.input
-                    if (result.isSuccess.not()) {
-                        out.add(log { "$src is broken, trying to delete it." })
-                        rootService.deleteRecursively(src)
-                    } else {
-                        out.add(log { "Everything seems fine." })
-                    }
-                }
-        } else {
-            code = 0
-            input = listOf()
-            out.add(log { "Skip testing." })
+    suspend fun testArchive(src: String, ct: CompressionType): ShellResult {
+        if (!context.readCompressionTest().first()) {
+            return ShellResult(0, emptyList(), listOf(log { "Skip testing." }))
         }
-
-        ShellResult(code = code, input = input, out = out)
+        return Tar.test(src, ct.decompressPara).apply {
+            out += log { if (isSuccess) "Archive verified: $src" else "Unable to verify archive: $src" }
+        }
     }
 
     fun getConfigsDst(dstDir: String) = "${dstDir}/$ConfigsConfigurationsName"

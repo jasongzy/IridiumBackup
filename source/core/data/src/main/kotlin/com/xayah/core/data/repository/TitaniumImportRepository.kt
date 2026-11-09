@@ -160,7 +160,7 @@ class TitaniumImportRepository @Inject constructor(
         onProgress: suspend (completed: Int, total: Int) -> Unit,
     ): List<BackupCandidate> {
         val previewDir = previewRoot?.resolve(previewId.toString())?.takeIf { FileUtil.deleteRecursively(it.path) }
-        val metadataFiles = rootService.readDirectory(sourceDir, includeFiles = true).files
+        val metadataFiles = rootService.readDirectory(sourceDir, includeFiles = true, strict = false).files
             .filter { metadataPattern.matches(PathUtil.getFileName(it)) }
             .sorted()
         val backupDir = context.localBackupSaveDir()
@@ -300,12 +300,12 @@ class TitaniumImportRepository @Inject constructor(
         val apkPath = apkName?.let { "$sourceDir/$it" }
         val dataName = fileName.removeSuffix(".properties") + ".tar.gz"
         val dataPath = "$sourceDir/$dataName"
-        val hasApk = apkPath != null && rootService.exists(apkPath) && rootService.calculateSize(apkPath) > 0
-        val dataExists = rootService.exists(dataPath)
-        val hasData = dataExists && rootService.calculateSize(dataPath) > 0
+        val hasApk = apkPath != null && (rootService.fileLengthIfPresent(apkPath) ?: 0L) > 0
+        val dataSize = rootService.fileLengthIfPresent(dataPath)
+        val hasData = (dataSize ?: 0L) > 0
         val missing = buildList {
             if (apkName != null && !hasApk) add(apkName)
-            if (!hasData && (dataExists || apkName == null)) add(dataName)
+            if (!hasData && (dataSize != null || apkName == null)) add(dataName)
         }
         val destination = "${pathUtil.getLocalBackupAppsDir(backupDir)}/$packageName/user_0@$createdAt"
         val candidate = BackupCandidate(
@@ -329,8 +329,8 @@ class TitaniumImportRepository @Inject constructor(
 
     private suspend fun existingManifest(destination: String, candidate: BackupCandidate): BackupManifest? {
         val path = PathUtil.getBackupManifestDst(destination)
-        if (!rootService.exists(path)) return null
-        val manifest = checkNotNull(rootService.readJson<BackupManifest>(path)) { "Unreadable backup manifest: $path" }
+        val json = rootService.readTextIfPresent(path) ?: return null
+        val manifest = checkNotNull(rootService.gsonUtil.fromJson<BackupManifest?>(json, BackupManifest::class.java)) { "Invalid backup manifest: $path" }
         check(manifest.schemaVersion == BACKUP_MANIFEST_SCHEMA_VERSION && manifest.hasValidFileEntries()) { "Invalid backup manifest: $path" }
         check(candidate.matches(manifest)) { "A different backup already occupies $destination" }
         return manifest
@@ -338,7 +338,7 @@ class TitaniumImportRepository @Inject constructor(
 
     private suspend fun hasExpectedSize(destination: String, file: BackupManifestFile): Boolean {
         val path = "$destination/${file.name}"
-        return rootService.exists(path) && rootService.calculateSize(path) == file.sizeBytes
+        return rootService.fileLengthIfPresent(path) == file.sizeBytes
     }
 
     private suspend fun readProperties(path: String): Properties {
@@ -601,7 +601,7 @@ class TitaniumImportRepository @Inject constructor(
             reserve(target)
             val result = Tar.compress(type.archiveExclusions(packageName).tarPatterns, "", parent, packageName, target, compressionArgs)
             check(result.isSuccess) { result.outString.ifBlank { "Unable to convert ${type.type}" } }
-            if (Tar.hasContent(target, packageName, compression.decompressPara).isSuccess) {
+            if (Tar.hasContent(target, packageName, compression.decompressPara).getOrThrow()) {
                 imported += type
             } else {
                 rootService.removeEntry(target)

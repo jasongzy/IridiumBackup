@@ -64,7 +64,7 @@ interface IRemoteRootService {
     String calculateMD5(String src);
     String calculateSHA256(String src);
     boolean forceStopPackageIfRunning(String packageName, int userId);
-    ParcelFileDescriptor readDirectory(String path, boolean includeFiles);
+    ParcelFileDescriptor readDirectory(String path, boolean includeFiles, boolean strict);
     boolean createDirectory(String path);
     boolean removeEntry(String path, boolean directory);
     void killPackageProcesses(String packageName, int userId);

@@ -4,6 +4,7 @@ import com.xayah.core.common.util.toSpaceString
 import com.xayah.core.util.shellQuote
 import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.model.ShellResult
+import java.io.IOException
 
 internal fun ShellResult.acceptFileChangedWarnings(): ShellResult = apply {
     val errors = out.filterNot { it.startsWith("Total bytes written:") }
@@ -63,51 +64,30 @@ object Tar {
             }
         }
 
-    suspend fun test(src: String, extra: String): ShellResult = if (extra.isEmpty()) {
-        // tar -tf "$src" > /dev/null 2>&1
-        execute(
-            "-tf",
-            shellQuote(src),
-            ">",
-            "/dev/null",
-            "2>&1",
-        )
-    } else {
-        // zstd -d -c "$src" | tar -tf - > /dev/null 2>&1
-        BaseUtil.execute(
-            "zstd",
-            "-d",
-            "-c",
-            shellQuote(src),
-            "|",
-            "tar",
-            "-tf",
-            "-",
-            ">",
-            "/dev/null",
-            "2>&1",
-        )
-    }
-
-    suspend fun hasContent(src: String, rootEntry: String, extra: String): ShellResult {
-        val filter = "awk -v root=${shellQuote(rootEntry)} " +
-            "'${SymbolUtil.USD}0 != root && ${SymbolUtil.USD}0 != root \"/\" { found=1 } END { exit !found }'"
-        return if (extra.isEmpty()) {
-            execute("-tf", shellQuote(src), "|", filter)
+    private suspend fun list(src: String, compression: String, output: String): ShellResult =
+        if (compression.isEmpty()) {
+            execute("-tf", shellQuote(src), output)
         } else {
+            // tar stops at its end marker; drain any padding so zstd can verify the complete frame.
             BaseUtil.execute(
-                "zstd",
-                "-d",
-                "-c",
-                shellQuote(src),
-                "|",
-                "tar",
-                "-tf",
-                "-",
-                "|",
-                filter,
+                "zstd -dc --", shellQuote(src), "|",
+                "( tar -tf -; status=\$?; cat >/dev/null; exit \$status )", output,
             )
         }
+
+    suspend fun test(src: String, extra: String) = list(src, extra, ">/dev/null")
+
+    suspend fun hasContent(src: String, rootEntry: String, extra: String): Result<Boolean> {
+        val filter = "awk -v root=${shellQuote(rootEntry)} " +
+            "'${SymbolUtil.USD}0 != root && ${SymbolUtil.USD}0 != root \"/\" { found=1 } END { print found ? 1 : 0 }'"
+        val listing = list(src, extra, "| $filter")
+        if (listing.isSuccess) {
+            when (listing.out.lastOrNull()) {
+                "1" -> return Result.success(true)
+                "0" -> return Result.success(false)
+            }
+        }
+        return Result.failure(IOException("Unable to read $src (exit ${listing.code}): ${listing.outString}"))
     }
 
 }

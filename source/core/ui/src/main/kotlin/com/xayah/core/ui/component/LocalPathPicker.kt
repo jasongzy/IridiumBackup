@@ -71,7 +71,7 @@ internal class LocalPathPickerViewModel @Inject constructor(private val rootServ
     suspend fun list(path: String, selectFile: Boolean): List<PathEntry>? = withTimeoutOrNull(15_000) {
         withContext(Dispatchers.IO) {
             try {
-                val entries = rootService.readDirectory(path, includeFiles = selectFile)
+                val entries = rootService.readDirectory(path, includeFiles = selectFile, strict = false)
                 entries.directories.sorted().map { PathEntry(it, true) } + entries.files.sorted().map { PathEntry(it, false) }
             } catch (e: CancellationException) {
                 throw e

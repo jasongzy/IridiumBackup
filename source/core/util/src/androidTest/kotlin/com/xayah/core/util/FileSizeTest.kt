@@ -4,6 +4,8 @@ import android.system.Os
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class FileSizeTest {
@@ -26,6 +28,12 @@ class FileSizeTest {
             ).map { (name, target) ->
                 File(root, name).also { Os.symlink(target, it.path) }
             }
+            assertNull(FileUtil.statIfPresent(root.resolve("absent").path))
+            assertNull(FileUtil.readText(root.resolve("absent").path))
+            assertThrows(IllegalStateException::class.java) { FileUtil.readText(links[2].path) }
+            assertEquals(4096L, FileUtil.statIfPresent(links[1].path)?.st_size)
+            assertThrows(IllegalStateException::class.java) { FileUtil.statIfPresent(links[2].path) }
+            assertThrows(IllegalStateException::class.java) { FileUtil.statIfPresent(externalFile.resolve("child").path) }
             val expected = 18L + links.sumOf { Os.lstat(it.path).st_size }
             assertEquals(expected, FileUtil.calculateSizeApi24(root.path))
             links.forEach { link ->

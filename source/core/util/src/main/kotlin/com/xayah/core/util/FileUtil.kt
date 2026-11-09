@@ -5,6 +5,7 @@ import android.os.Build
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
+import android.system.StructStat
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -21,6 +22,21 @@ object FileUtil {
     fun listFilePaths(path: String, listFiles: Boolean = true, listDirs: Boolean = true): List<String> = runCatching {
         File(path).listFiles()!!.filter { (it.isFile && listFiles) || (it.isDirectory && listDirs) }.map { it.path }
     }.getOrElse { listOf() }
+
+    fun statIfPresent(path: String): StructStat? {
+        val entry = try {
+            Os.lstat(path)
+        } catch (error: ErrnoException) {
+            if (error.errno == OsConstants.ENOENT) return null
+            throw IllegalStateException("Unable to inspect $path", error)
+        }
+        if (!OsConstants.S_ISLNK(entry.st_mode)) return entry
+        return try {
+            Os.stat(path)
+        } catch (error: ErrnoException) {
+            throw IllegalStateException("Unable to resolve link: $path", error)
+        }
+    }
 
     fun calculateSize(path: String): Long = run {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -93,7 +109,7 @@ object FileUtil {
     fun isDescendant(parent: String, child: String): Boolean {
         val normalizedParent = normalizeAbsolutePath(parent) ?: return false
         val normalizedChild = normalizeAbsolutePath(child) ?: return false
-        return normalizedChild.startsWith("${normalizedParent.removeSuffix("/")}/")
+        return normalizedChild != normalizedParent && normalizedChild.startsWith("${normalizedParent.removeSuffix("/")}/")
     }
 
     fun normalizeAbsolutePath(path: String): String? {
@@ -183,50 +199,18 @@ object FileUtil {
         error.errno != OsConstants.ENOENT
     }
 
-    private fun isProtectedDeletionPath(path: String): Boolean =
-        path.count { it == '/' } <= 3 || path in PROTECTED_DELETION_PATHS
+    internal fun isProtectedDeletionPath(path: String): Boolean =
+        path.count { it == '/' } <= 3 || protectedSharedDirectory.matches(path)
 
-    private val PROTECTED_DELETION_PATHS = setOf(
-        "/",
-        "/data",
-        "/data/data",
-        "/data/media",
-        "/data/media/0",
-        "/data/media/0/Android",
-        "/data/media/0/DCIM",
-        "/data/media/0/Documents",
-        "/data/media/0/Download",
-        "/data/media/0/Movies",
-        "/data/media/0/Music",
-        "/data/media/0/Pictures",
-        "/data/user",
-        "/data/user/0",
-        "/data/user_de",
-        "/data/user_de/0",
-        "/mnt",
-        "/mnt/runtime",
-        "/mnt/user",
-        "/mnt/user/0",
-        "/sdcard",
-        "/storage",
-        "/storage/emulated",
-        "/storage/emulated/0",
-        "/storage/emulated/0/Android",
-        "/storage/emulated/0/DCIM",
-        "/storage/emulated/0/Documents",
-        "/storage/emulated/0/Download",
-        "/storage/emulated/0/Movies",
-        "/storage/emulated/0/Music",
-        "/storage/emulated/0/Pictures",
-        "/system",
-        "/vendor",
+    private val protectedSharedDirectory = Regex(
+        """/(?:data/media|storage/emulated)/[0-9]+/(?:Android|DCIM|Documents|Download|Movies|Music|Pictures)"""
     )
 
     fun readText(path: String): String? {
         val fd = try {
             Os.open(path, OsConstants.O_RDONLY or OsConstants.O_NONBLOCK or OsConstants.O_CLOEXEC, 0)
         } catch (error: ErrnoException) {
-            if (error.errno == OsConstants.ENOENT) return null
+            if (error.errno == OsConstants.ENOENT && statIfPresent(path) == null) return null
             throw IllegalStateException("Unable to read file: $path", error)
         }
         try {

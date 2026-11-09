@@ -181,7 +181,7 @@ class PackagesRestoreUtil @Inject constructor(
                             compression = ct.decompressPara,
                             workspace = linkDir,
                             cleanDestination = dst.takeIf { context.readCleanRestoring().first() }.orEmpty(),
-                            requiredPrefix = packageName,
+                            requiredPrefix = "$packageName/",
                             excludedPathPrefixes = exclusions.paths,
                             excludedNamePrefixes = exclusions.namePrefixes,
                             ignoreModificationTime = true,

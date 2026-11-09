@@ -223,7 +223,9 @@ class RemoteRootService(private val context: Context) {
         }
     }.onFailure(onFailure).getOrElse { false }
 
-    suspend fun exists(path: String): Boolean = runCatching { getService().exists(path) }.onFailure(onFailure).getOrElse { false }
+    suspend fun existsChecked(path: String): Boolean = getService().exists(path)
+
+    suspend fun exists(path: String): Boolean = runCatching { existsChecked(path) }.onFailure(onFailure).getOrElse { false }
 
     suspend fun createNewFile(path: String): Boolean = runCatching { getService().createNewFile(path) }.onFailure(onFailure).getOrElse { false }
 
@@ -247,8 +249,8 @@ class RemoteRootService(private val context: Context) {
         }
     }
 
-    suspend fun readDirectory(path: String, includeFiles: Boolean): DirectoryEntries {
-        val pfd = getService().readDirectory(path, includeFiles) ?: throw IOException("Cannot read directory: $path")
+    suspend fun readDirectory(path: String, includeFiles: Boolean, strict: Boolean = true): DirectoryEntries {
+        val pfd = getService().readDirectory(path, includeFiles, strict) ?: throw IOException("Cannot read directory: $path")
         return readFromParcel(pfd) { DirectoryEntries(it.createStringArrayList().orEmpty(), it.createStringArrayList().orEmpty()) }
     }
 
@@ -270,7 +272,9 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun calculateSize(path: String): Long = runCatching { getService().calculateSize(path) }.onFailure(onFailure).getOrElse { 0 }
 
-    suspend fun fileLength(path: String): Long? = runCatching { getService().fileLength(path) }.onFailure(onFailure).getOrNull()
+    suspend fun fileLengthIfPresent(path: String): Long? = getService().fileLength(path).takeIf { it >= 0 }
+
+    suspend fun fileLength(path: String): Long? = runCatching { fileLengthIfPresent(path) }.onFailure(onFailure).getOrNull()
 
     suspend fun fileGroupId(path: String): UInt = getService().fileGroupId(path).toUInt()
 

@@ -49,6 +49,7 @@ class RebuildFailureTest {
                 ) { _, method, _ ->
                     when (method.name) {
                         "asBinder" -> binder
+                        "exists" -> true
                         "readDirectory" -> if (!readable.get()) null else ParcelFileDescriptor.createPipe().let { (read, write) ->
                             val parcel = Parcel.obtain()
                             try {

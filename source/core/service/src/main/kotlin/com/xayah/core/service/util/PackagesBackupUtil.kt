@@ -27,6 +27,7 @@ import com.xayah.core.util.command.Tar
 import com.xayah.core.util.filesDir
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
@@ -102,6 +103,7 @@ class PackagesBackupUtil @Inject constructor(
         commonBackupUtil.testArchive(src = dst, ct = tarCt).also { result ->
             isSuccess = isSuccess && result.isSuccess
             out.addAll(result.out)
+            if (!result.isSuccess) rootService.removeEntry(dst)
         }
 
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
@@ -194,21 +196,21 @@ class PackagesBackupUtil @Inject constructor(
             isSuccess = true
             t.updateInfo(dataType = dataType, state = OperationState.SKIP)
         } else {
-            // Check the existence of origin path.
             val src = packageRepository.getDataSrc(srcDir, packageName)
-            rootService.exists(src).also {
-                if (it.not()) {
-                    if (dataType == DataType.PACKAGE_USER) {
-                        isSuccess = false
-                        out.add(log { "Not exist: $src" })
-                        t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = out.toLineString())
-                        return@run ShellResult(code = -1, input = listOf(), out = out)
-                    } else {
-                        out.add(log { "Not exist and skip: $src" })
-                        t.updateInfo(dataType = dataType, state = OperationState.SKIP, log = out.toLineString())
-                        return@run ShellResult(code = -2, input = listOf(), out = out)
-                    }
-                }
+            val exists = try {
+                rootService.existsChecked(src)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val message = e.message ?: "Unable to inspect $src"
+                t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = message)
+                return@run ShellResult(-1, emptyList(), listOf(message))
+            }
+            if (!exists) {
+                val required = dataType == DataType.PACKAGE_USER
+                val message = if (required) "Not exist: $src" else "Not exist and skip: $src"
+                t.updateInfo(dataType = dataType, state = if (required) OperationState.ERROR else OperationState.SKIP, log = message)
+                return@run ShellResult(if (required) -1 else -2, emptyList(), listOf(message))
             }
 
             val sizeBytes = rootService.calculateSize(src)
@@ -224,17 +226,21 @@ class PackagesBackupUtil @Inject constructor(
                 isSuccess = result.isSuccess
                 out.addAll(result.out)
             }
-            commonBackupUtil.testArchive(src = dst, ct = ct).also { result ->
-                isSuccess = isSuccess && result.isSuccess
-                out.addAll(result.out)
-                if (result.isSuccess) {
-                    if (Tar.hasContent(dst, packageName, ct.decompressPara).isSuccess) {
+            if (isSuccess) {
+                val contents = Tar.hasContent(dst, packageName, ct.decompressPara)
+                when (contents.getOrNull()) {
+                    true -> {
                         p.setDataBytes(dataType, sizeBytes)
                         p.setDisplayBytes(dataType, rootService.calculateSize(dst))
-                    } else {
+                    }
+                    false -> {
                         rootService.deleteRecursively(dst)
                         t.updateInfo(dataType = dataType, state = OperationState.SKIP)
                         return@run ShellResult(code = -2, input = listOf(), out = out)
+                    }
+                    null -> {
+                        isSuccess = false
+                        out.add(contents.exceptionOrNull().toString())
                     }
                 }
             }
