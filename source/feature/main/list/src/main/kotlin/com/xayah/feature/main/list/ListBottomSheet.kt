@@ -50,7 +50,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.data.repository.Filters
 import com.xayah.core.data.repository.LabelFilterMode
-import com.xayah.core.datastore.readLoadSystemApps
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.OpType
 import com.xayah.core.model.SortType
@@ -111,6 +110,7 @@ internal fun ListBottomSheet(
                 opType = uiState.opType,
                 clouds = uiState.clouds,
                 filters = uiState.filters,
+                loadSystemApps = uiState.loadSystemApps,
                 labelEntities = uiState.labelEntities,
                 labelFilters = uiState.labelFilters,
                 onClickLabel = viewModel::cycleLabelFilter,
@@ -372,6 +372,7 @@ internal fun AppsFilterSheet(
     opType: OpType,
     clouds: List<CloudEntity>,
     filters: Filters,
+    loadSystemApps: Boolean,
     labelEntities: List<ColoredLabel>,
     labelFilters: Map<String, LabelFilterMode>,
     onClickLabel: (String) -> Unit,
@@ -380,7 +381,6 @@ internal fun AppsFilterSheet(
     onReset: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
-    val loadSystemApps by LocalContext.current.readLoadSystemApps().collectAsStateWithLifecycle(initialValue = filters.systemApps)
     if (isShow) {
         ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState) {
             Row(

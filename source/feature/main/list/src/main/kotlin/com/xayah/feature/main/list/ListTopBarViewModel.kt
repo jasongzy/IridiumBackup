@@ -41,7 +41,6 @@ class ListTopBarViewModel @Inject constructor(
             Success.Apps(
                 opType = opType,
                 selected = listData.selected,
-                total = listData.total,
                 isUpdating = listData.isUpdating,
                 refreshProgress = refreshProgress,
                 userIndex = listData.userIndex,
@@ -55,7 +54,6 @@ class ListTopBarViewModel @Inject constructor(
             Success.Files(
                 opType = opType,
                 selected = listData.selected,
-                total = listData.total,
                 isUpdating = listData.isUpdating,
                 refreshProgress = null,
             )
@@ -84,27 +82,24 @@ sealed interface ListTopBarUiState {
     sealed class Success(
         open val opType: OpType,
         open val selected: Long,
-        open val total: Long,
         open val isUpdating: Boolean,
         open val refreshProgress: Float?,
     ) : ListTopBarUiState {
         data class Apps(
             override val opType: OpType,
             override val selected: Long,
-            override val total: Long,
             override val isUpdating: Boolean,
             override val refreshProgress: Float?,
             val userIndex: Int,
             val userList: List<UserInfo>,
             val userMap: Map<Int, Long>,
-        ) : Success(opType, selected, total, isUpdating, refreshProgress)
+        ) : Success(opType, selected, isUpdating, refreshProgress)
 
         data class Files(
             override val opType: OpType,
             override val selected: Long,
-            override val total: Long,
             override val isUpdating: Boolean,
             override val refreshProgress: Float?,
-        ) : Success(opType, selected, total, isUpdating, refreshProgress)
+        ) : Success(opType, selected, isUpdating, refreshProgress)
     }
 }

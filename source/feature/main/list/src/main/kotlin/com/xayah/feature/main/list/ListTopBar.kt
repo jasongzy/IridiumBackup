@@ -82,8 +82,8 @@ internal fun ListTopBar(
                 }
             }
 
-            if (uiState.selected != 0L && uiState.total != 0L) {
-                subtitle = "(${uiState.selected}/${uiState.total})"
+            if (uiState.selected != 0L) {
+                subtitle = stringResource(R.string.selected_count, uiState.selected)
             }
         }
     }

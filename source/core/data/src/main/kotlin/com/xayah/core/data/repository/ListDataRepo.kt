@@ -46,7 +46,6 @@ class ListDataRepo @Inject constructor(
 
     private lateinit var selected: Flow<Long>
     private lateinit var selectionMode: MutableStateFlow<Boolean>
-    private lateinit var total: Flow<Long>
     private lateinit var searchQuery: MutableStateFlow<String>
     private lateinit var showFilterSheet: MutableStateFlow<Boolean>
     private lateinit var sortIndex: MutableStateFlow<Int>
@@ -82,7 +81,6 @@ class ListDataRepo @Inject constructor(
                 selectedAppKeys = MutableStateFlow(emptySet())
                 selectionMode = MutableStateFlow(false)
                 selected = selectedAppKeys.map { it.size.toLong() }
-                total = appsRepo.countApps(opType)
                 searchQuery = MutableStateFlow("")
                 showFilterSheet = MutableStateFlow(false)
                 sortIndex = MutableStateFlow(0)
@@ -127,7 +125,6 @@ class ListDataRepo @Inject constructor(
             Target.Files -> {
                 selectionMode = MutableStateFlow(false)
                 selected = filesRepo.countSelectedFiles(opType)
-                total = filesRepo.countFiles(opType)
                 searchQuery = MutableStateFlow("")
                 showFilterSheet = MutableStateFlow(false)
                 sortIndex = MutableStateFlow(0)
@@ -149,7 +146,6 @@ class ListDataRepo @Inject constructor(
 
     private fun getAppListData(): Flow<ListData.Apps> = combine(
         combine(selected, selectionMode) { selected, selectionMode -> selected to selectionMode },
-        total,
         searchQuery,
         showFilterSheet,
         sortIndex,
@@ -158,25 +154,25 @@ class ListDataRepo @Inject constructor(
         labelFilters,
         showDataItemsSheet,
         filters,
+        appsRepo.scanScope,
         userIndex,
         userList,
         userMap,
-    ) { selection, t, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, uIndex, uList, uMap ->
-        ListData.Apps(selection.first, selection.second, t, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, uIndex, uList, uMap)
+    ) { selection, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, scanScope, uIndex, uList, uMap ->
+        ListData.Apps(selection.first, selection.second, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, scanScope, uIndex, uList, uMap)
     }
 
     private fun getFileListData(): Flow<ListData.Files> = combine(
         selected,
         selectionMode,
-        total,
         searchQuery,
         showFilterSheet,
         sortIndex,
         sortType,
         isUpdating,
         labelFilters,
-    ) { s, mode, t, sQuery, sFSheet, sIndex, sType, iUpdating, lIds ->
-        ListData.Files(s, mode, t, sQuery, sFSheet, sIndex, sType, iUpdating, lIds)
+    ) { s, mode, sQuery, sFSheet, sIndex, sType, iUpdating, lIds ->
+        ListData.Files(s, mode, sQuery, sFSheet, sIndex, sType, iUpdating, lIds)
     }
 
     fun getListData(): Flow<ListData> = listData
@@ -227,7 +223,7 @@ class ListDataRepo @Inject constructor(
         selectedAppKeys.update { (it - candidates) + (candidates - it) }
     }
 
-    suspend fun retainAppSelection(keys: Collection<AppKey>) {
+    fun retainAppSelection(keys: Collection<AppKey>) {
         val candidates = keys.toSet()
         selectedAppKeys.update { it.intersect(candidates) }
     }
@@ -358,7 +354,7 @@ private fun LabelFilterMode.toDashboardLabelFilterMode() = when (this) {
     LabelFilterMode.EXCLUDE -> DashboardLabelFilterMode.EXCLUDE
 }
 
-private fun DashboardFilterPreference.toFilters(cloud: String, backupDir: String) = Filters(
+internal fun DashboardFilterPreference.toFilters(cloud: String, backupDir: String) = Filters(
     cloud = cloud,
     backupDir = backupDir,
     systemApps = systemApps,
@@ -413,7 +409,6 @@ data class Filters(
 sealed class ListData(
     open val selected: Long,
     open val selectionMode: Boolean,
-    open val total: Long,
     open val searchQuery: String,
     open val showFilterSheet: Boolean,
     open val sortIndex: Int,
@@ -424,7 +419,6 @@ sealed class ListData(
     data class Apps(
         override val selected: Long,
         override val selectionMode: Boolean,
-        override val total: Long,
         override val searchQuery: String,
         override val showFilterSheet: Boolean,
         override val sortIndex: Int,
@@ -433,22 +427,22 @@ sealed class ListData(
         override val labelFilters: Map<String, LabelFilterMode>,
         val showDataItemsSheet: Boolean,
         val filters: Filters,
+        val scanScope: AppScanScope,
         val userIndex: Int,
         val userList: List<UserInfo>,
         val userMap: Map<Int, Long>,
-    ) : ListData(selected, selectionMode, total, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
+    ) : ListData(selected, selectionMode, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
 
     data class Files(
         override val selected: Long,
         override val selectionMode: Boolean,
-        override val total: Long,
         override val searchQuery: String,
         override val showFilterSheet: Boolean,
         override val sortIndex: Int,
         override val sortType: SortType,
         override val isUpdating: Boolean,
         override val labelFilters: Map<String, LabelFilterMode>,
-    ) : ListData(selected, selectionMode, total, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
+    ) : ListData(selected, selectionMode, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
 }
 
 enum class LabelFilterMode {

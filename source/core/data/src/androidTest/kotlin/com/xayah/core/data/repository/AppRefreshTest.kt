@@ -11,8 +11,11 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.database.AppDatabase
+import com.xayah.core.datastore.DashboardFilterPreference
 import com.xayah.core.datastore.DbPreferencesDataSource
 import com.xayah.core.datastore.readCustomSUFile
+import com.xayah.core.datastore.readLoadSystemApps
+import com.xayah.core.datastore.saveLoadSystemApps
 import com.xayah.core.datastore.saveCustomSUFile
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
@@ -34,9 +37,10 @@ import org.junit.Test
 
 class AppRefreshTest {
     @Test
-    fun refreshesFreezeChangesWithoutRequiringAnAppUpdate() = runBlocking {
+    fun refreshesEligibleSystemAppsWithoutLosingCachedChoices() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val previousSu = context.readCustomSUFile().first()
+        val previousSystemApps = context.readLoadSystemApps().first()
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         val file = File.createTempFile("installed-apps-", ".tmp", context.cacheDir)
         try {
@@ -48,6 +52,7 @@ class AppRefreshTest {
                 lastUpdateTime = 1234
                 applicationInfo = ApplicationInfo().apply {
                     packageName = "com.example.refresh"
+                    flags = ApplicationInfo.FLAG_SYSTEM
                     nonLocalizedLabel = "Example"
                     uid = 10001
                     enabled = true
@@ -105,7 +110,7 @@ class AppRefreshTest {
             )
             val app = PackageRestoreConfig(
                 packageName = info.packageName, userId = 0, createdAt = 0, compressionType = CompressionType.ZSTD,
-                label = "Example", versionName = "1.0", versionCode = 1, isSystemApp = false, hasKeystore = false,
+                label = "Example", versionName = "1.0", versionCode = 1, isSystemApp = true, hasKeystore = false,
                 permissions = emptyList(), ssaid = "", dataStates = PackageDataStates(),
                 dataStats = PackageDataStats(), displayStats = PackageDataStats(),
             ).toPackageEntity("", "").apply {
@@ -114,12 +119,26 @@ class AppRefreshTest {
                 extraInfo.firstUpdated = true
             }
             database.packageDao().upsert(app)
+            context.saveLoadSystemApps(false)
+            info.applicationInfo!!.enabled = false
+            repository.fastInitialize { _, _, _ -> }
+            assertEquals(0, detailsRead)
+            val systemOnly = DashboardFilterPreference(nonSystemApps = false).toFilters("", "")
+            val scope = repository.scanScope.first()
+            assertEquals(true, scope.matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
+            assertEquals(false, scope.matchesType(systemOnly, info.packageName, 0, isSystem = true, fromBackup = false))
+            val restore = app.copy(id = 0, indexInfo = app.indexInfo.copy(opType = OpType.RESTORE, preserveId = 1234, backupDir = "/backup"))
+            backups.recordLegacyRevision(restore, 1, 64)
+            assertEquals(true, repository.scanScope.first().includes(info.packageName, 0, true))
+            assertEquals(false, repository.scanScope.first().includes(info.packageName, 10, true))
             for ((enabled, reads) in listOf(true to 0, false to 1, false to 1, true to 2, true to 2)) {
                 info.applicationInfo!!.enabled = enabled
                 repository.fastInitialize { _, _, _ -> }
                 assertEquals(enabled, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().extraInfo.enabled)
                 assertEquals(reads, detailsRead)
             }
+            context.saveLoadSystemApps(true)
+            assertEquals(false, repository.scanScope.first().matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
             listAvailable = false
             check(runCatching { repository.fastInitialize { _, _, _ -> } }.isFailure)
             check(runCatching { repository.fullInitialize { _, _, _ -> } }.isFailure)
@@ -127,6 +146,7 @@ class AppRefreshTest {
             repository.fullUpdate { _, _, _ -> }
             assertEquals(info.packageName, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().packageName)
         } finally {
+            context.saveLoadSystemApps(previousSystemApps)
             context.saveCustomSUFile(previousSu)
             database.close()
             file.delete()

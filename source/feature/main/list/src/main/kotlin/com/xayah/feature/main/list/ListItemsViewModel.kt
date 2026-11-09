@@ -92,6 +92,8 @@ class ListItemsViewModel @Inject constructor(
             }
             val installedKeys = uniqueInstalledApps.mapTo(mutableSetOf()) { it.packageName to it.userId }
             val selectedUserId = listData.userList.getOrNull(listData.userIndex)?.id
+            val includedLabels = listData.labelFilters.filterValues { it == LabelFilterMode.INCLUDE }.keys
+            val excludedLabels = listData.labelFilters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
             val archivedItems = overviews.asSequence()
                 .filter { !it.app.isInstalled }
                 .filter { overview ->
@@ -103,13 +105,11 @@ class ListItemsViewModel @Inject constructor(
                 .filter { it.app.packageName to it.app.userId !in installedKeys }
                 .filter { listData.filters.notInstalledApps }
                 .filter { overview ->
-                    if (overview.app.isSystem) listData.filters.systemApps else listData.filters.nonSystemApps
+                    listData.scanScope.matchesType(listData.filters, overview.app.packageName, overview.app.userId, overview.app.isSystem, overview.revisionCount > 0)
                 }
                 .filter { overview ->
                     val appLabels = labelsByApp[overview.app.packageName to overview.app.userId].orEmpty().mapTo(mutableSetOf()) { it.label }
-                    val included = listData.labelFilters.filterValues { it == LabelFilterMode.INCLUDE }.keys
-                    val excluded = listData.labelFilters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
-                    listData.filters.matchesIncludedLabels(appLabels, included) && appLabels.none(excluded::contains)
+                    listData.filters.matchesIncludedLabels(appLabels, includedLabels) && appLabels.none(excludedLabels::contains)
                 }
                 .map { overview ->
                     AppListItem(
@@ -145,7 +145,6 @@ class ListItemsViewModel @Inject constructor(
                 .toList()
 
             val filteredItems = (installedItems + archivedItems).asSequence()
-                .filter(appSearchPredicate(listData.searchQuery))
                 .filter { if (it.app.isFrozen) listData.filters.frozenApps else listData.filters.unfrozenApps }
                 .filter { listData.filters.matchesXposed(it.app.isXposedModule) }
                 .filter { listData.filters.hasBackups || it.revisionCount == 0 }
@@ -165,12 +164,12 @@ class ListItemsViewModel @Inject constructor(
                 }
                 .toList()
 
-            if (listData.searchQuery.isEmpty()) {
+            if (selectedKeys.isNotEmpty()) {
                 listDataRepo.retainAppSelection(filteredItems.map { it.app.key })
             }
             Success.Apps(
                 opType = opType,
-                appList = filteredItems.sorted(listData),
+                appList = filteredItems.filter(appSearchPredicate(listData.searchQuery)).sorted(listData),
                 showInstallTime = listData.sortIndex == 1,
                 showDataSize = listData.sortIndex == 2,
                 showUpdateTime = listData.sortIndex == 3,

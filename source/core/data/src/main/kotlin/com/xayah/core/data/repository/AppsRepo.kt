@@ -17,6 +17,7 @@ import com.xayah.core.datastore.readCustomSUFile
 import com.xayah.core.datastore.readLoadSystemApps
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.App
+import com.xayah.core.model.AppKey
 import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
@@ -51,6 +52,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -59,6 +63,16 @@ import javax.inject.Inject
 
 private const val APP_INIT_BATCH_SIZE = 50
 private val appInitializationMutex = Mutex()
+
+data class AppScanScope(val loadSystemApps: Boolean, private val backedUp: Set<AppKey> = emptySet()) {
+    fun includes(packageName: String, userId: Int, isSystem: Boolean) =
+        loadSystemApps || !isSystem || AppKey(packageName, userId) in backedUp
+
+    fun matchesType(filters: Filters, packageName: String, userId: Int, isSystem: Boolean, fromBackup: Boolean): Boolean =
+        if (loadSystemApps) {
+            if (isSystem) filters.systemApps else filters.nonSystemApps
+        } else fromBackup || includes(packageName, userId, isSystem)
+}
 
 private data class FastInitializationBatch(
     val userId: Int,
@@ -117,27 +131,23 @@ class AppsRepo @Inject constructor(
         }
     ) { lData, pSet, lRefs, filters, apps ->
         val data = lData.castTo<ListData.Apps>()
+        val userId = data.userList.getOrNull(data.userIndex)?.id
         val labelsByApp = lRefs.groupBy { Triple(it.packageName, it.userId, it.preserveId) }
             .mapValues { (_, refs) -> refs.mapTo(mutableSetOf()) { it.label } }
         val included = filters.filterValues { it == LabelFilterMode.INCLUDE }.keys
         val excluded = filters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
         apps.asSequence()
             .filter { app ->
-                if (app.isSystemApp) data.filters.systemApps else data.filters.nonSystemApps
+                data.scanScope.matchesType(data.filters, app.packageName, app.userId, app.isSystemApp, opType == OpType.RESTORE)
             }
             .filter { app ->
                 if (app.extraInfo.enabled) data.filters.unfrozenApps else data.filters.frozenApps
             }
             .filter { app -> data.filters.matchesXposed(app.packageInfo.isXposedModule) }
-            .filter {
-                if (opType == OpType.BACKUP) data.filters.installedApps
-                else packageRepo.getInstalledPredicate(value = data.filters.installedApps, pkgUserSet = pSet)(it)
+            .filter { app ->
+                if (opType == OpType.BACKUP || app.pkgUserKey in pSet) data.filters.installedApps else data.filters.notInstalledApps
             }
-            .filter {
-                if (opType == OpType.BACKUP) true
-                else packageRepo.getNotInstalledPredicate(value = data.filters.notInstalledApps, pkgUserSet = pSet)(it)
-            }
-            .filter(packageRepo.getUserIdPredicateNew(userId = data.userList.getOrNull(data.userIndex)?.id))
+            .filter { it.userId == userId }
             .filter { app ->
                 val appLabels = labelsByApp[Triple(app.packageName, app.userId, app.preserveId)].orEmpty()
                 data.filters.matchesIncludedLabels(appLabels, included) && appLabels.none(excluded::contains)
@@ -146,38 +156,17 @@ class AppsRepo @Inject constructor(
             .map(PackageEntity::asExternalModel)
     }.flowOn(defaultDispatcher)
 
-    fun countApps(opType: OpType) = appsDao.countPackagesFlow(opType = opType, blocked = false)
-    fun countSelectedApps(opType: OpType) = appsDao.countActivatedPackagesFlow(opType = opType, blocked = false)
 
-    suspend fun getLoadSystemApps() = context.readLoadSystemApps().first()
-
-    suspend fun selectApp(id: Long, selected: Boolean) {
-        appsDao.activateById(id, selected)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    internal val scanScope = context.readLoadSystemApps().distinctUntilChanged().flatMapLatest { enabled ->
+        if (enabled) flowOf(AppScanScope(true))
+        else appBackupRepository.observeBackedUpApps().map { AppScanScope(false, it.toSet()) }
     }
 
-    suspend fun replaceSelection(opType: OpType, ids: Collection<Long>) {
-        appsDao.clearActivated(opType)
-        appsDao.activateByIds(ids.toList(), true)
-    }
+    suspend fun replaceSelection(opType: OpType, ids: Collection<Long>) = appsDao.replaceSelection(opType, ids)
 
     suspend fun selectDataItems(id: Long, apk: DataState, user: DataState, userDe: DataState, data: DataState, obb: DataState, media: DataState) {
         appsDao.selectDataItemsById(id, apk.name, user.name, userDe.name, data.name, obb.name, media.name)
-    }
-
-    suspend fun selectAll(ids: List<Long>) {
-        appsDao.activateByIds(ids, true)
-    }
-
-    suspend fun unselectAll(ids: List<Long>) {
-        appsDao.activateByIds(ids, false)
-    }
-
-    suspend fun reverseAll(ids: List<Long>) {
-        appsDao.reverseActivatedByIds(ids)
-    }
-
-    suspend fun blockSelected(ids: List<Long>) {
-        appsDao.blockByIds(ids)
     }
 
     suspend fun blockByIds(ids: List<Long>) {
@@ -201,7 +190,7 @@ class AppsRepo @Inject constructor(
      * Faster than [fastInitialize] if there are too many newly installed apps.
      */
     suspend fun fullInitialize(onInit: suspend (cur: Int, max: Int, content: String) -> Unit) = appInitializationMutex.withLock {
-        val loadSystemApps = context.readLoadSystemApps().first()
+        val scope = scanScope.first()
         val settings = settingsDataRepo.settingsData.first()
         val pm = context.packageManager
         val installedPackagesByUser = rootService.getUsers().associate { userInfo ->
@@ -221,7 +210,7 @@ class AppsRepo @Inject constructor(
                 onInit(current++, itemCount, info.packageName)
                 if (storedSet.contains(info.packageName).not()) {
                     val isSystemApp = ((info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM) != 0
-                    if (loadSystemApps || isSystemApp.not()) {
+                    if (scope.includes(info.packageName, userId, isSystemApp)) {
                         apps.add(initializeApp(settings, pm, userId, info))
                         if (apps.size == APP_INIT_BATCH_SIZE) {
                             appsDao.upsert(apps.toList())
@@ -237,7 +226,7 @@ class AppsRepo @Inject constructor(
     }
 
     suspend fun fastInitialize(onInit: suspend (cur: Int, max: Int, content: String) -> Unit) = appInitializationMutex.withLock {
-        val loadSystemApps = context.readLoadSystemApps().first()
+        val scope = scanScope.first()
         val settings = settingsDataRepo.settingsData.first()
         val pm = context.packageManager
         val batches = rootService.getUsers().map { userInfo ->
@@ -245,8 +234,12 @@ class AppsRepo @Inject constructor(
             val installedPackages = getInstalledPackages(userId).associateBy { it.packageName }
             val storedApps = appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, userId)
             val storedPackages = storedApps.associateBy { it.packageName }
+            val scanned = installedPackages.filterValues { info ->
+                val isSystem = ((info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM) != 0
+                scope.includes(info.packageName, userId, isSystem)
+            }
             val changedApps = storedApps.filter { app ->
-                val info = installedPackages[app.packageName] ?: return@filter false
+                val info = scanned[app.packageName] ?: return@filter false
                 val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     info.longVersionCode
                 } else {
@@ -259,7 +252,7 @@ class AppsRepo @Inject constructor(
             FastInitializationBatch(
                 userId = userId,
                 outdatedPackages = storedPackages.keys.subtract(installedPackages.keys),
-                missingPackages = installedPackages.filterKeys { it !in storedPackages }.values.toList(),
+                missingPackages = scanned.filterKeys { it !in storedPackages }.values.toList(),
                 changedApps = changedApps,
             )
         }
@@ -270,13 +263,10 @@ class AppsRepo @Inject constructor(
             val apps = mutableListOf<PackageEntity>()
             batch.missingPackages.forEach { info ->
                 onInit(current++, itemCount, info.packageName)
-                val isSystemApp = ((info.applicationInfo?.flags ?: 0) and ApplicationInfo.FLAG_SYSTEM) != 0
-                if (loadSystemApps || isSystemApp.not()) {
-                    apps.add(initializeApp(settings, pm, batch.userId, info))
-                    if (apps.size == APP_INIT_BATCH_SIZE) {
-                        appsDao.upsert(apps.toList())
-                        apps.clear()
-                    }
+                apps.add(initializeApp(settings, pm, batch.userId, info))
+                if (apps.size == APP_INIT_BATCH_SIZE) {
+                    appsDao.upsert(apps.toList())
+                    apps.clear()
                 }
             }
             if (apps.isNotEmpty()) appsDao.upsert(apps)
@@ -326,7 +316,7 @@ class AppsRepo @Inject constructor(
                 blocked = false,
                 activated = false,
                 firstUpdated = false,
-                enabled = true,
+                enabled = info.applicationInfo?.enabled ?: false,
             ),
             dataStates = PackageDataStates(),
             storageStats = PackageStorageStats(),
@@ -337,8 +327,9 @@ class AppsRepo @Inject constructor(
 
     suspend fun fullUpdate(onUpdate: suspend (cur: Int, max: Int, content: String) -> Unit) {
         val pm = context.packageManager
+        val scope = scanScope.first()
         val appsByUser = rootService.getUsers().associate { userInfo ->
-            userInfo.id to appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, userInfo.id)
+            userInfo.id to appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, userInfo.id).filter { scope.includes(it.packageName, it.userId, it.isSystemApp) }
         }
         val itemCount = appsByUser.values.sumOf { it.size }
         var current = 0
@@ -360,7 +351,9 @@ class AppsRepo @Inject constructor(
 
     suspend fun fastUpdate(onUpdate: suspend (cur: Int, max: Int, content: String) -> Unit) {
         val pm = context.packageManager
+        val scope = scanScope.first()
         val apps = appsDao.queryFirstUpdatedApps(opType = OpType.BACKUP, firstUpdated = false)
+            .filter { scope.includes(it.packageName, it.userId, it.isSystemApp) }
         val updateList = mutableListOf<PackageUpdateEntity>()
         apps.forEachIndexed { index, pkg ->
             onUpdate(index, apps.size, pkg.packageName)
@@ -376,8 +369,10 @@ class AppsRepo @Inject constructor(
     }
 
     suspend fun updateLocalAppSizes(onUpdate: suspend (cur: Int, max: Int, content: String) -> Unit) {
+        val scope = scanScope.first()
         val installedApps = appsDao.queryUserIds(OpType.BACKUP)
             .flatMap { appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, it) }
+            .filter { scope.includes(it.packageName, it.userId, it.isSystemApp) }
         installedApps.forEachIndexed { index, app ->
             onUpdate(index, installedApps.size, app.packageName)
             calculateLocalAppSize(app)

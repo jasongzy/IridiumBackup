@@ -20,22 +20,50 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PackageRefreshTest {
+    private fun app() = PackageEntity(
+        id = 1,
+        indexInfo = PackageIndexInfo(OpType.BACKUP, "com.example.app", 0, CompressionType.TAR, 0, "", ""),
+        packageInfo = PackageInfo("Example", "1.0", 1, 0, 10, 20),
+        extraInfo = PackageExtraInfo(10001, false, emptyList(), "", 0, false, false, false, true),
+        dataStates = PackageDataStates(),
+        storageStats = PackageStorageStats(),
+        dataStats = PackageDataStats(),
+        displayStats = PackageDataStats(),
+    )
+
+    @Test
+    fun failedBatchKeepsThePreviousSelection() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val dao = database.packageDao()
+            val first = app()
+            val second = first.copy(id = 2, indexInfo = first.indexInfo.copy(packageName = "second.app"))
+            val previous = first.copy(id = 3, indexInfo = first.indexInfo.copy(packageName = "previous.app"))
+            dao.upsert(listOf(first, second, previous))
+            dao.activateById(previous.id, true)
+            val ids = listOf(first.id) + (1..SQLITE_BIND_LIMIT).map { -it.toLong() } + second.id
+            val sql = database.openHelper.writableDatabase
+            sql.execSQL("CREATE TRIGGER fail_selection BEFORE UPDATE ON PackageEntity WHEN NEW.id = 2 AND NEW.extraInfo_activated = 1 BEGIN SELECT RAISE(ABORT, 'selection failed'); END")
+            check(runCatching { dao.replaceSelection(OpType.BACKUP, ids) }.isFailure)
+            assertEquals(listOf(previous.id), dao.queryActivated(OpType.BACKUP).map { it.id })
+            sql.execSQL("DROP TRIGGER fail_selection")
+            dao.replaceSelection(OpType.BACKUP, ids)
+            assertEquals(setOf(first.id, second.id), dao.queryActivated(OpType.BACKUP).map { it.id }.toSet())
+            dao.blockByIds(ids)
+            assertEquals(setOf(first.id, second.id), dao.queryPackages(OpType.BACKUP, true).map { it.id }.toSet())
+        } finally {
+            database.close()
+        }
+    }
+
     @Test
     fun refreshPreservesCurrentChoicesAndDoesNotReinsertRemovedApps() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val dao = database.packageDao()
-            val app = PackageEntity(
-                id = 1,
-                indexInfo = PackageIndexInfo(OpType.BACKUP, "com.example.app", 0, CompressionType.TAR, 0, "", ""),
-                packageInfo = PackageInfo("Example", "1.0", 1, 0, 10, 20),
-                extraInfo = PackageExtraInfo(10001, false, emptyList(), "", 0, false, false, false, true),
-                dataStates = PackageDataStates(),
-                storageStats = PackageStorageStats(),
-                dataStats = PackageDataStats(),
-                displayStats = PackageDataStats(),
-            )
+            val app = app()
             dao.upsert(app)
             val refresh = PackageUpdateEntity(
                 id = app.id,

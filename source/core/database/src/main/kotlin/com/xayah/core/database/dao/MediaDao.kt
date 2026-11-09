@@ -6,6 +6,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
+import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.database.MediaEntity
@@ -131,8 +132,10 @@ interface MediaDao {
     @Query("DELETE FROM MediaEntity WHERE id = :id")
     suspend fun delete(id: Long)
 
-    @Query("DELETE FROM MediaEntity WHERE id in (:ids)")
-    suspend fun delete(ids: List<Long>)
+    @Transaction
+    suspend fun delete(ids: List<Long>) {
+        ids.chunked(SQLITE_BIND_LIMIT).forEach { deleteByIds(it) }
+    }
 
     @Query(
         "SELECT * FROM MediaEntity WHERE id = :id"
@@ -153,12 +156,6 @@ interface MediaDao {
 
     @Query(
         "SELECT COUNT(*) FROM MediaEntity WHERE" +
-                " indexInfo_opType = :opType AND extraInfo_existed = :existed AND extraInfo_blocked = :blocked"
-    )
-    fun countFilesFlow(opType: OpType, existed: Boolean, blocked: Boolean): Flow<Long>
-
-    @Query(
-        "SELECT COUNT(*) FROM MediaEntity WHERE" +
                 " indexInfo_opType = :opType AND extraInfo_existed = :existed AND extraInfo_blocked = :blocked AND extraInfo_activated = 1"
     )
     fun countActivatedFilesFlow(opType: OpType, existed: Boolean, blocked: Boolean): Flow<Long>
@@ -166,14 +163,29 @@ interface MediaDao {
     @Query("UPDATE MediaEntity SET extraInfo_activated = :activated WHERE id = :id")
     suspend fun activateById(id: Long, activated: Boolean)
 
+    @Transaction
+    suspend fun activateByIds(ids: List<Long>, activated: Boolean) {
+        ids.chunked(SQLITE_BIND_LIMIT - 1).forEach { activateChunk(it, activated) }
+    }
+
     @Query("UPDATE MediaEntity SET extraInfo_activated = :activated WHERE id in (:ids)")
-    suspend fun activateByIds(ids: List<Long>, activated: Boolean)
+    suspend fun activateChunk(ids: List<Long>, activated: Boolean)
+
+    @Transaction
+    suspend fun reverseActivatedByIds(ids: List<Long>) {
+        ids.distinct().chunked(SQLITE_BIND_LIMIT).forEach { reverseChunk(it) }
+    }
 
     @Query("UPDATE MediaEntity SET extraInfo_activated = NOT extraInfo_activated WHERE id in (:ids)")
-    suspend fun reverseActivatedByIds(ids: List<Long>)
+    suspend fun reverseChunk(ids: List<Long>)
+
+    @Transaction
+    suspend fun blockByIds(ids: List<Long>) {
+        ids.chunked(SQLITE_BIND_LIMIT).forEach { blockChunk(it) }
+    }
 
     @Query("UPDATE MediaEntity SET extraInfo_activated = 0, extraInfo_blocked = 1 WHERE id in (:ids)")
-    suspend fun blockByIds(ids: List<Long>)
+    suspend fun blockChunk(ids: List<Long>)
 
     @Query("SELECT * FROM MediaEntity WHERE id = :id")
     suspend fun queryById(id: Long): MediaEntity?

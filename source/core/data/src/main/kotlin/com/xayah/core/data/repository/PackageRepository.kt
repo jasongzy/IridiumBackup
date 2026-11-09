@@ -84,22 +84,6 @@ class PackageRepository @Inject constructor(
         p.packageInfo.label.lowercase().contains(key.lowercase()) || p.packageName.lowercase().contains(key.lowercase())
     }
 
-    fun getShowSystemAppsPredicate(value: Boolean): (PackageEntity) -> Boolean = { p ->
-        value || p.isSystemApp.not()
-    }
-
-    fun getInstalledPredicate(value: Boolean, pkgUserSet: Set<String>): (PackageEntity) -> Boolean = { p ->
-        value || p.pkgUserKey !in pkgUserSet
-    }
-
-    fun getNotInstalledPredicate(value: Boolean, pkgUserSet: Set<String>): (PackageEntity) -> Boolean = { p ->
-        value || p.pkgUserKey in pkgUserSet
-    }
-
-    fun getUserIdPredicateNew(userId: Int?): (PackageEntity) -> Boolean = { p ->
-        runCatching { p.userId == userId }.getOrDefault(false)
-    }
-
     private fun sortByInstallTimeNew(type: SortType): Comparator<PackageEntity> = when (type) {
         SortType.ASCENDING -> {
             compareBy { p -> p.packageInfo.firstInstallTime }

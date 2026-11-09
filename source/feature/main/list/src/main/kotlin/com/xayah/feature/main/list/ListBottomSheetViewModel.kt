@@ -60,6 +60,7 @@ class ListBottomSheetViewModel @Inject constructor(
                 labelFilters = listData.labelFilters,
                 showDataItemsSheet = listData.showDataItemsSheet,
                 filters = listData.filters,
+                loadSystemApps = listData.scanScope.loadSystemApps,
                 appList = aList,
                 clouds = clouds
             )
@@ -164,6 +165,7 @@ sealed interface ListBottomSheetUiState {
             override val labelFilters: Map<String, LabelFilterMode>,
             val showDataItemsSheet: Boolean,
             val filters: Filters,
+            val loadSystemApps: Boolean,
             val appList: List<App>,
             val clouds: List<CloudEntity>,
         ) : Success(opType, showFilterSheet, labelEntities, labelFilters)

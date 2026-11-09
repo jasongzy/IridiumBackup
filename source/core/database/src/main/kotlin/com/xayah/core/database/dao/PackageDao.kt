@@ -137,14 +137,22 @@ interface PackageDao {
     @Query("UPDATE PackageEntity SET extraInfo_activated = :activated WHERE id = :id")
     suspend fun activateById(id: Long, activated: Boolean)
 
-    @Query("UPDATE PackageEntity SET extraInfo_activated = :activated WHERE id in (:ids)")
-    suspend fun activateByIds(ids: List<Long>, activated: Boolean)
+    @Transaction
+    suspend fun replaceSelection(opType: OpType, ids: Collection<Long>) {
+        clearActivated(opType)
+        ids.chunked(SQLITE_BIND_LIMIT - 1).forEach { activateChunk(opType, it) }
+    }
 
-    @Query("UPDATE PackageEntity SET extraInfo_activated = NOT extraInfo_activated WHERE id in (:ids)")
-    suspend fun reverseActivatedByIds(ids: List<Long>)
+    @Query("UPDATE PackageEntity SET extraInfo_activated = 1 WHERE indexInfo_opType = :opType AND id in (:ids)")
+    suspend fun activateChunk(opType: OpType, ids: List<Long>)
+
+    @Transaction
+    suspend fun blockByIds(ids: List<Long>) {
+        ids.chunked(SQLITE_BIND_LIMIT).forEach { blockChunk(it) }
+    }
 
     @Query("UPDATE PackageEntity SET extraInfo_activated = 0, extraInfo_blocked = 1 WHERE id in (:ids)")
-    suspend fun blockByIds(ids: List<Long>)
+    suspend fun blockChunk(ids: List<Long>)
 
     @Query("DELETE FROM PackageEntity WHERE id in (:ids)")
     suspend fun deleteByIds(ids: List<Long>)
@@ -191,18 +199,6 @@ interface PackageDao {
                 " LIMIT 1"
     )
     fun queryFlow(packageName: String, opType: OpType, userId: Int, preserveId: Long): Flow<PackageEntity?>
-
-    @Query(
-        "SELECT COUNT(*) FROM PackageEntity WHERE" +
-                " indexInfo_opType = :opType AND extraInfo_blocked = :blocked"
-    )
-    fun countPackagesFlow(opType: OpType, blocked: Boolean): Flow<Long>
-
-    @Query(
-        "SELECT COUNT(*) FROM PackageEntity WHERE" +
-                " indexInfo_opType = :opType AND extraInfo_blocked = :blocked AND extraInfo_activated = 1"
-    )
-    fun countActivatedPackagesFlow(opType: OpType, blocked: Boolean): Flow<Long>
 
     @Query(
         "SELECT indexInfo_userId, COUNT(*) as iCount FROM PackageEntity WHERE" +

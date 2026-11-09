@@ -134,26 +134,24 @@ internal fun ListActions(
                             pickingDirectory = true
                         }
                     }
-                } else when (target) {
-                    Target.Apps -> {
+                } else when (uiState) {
+                    is ListActionsUiState.Success.Apps -> {
                         AppsListActions(
-                            enabled = true,
+                            enabled = uiState.appList.any { it.selected },
                             opType = uiState.opType,
                             checkListExpanded = { moreExpanded = false },
                             onBlockSelected = viewModel::blockSelected,
                             onSelectDataItems = viewModel::showDataItemsSheet,
                             onDeleteSelected = viewModel::deleteSelected,
                         )
-                        if (uiState is ListActionsUiState.Success.Apps) {
-                            BatchLabelsItem {
-                                moreExpanded = false
-                                labelsExpanded = true
-                            }
+                        BatchLabelsItem(enabled = uiState.selected > 0) {
+                            moreExpanded = false
+                            labelsExpanded = true
                         }
                     }
 
-                    Target.Files -> FilesListActions(
-                        enabled = true,
+                    is ListActionsUiState.Success.Files -> FilesListActions(
+                        enabled = uiState.fileList.any { it.selected },
                         opType = uiState.opType,
                         checkListExpanded = { moreExpanded = false },
                         onBlockSelected = viewModel::blockSelected,
@@ -408,10 +406,11 @@ private fun AddItem(enabled: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BatchLabelsItem(onClick: () -> Unit) {
+private fun BatchLabelsItem(enabled: Boolean, onClick: () -> Unit) {
     DropdownMenuItem(
         text = stringResource(R.string.edit_labels),
         leadingIcon = Icons.Rounded.Bookmarks,
+        enabled = enabled,
         onClick = onClick,
     )
 }

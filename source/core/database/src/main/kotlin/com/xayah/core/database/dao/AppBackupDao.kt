@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppBackupDao {
+    @Query("SELECT DISTINCT packageName, userId FROM backup_revisions")
+    fun observeBackedUpApps(): Flow<List<AppKey>>
+
     @Transaction
     suspend fun replaceInstalledApps(userId: Int, apps: List<BackupAppEntity>) {
         markUserAppsUninstalled(userId)

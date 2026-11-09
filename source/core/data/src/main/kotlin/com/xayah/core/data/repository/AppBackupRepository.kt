@@ -107,6 +107,8 @@ class AppBackupRepository @Inject constructor(
         val removable: Boolean,
     )
 
+    internal fun observeBackedUpApps() = dao.observeBackedUpApps()
+
     fun observeApps(): Flow<List<AppBackupOverview>> = dao.observeApps()
 
     fun observeApp(packageName: String, userId: Int): Flow<BackupAppEntity?> =
@@ -633,9 +635,8 @@ class AppBackupRepository @Inject constructor(
 
     private suspend fun selectRestoreItems(items: List<PackageDataStatesEntity>) {
         val packages = database.packageDao()
-        packages.clearActivated(OpType.RESTORE)
         packages.updatePackageDataStates(items)
-        items.map { it.id }.chunked(SQLITE_BIND_LIMIT - 1).forEach { packages.activateByIds(it, true) }
+        packages.replaceSelection(OpType.RESTORE, items.map { it.id })
     }
 
     private suspend fun findLegacyRevision(revision: BackupRevisionEntity): PackageEntity? {

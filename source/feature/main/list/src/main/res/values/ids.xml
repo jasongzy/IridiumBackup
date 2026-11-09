@@ -1,4 +1,5 @@
 <resources>
+    <item name="selected_count" type="string" />
     <item name="loading" type="string" />
     <item name="select_apps" type="string" />
     <item name="backed_up_apps" type="string" />

@@ -78,7 +78,6 @@ class FilesRepo @Inject constructor(
             .map(MediaEntity::asExternalModel)
     }.flowOn(defaultDispatcher)
 
-    fun countFiles(opType: OpType) = filesDao.countFilesFlow(opType = opType, existed = true, blocked = false)
     fun countSelectedFiles(opType: OpType) = filesDao.countActivatedFilesFlow(opType = opType, existed = true, blocked = false)
 
     suspend fun selectFile(id: Long, selected: Boolean) {
@@ -95,10 +94,6 @@ class FilesRepo @Inject constructor(
 
     suspend fun reverseAll(ids: List<Long>) {
         filesDao.reverseActivatedByIds(ids)
-    }
-
-    suspend fun blockSelected(ids: List<Long>) {
-        filesDao.blockByIds(ids)
     }
 
     suspend fun deleteSelected(ids: List<Long>) =
