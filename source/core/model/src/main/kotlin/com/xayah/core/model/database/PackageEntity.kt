@@ -15,6 +15,8 @@ import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
+import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
+import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
 import com.xayah.core.model.util.formatSize
 import kotlinx.serialization.Serializable
 
@@ -227,16 +229,7 @@ data class PackageEntity(
     }
 
     val selectionFlag: Int
-        get() {
-            var flag = 0
-            if (apkSelected) flag = flag or 1
-            if (userSelected) flag = flag or 2
-            if (userDeSelected) flag = flag or 4
-            if (dataSelected) flag = flag or 8
-            if (obbSelected) flag = flag or 16
-            if (mediaSelected) flag = flag or 32
-            return flag
-        }
+        get() = DataType.packageArchives.sumOf { if (it.getSelected(dataStates)) it.archiveFlag else 0 }
 
     val dataSelectedCount: Int
         get() = run {
@@ -283,6 +276,14 @@ data class PackageEntity(
 
     val archivesRelativeDir: String
         get() = "${packageName}/user_${userId}${if (preserveId == 0L) "" else "@$preserveId"}"
+
+    fun withRestoreState(stored: PackageEntity?): PackageEntity {
+        if (stored == null) return this
+        val states = if (stored.extraInfo.activated) DataType.packageArchives.fold(dataStates) { result, type ->
+            type.setSelected(result, type.getSelected(dataStates) && type.getSelected(stored.dataStates))
+        } else dataStates
+        return copy(id = stored.id, extraInfo = extraInfo.copy(activated = stored.extraInfo.activated, blocked = stored.extraInfo.blocked), dataStates = states)
+    }
 
     fun canReuseApkFrom(previous: PackageEntity): Boolean =
         apkSelected && previous.apkSelected && packageName == previous.packageName && userId == previous.userId &&

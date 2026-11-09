@@ -14,13 +14,13 @@ enum class CompressionType(val type: String, val suffix: String, val compressPar
     companion object
 }
 
-enum class DataType(val type: String) {
-    PACKAGE_APK("apk"),
-    PACKAGE_USER("user"),
-    PACKAGE_USER_DE("user_de"),
-    PACKAGE_DATA("data"),
-    PACKAGE_OBB("obb"),
-    PACKAGE_MEDIA("media"),            // /data/media/$user_id/Android/media
+enum class DataType(val type: String, val archiveFlag: Int = 0) {
+    PACKAGE_APK("apk", 1),
+    PACKAGE_USER("user", 2),
+    PACKAGE_USER_DE("user_de", 4),
+    PACKAGE_DATA("data", 8),
+    PACKAGE_OBB("obb", 16),
+    PACKAGE_MEDIA("media", 32),            // /data/media/$user_id/Android/media
     PACKAGE_CONFIG("config"),          // Json file for reloading
     MEDIA_MEDIA("media"),
     MEDIA_CONFIG("config");

@@ -30,6 +30,7 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +60,7 @@ fun PageBackupVerification(
     viewModel: VerificationViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val validCount = remember(uiState.results) { uiState.results.count { it.status == BackupVerificationStatus.VALID } }
     val navController = LocalNavController.current!!
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var showCleanupConfirmation by rememberSaveable { mutableStateOf(false) }
@@ -81,14 +83,14 @@ fun PageBackupVerification(
         Column(modifier = Modifier.fillMaxSize()) {
             LazyColumn(modifier = Modifier.weight(1f)) {
                 item {
-                    VerificationSummary(uiState)
+                    VerificationSummary(uiState, validCount)
                 }
 
                 if (uiState.isComplete && uiState.results.isEmpty()) {
                     item {
                         EmptyMessage(stringResource(R.string.no_backups_to_verify))
                     }
-                } else if (uiState.isComplete && uiState.failedBackups.isEmpty()) {
+                } else if (uiState.isComplete && validCount == uiState.results.size) {
                     item {
                         EmptyMessage(stringResource(R.string.all_backups_verified))
                     }
@@ -190,7 +192,7 @@ fun PageBackupVerification(
 }
 
 @Composable
-private fun VerificationSummary(uiState: VerificationUiState) {
+private fun VerificationSummary(uiState: VerificationUiState, validCount: Int) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -218,10 +220,10 @@ private fun VerificationSummary(uiState: VerificationUiState) {
             uiState.isComplete -> {
                 LinearProgressIndicator(progress = 1f, modifier = Modifier.fillMaxWidth())
                 Text(
-                    text = if (uiState.failedBackups.isEmpty()) {
-                        stringResource(R.string.verification_valid_count, uiState.validCount)
+                    text = if (validCount == uiState.results.size) {
+                        stringResource(R.string.verification_valid_count, validCount)
                     } else {
-                        stringResource(R.string.verification_summary, uiState.validCount, uiState.failedBackups.size)
+                        stringResource(R.string.verification_summary, validCount, uiState.results.size - validCount)
                     },
                     style = MaterialTheme.typography.titleMedium,
                 )

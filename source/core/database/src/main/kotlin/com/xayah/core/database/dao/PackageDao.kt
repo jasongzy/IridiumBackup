@@ -19,8 +19,9 @@ import kotlinx.coroutines.flow.Flow
 interface PackageDao {
     @Transaction
     suspend fun replaceLocalRestoreIndex(backupDir: String, items: List<PackageEntity>) {
+        val stored = queryPackages(OpType.RESTORE, "", backupDir).associateBy { it.archivesRelativeDir to it.indexInfo.compressionType }
         delete(backupDir, OpType.RESTORE, cloud = "")
-        upsert(items)
+        upsert(items.map { it.withRestoreState(stored[it.archivesRelativeDir to it.indexInfo.compressionType]) })
     }
 
     @Transaction

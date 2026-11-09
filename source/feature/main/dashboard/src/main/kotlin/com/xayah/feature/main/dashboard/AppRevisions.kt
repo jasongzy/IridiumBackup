@@ -593,7 +593,7 @@ private fun RevisionDetailsDialog(
                     }
                 }
                 androidx.compose.material3.TextButton(
-                    enabled = revision.engine == BackupEngine.LEGACY,
+                    enabled = revision.engine == BackupEngine.LEGACY && !isVerifying,
                     onClick = onRestore,
                 ) {
                     Text(stringResource(R.string.restore))

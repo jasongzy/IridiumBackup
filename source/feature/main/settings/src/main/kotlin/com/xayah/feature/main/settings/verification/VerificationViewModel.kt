@@ -28,12 +28,6 @@ data class VerificationUiState(
     val cleanupFailedCount: Int = 0,
 )
 
-val VerificationUiState.validCount: Int
-    get() = results.count { it.status == BackupVerificationStatus.VALID }
-
-val VerificationUiState.failedBackups: List<AppBackupRepository.VerificationResult>
-    get() = results.filter { it.status != BackupVerificationStatus.VALID }
-
 @HiltViewModel
 class VerificationViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -53,23 +47,23 @@ class VerificationViewModel @Inject constructor(
         _uiState.value = VerificationUiState(isRunning = true, total = _uiState.value.total)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val report = repository.verifyAllLocal { completed, total ->
+                val results = repository.verifyAllLocal { completed, total ->
                     _uiState.value = _uiState.value.copy(completed = completed, total = total)
                 }
                 _uiState.value = _uiState.value.copy(
                     isComplete = true,
-                    results = report.results,
+                    results = results,
                 )
+                val validCount = results.count { it.status == BackupVerificationStatus.VALID }
                 withContext(Dispatchers.Main.immediate) {
                     Toast.makeText(
                         context,
-                        if (report.results.all { it.status == BackupVerificationStatus.VALID }) {
-                            context.getString(R.string.verification_valid_count, report.results.size)
+                        if (validCount == results.size) {
+                            context.getString(R.string.verification_valid_count, results.size)
                         } else {
                             context.getString(
                                 R.string.verification_finished,
-                                report.results.count { it.status == BackupVerificationStatus.VALID },
-                                report.results.count { it.status != BackupVerificationStatus.VALID },
+                                validCount, results.size - validCount,
                             )
                         },
                         Toast.LENGTH_SHORT,

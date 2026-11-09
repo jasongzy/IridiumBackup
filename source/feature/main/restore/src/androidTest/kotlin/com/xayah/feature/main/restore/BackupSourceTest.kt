@@ -6,6 +6,7 @@ import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.datastore.readBackupSavePath
 import com.xayah.core.datastore.saveBackupSavePath
+import com.xayah.core.model.DataState
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageRestoreConfig
@@ -64,6 +65,19 @@ class BackupSourceTest {
             ))
             val expected = packages.queryRevisions(config.packageName, OpType.RESTORE, config.userId, config.createdAt)
                 .filter { it.indexInfo.cloud.isNotEmpty() || it.indexInfo.backupDir != "/backup" }
+            val rebuilt = config.toPackageEntity("", "/backup")
+            val selected = packages.queryPackages(OpType.RESTORE, "", "/backup").single()
+            packages.upsert(selected.copy(
+                extraInfo = selected.extraInfo.copy(activated = true),
+                dataStates = selected.dataStates.copy(apkState = DataState.NotSelected),
+            ))
+            rebuilt.dataStates.userState = DataState.NotSelected
+            packages.replaceLocalRestoreIndex("/backup", listOf(rebuilt))
+            val retained = packages.queryPackages(OpType.RESTORE, "", "/backup").single()
+            assertEquals(selected.id, retained.id)
+            assertEquals(true, retained.extraInfo.activated)
+            assertEquals(DataState.NotSelected, retained.dataStates.apkState)
+            assertEquals(DataState.NotSelected, retained.dataStates.userState)
             packages.replaceLocalRestoreIndex("/backup", emptyList())
             assertEquals(expected.toSet(), packages.queryRevisions(config.packageName, OpType.RESTORE, config.userId, config.createdAt).toSet())
         } finally {

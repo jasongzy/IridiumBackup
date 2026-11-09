@@ -64,7 +64,7 @@ class VerificationRefreshTest {
             File(revisionDir, "unrelated.txt").writeText("not backup content")
             File(revisionDir.parentFile, "icon.bin").createNewFile()
             val binder = Binder()
-            var readable = true
+            var canList = true
             var unreadableFile: String? = null
             val remote = Proxy.newProxyInstance(
                 IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java),
@@ -80,8 +80,10 @@ class VerificationRefreshTest {
                         true
                     }
                     "fileLength" -> File(args!![0] as String).let {
-                        check(it.isFile && it.name != unreadableFile)
-                        it.length()
+                        if (!it.exists()) -1L else {
+                            check(it.isFile && it.name != unreadableFile)
+                            it.length()
+                        }
                     }
                     "calculateSHA256" -> MessageDigest.getInstance("SHA-256")
                         .digest(File(args!![0] as String).readBytes()).joinToString("") { "%02x".format(it) }
@@ -91,7 +93,7 @@ class VerificationRefreshTest {
                         try {
                             val path = File(args!![0] as String)
                             if (method.name == "readDirectory") {
-                                if (!readable) return@newProxyInstance null
+                                if (!canList) return@newProxyInstance null
                                 parcel.writeStringList(path.listFiles()!!.filter(File::isDirectory).map(File::getPath))
                                 parcel.writeStringList(path.listFiles()!!.filter(File::isFile).map(File::getPath))
                             } else {
@@ -186,7 +188,6 @@ class VerificationRefreshTest {
             apk.writeText("damaged")
             val damaged = repository.inspectRevision(revision)
             check(damaged.canClean)
-            repository.rememberVerification(damaged)
             val other = restore.copy(indexInfo = restore.indexInfo.copy(backupDir = "/other"))
             assertEquals(listOf(restore), repository.knownDamagedBackups(listOf(other, restore)))
             apk.writeBytes(byteArrayOf(1, 2, 3))
@@ -194,25 +195,35 @@ class VerificationRefreshTest {
             assertEquals(0, repaired.deletedCount)
             assertEquals(emptyList<PackageEntity>(), repository.knownDamagedBackups(listOf(restore)))
             assertEquals(BackupVerificationStatus.VALID, repaired.results.single().status)
-            readable = false
+            canList = false
+            assertEquals(BackupVerificationStatus.VALID, repository.inspectRevision(revision).status)
             val unreadable = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }
             assertEquals(false, unreadable.results.single().canClean)
             assertEquals(0, unreadable.deletedCount)
             assertEquals(true, apk.exists())
 
-            readable = true
+            canList = true
+            check(apk.delete() && apk.mkdir())
+            val unexpected = File(apk, "personal.txt").apply { writeText("keep") }
+            val wrongKind = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }
+            assertEquals(AppBackupRepository.VerificationIssueType.UNREADABLE, wrongKind.results.single().issues.single().type)
+            assertEquals("keep", unexpected.readText())
+            check(unexpected.delete() && apk.delete())
+            assertEquals(AppBackupRepository.VerificationIssueType.FILE_MISSING, repository.inspectRevision(revision).issues.single().type)
+            apk.writeBytes(byteArrayOf(1, 2, 3))
             unreadableFile = "apk.tar"
             assertEquals(false, repository.inspectRevision(revision).canClean)
+            val verifiedRevision = revision.copy(sizeBytes = original.files.orEmpty().sumOf { it.sizeBytes })
             unreadableFile = ConfigsPackageRestoreName
             check(runCatching { repository.rebuildLocalIndex { _, _, _ -> } }.isFailure)
-            assertEquals(listOf(revision), database.appBackupDao().getRevisions(revision.repositoryId))
+            assertEquals(listOf(verifiedRevision), database.appBackupDao().getRevisions(revision.repositoryId))
             unreadableFile = null
             dao.upsert(restore)
             val sql = database.openHelper.writableDatabase
             sql.execSQL("CREATE TRIGGER fail_rebuild BEFORE DELETE ON backup_revisions BEGIN SELECT RAISE(ABORT, 'injected failure'); END")
             check(runCatching { repository.rebuildLocalIndex { _, _, _ -> } }.isFailure)
             assertEquals(restore, dao.queryById(restore.id))
-            assertEquals(listOf(revision), database.appBackupDao().getRevisions(revision.repositoryId))
+            assertEquals(listOf(verifiedRevision), database.appBackupDao().getRevisions(revision.repositoryId))
             sql.execSQL("DROP TRIGGER fail_rebuild")
             val editedNote = runCatching {
                 repository.rebuildLocalIndex { completed, _, _ ->
@@ -252,8 +263,16 @@ class VerificationRefreshTest {
             revisions.deleteRevision(newer.id)
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
             assertEquals(true, apk.exists())
-            assertEquals(1, repository.rebuildLocalIndex { _, _, _ -> }.size)
+            val secondRoot = File(directory, "second")
+            val newerCopy = config.copy(createdAt = 5678, label = "Newer copy", versionCode = 2).toPackageEntity("", secondRoot.path)
+            File(secondRoot, "apps/${newerCopy.archivesRelativeDir}").apply { mkdirs() }.resolve("apk.tar").writeBytes(byteArrayOf(4))
+            repository.recordLegacyRevision(newerCopy, 1, 3)
+            assertEquals(revision.id, repository.rebuildLocalIndex { _, _, _ -> }.single().revision.id)
+            assertEquals("Newer copy", revisions.getApp(config.packageName, 0)?.label)
+            assertEquals(true, repository.deleteRevision(revisions.getRevisions(":${secondRoot.path}").single()))
+            assertEquals(config.label, revisions.getApp(config.packageName, 0)?.label)
             val selected = dao.queryRevisions(config.packageName, OpType.RESTORE, 0, config.createdAt).single()
+            assertEquals(restore.id, selected.id)
             assertEquals(3L, selected.displayStats.apkBytes)
             val otherDirectory = File(directory, "other")
             val otherApk = File(otherDirectory, "apps/${restore.archivesRelativeDir}/apk.tar").apply {
@@ -265,6 +284,8 @@ class VerificationRefreshTest {
             assertEquals("keep", otherApk.readText())
             assertEquals(false, revisionDir.exists())
             assertEquals(emptyList<BackupRevisionEntity>(), revisions.getRevisions(revision.repositoryId))
+            repository.inspectRevision(revision)
+            assertEquals(false, revision.id in repository.verificationResults.value)
         } finally {
             context.saveBackupSavePath(previousPath)
             database.close()

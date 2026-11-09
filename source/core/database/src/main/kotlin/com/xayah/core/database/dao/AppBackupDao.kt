@@ -1,5 +1,6 @@
 package com.xayah.core.database.dao
 
+import android.content.pm.ApplicationInfo
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.MapColumn
@@ -83,6 +84,9 @@ interface AppBackupDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertMissingApp(app: BackupAppEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMissingApps(apps: List<BackupAppEntity>)
+
     @Transaction
     suspend fun recordRevision(app: BackupAppEntity, revision: BackupRevisionEntity) {
         insertMissingApp(app)
@@ -106,7 +110,7 @@ interface AppBackupDao {
         revisions: List<BackupRevisionEntity>,
     ) {
         deleteRevisions(repositoryId)
-        upsertAppMetadata(apps)
+        insertMissingApps(apps)
         upsertRevisions(revisions)
         syncLastBackupTimes(OpType.BACKUP)
     }
@@ -114,8 +118,21 @@ interface AppBackupDao {
     @Query("SELECT * FROM backup_revisions WHERE packageName = :packageName AND userId = :userId AND repositoryId = :repositoryId AND (contentMask & 1) != 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestApkRevision(packageName: String, userId: Int, repositoryId: String): BackupRevisionEntity?
 
-    @Query("SELECT MAX(createdAt) FROM backup_revisions WHERE packageName = :packageName AND userId = :userId")
-    suspend fun lastRevisionTime(packageName: String, userId: Int): Long?
+    @Query("""
+        SELECT a.packageName, a.userId, p.packageInfo_label AS label, p.packageInfo_versionName AS versionName,
+            p.packageInfo_versionCode AS versionCode, 0 AS firstInstallTime, 0 AS lastUpdateTime,
+            (p.packageInfo_flags & ${ApplicationInfo.FLAG_SYSTEM}) != 0 AS isSystem, a.isInstalled, a.note
+        FROM backup_apps a
+        JOIN backup_revisions r ON r.revisionId = (
+            SELECT revisionId FROM backup_revisions WHERE packageName = a.packageName AND userId = a.userId
+            ORDER BY createdAt DESC, repositoryId, artifactId LIMIT 1
+        )
+        JOIN PackageEntity p ON p.indexInfo_packageName = a.packageName AND p.indexInfo_userId = a.userId
+            AND p.indexInfo_preserveId = r.createdAt AND p.indexInfo_opType = :opType
+            AND (p.indexInfo_cloud || ':' || p.indexInfo_backupDir) = r.repositoryId
+        WHERE a.isInstalled = 0 AND a.userId = :userId AND a.packageName IN (:names)
+    """)
+    suspend fun latestArchivedApps(userId: Int, names: List<String>, opType: OpType): List<BackupAppEntity>
 
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC, revisionId")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>

@@ -42,33 +42,31 @@ data class BackupManifestFile(
     val sha256: String,
 )
 
-private val archiveSuffixes = CompressionType.entries.map { it.suffix }.toSet()
 private val sha256Hex = Regex("[0-9a-f]{64}")
 
-fun archiveContentMask(names: Collection<String>): Int = names.fold(0) { mask, name ->
-    if (name.substringAfter('.', "") !in archiveSuffixes) return@fold mask
-    mask or when (name.substringBefore('.')) {
-        DataType.PACKAGE_APK.type -> 1
-        DataType.PACKAGE_USER.type -> 2
-        DataType.PACKAGE_USER_DE.type -> 4
-        DataType.PACKAGE_DATA.type -> 8
-        DataType.PACKAGE_OBB.type -> 16
-        DataType.PACKAGE_MEDIA.type -> 32
-        else -> 0
+private val archiveFlags = buildMap {
+    for (type in DataType.packageArchives) for (compression in CompressionType.entries) {
+        put("${type.type}.${compression.suffix}", type.archiveFlag)
     }
 }
 
 fun BackupManifest.hasValidFileEntries(): Boolean {
     val entries: List<BackupManifestFile?> = files ?: return false
-    val names = mutableSetOf<String>()
+    var hasConfig = false
+    var mask = 0
     for (file in entries) {
-        val name = file?.name
-        if (name.isNullOrEmpty() || name == "." || name == ".." || name.any { it == '/' || it == '\\' || it == '\u0000' } ||
-            !names.add(name) || file.sizeBytes < 0 || !sha256Hex.matches(file.sha256.orEmpty())
-        ) return false
+        val name = file?.name ?: return false
+        if (file.sizeBytes < 0 || !sha256Hex.matches(file.sha256.orEmpty())) return false
+        if (name == ConfigsPackageRestoreName) {
+            if (hasConfig) return false
+            hasConfig = true
+        } else {
+            val flag = archiveFlags[name] ?: return false
+            if (mask and flag != 0) return false
+            mask = mask or flag
+        }
     }
-    return ConfigsPackageRestoreName in names && contentMask != 0 && contentMask == archiveContentMask(names) &&
-        names.size == Integer.bitCount(contentMask) + 1
+    return hasConfig && mask != 0 && mask == contentMask
 }
 
 fun BackupManifest.matchesRevision(revision: BackupRevisionEntity): Boolean =

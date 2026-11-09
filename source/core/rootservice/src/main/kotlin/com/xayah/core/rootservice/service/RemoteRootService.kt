@@ -256,9 +256,9 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun readTextIfPresent(path: String): String? = readFromParcel(getService().readText(path)) { it.readString() }
 
-    suspend fun readTextChecked(path: String): String = readTextIfPresent(path) ?: throw IOException("File not found: $path")
-
-    suspend fun readText(path: String): String = runCatching { readTextChecked(path) }.onFailure(onFailure).getOrDefault("")
+    suspend fun readText(path: String): String = runCatching {
+        readTextIfPresent(path) ?: throw IOException("File not found: $path")
+    }.onFailure(onFailure).getOrDefault("")
 
     suspend fun readBytes(src: String): ByteArray = runCatching {
         val pfd = getService().readBytes(src)

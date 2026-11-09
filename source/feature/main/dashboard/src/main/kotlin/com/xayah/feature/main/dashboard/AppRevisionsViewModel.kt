@@ -80,7 +80,6 @@ class AppRevisionsViewModel @Inject constructor(
             _verifyingRevisionIds.value += revision.id
             try {
                 val result = repository.inspectRevision(revision)
-                repository.rememberVerification(result)
                 Toast.makeText(
                     context,
                     when (result.status) {
@@ -104,7 +103,7 @@ class AppRevisionsViewModel @Inject constructor(
     }
 
     suspend fun prepareRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): String? {
-        if (revision.repositoryId.startsWith(':')) repository.rememberVerification(repository.inspectRevision(revision))
+        if (revision.repositoryId.startsWith(':')) repository.inspectRevision(revision)
         val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
             Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
             return null
