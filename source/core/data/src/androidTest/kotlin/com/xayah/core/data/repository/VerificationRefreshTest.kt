@@ -35,6 +35,8 @@ import com.xayah.core.util.localBackupSaveDir
 import java.io.File
 import java.lang.reflect.Proxy
 import java.security.MessageDigest
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertArrayEquals
@@ -69,6 +71,7 @@ class VerificationRefreshTest {
             var canList = true
             var unreadableFile: String? = null
             val inspectedApks = mutableListOf<String>()
+            var afterMutation: (() -> Unit)? = null
             val remote = Proxy.newProxyInstance(
                 IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java),
             ) { _, method, args ->
@@ -79,11 +82,12 @@ class VerificationRefreshTest {
                         ArchiveExtractionParcelable(-1, emptyList(), 0, 0)
                     }
                     "exists" -> storageAvailable && File(args!![0] as String).exists()
-                    "deleteRecursively" -> FileUtil.deleteRecursively(args!![0] as String)
+                    "deleteRecursively" -> FileUtil.deleteRecursively(args!![0] as String).also { afterMutation?.invoke() }
                     "removeEntry" -> FileUtil.removeEntry(args!![0] as String, args[1] as Boolean)
                     "mkdirs" -> File(args!![0] as String).let { it.mkdirs() || it.isDirectory }
                     "replaceFile" -> {
                         File(args!![0] as String).copyTo(File(args[1] as String), overwrite = true)
+                        afterMutation?.invoke()
                         true
                     }
                     "fileLength" -> File(args!![0] as String).let {
@@ -290,7 +294,17 @@ class VerificationRefreshTest {
             assertEquals(false, repository.updateRevisionNote(revision, "wrong revision"))
             assertEquals(different, root.readJson<BackupManifest>(manifestPath))
             check(root.writeJson(manifest, manifestPath).isSuccess)
-            check(repository.updateRevisionNote(revision, ""))
+            revisions.updateRevisionNote(revision.id, "")
+            assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
+            assertEquals("protected", revisions.getOldRevision(revision.id, revision.repositoryId, 1)?.note)
+            val editing = launch {
+                afterMutation = { cancel() }
+                repository.updateRevisionNote(revision, "")
+            }
+            editing.join()
+            check(editing.isCancelled)
+            afterMutation = null
+            assertEquals("", revisions.getOldRevision(revision.id, revision.repositoryId, 1)?.note)
             assertEquals(revision.id, revisions.getOldRevision(revision.id, revision.repositoryId, 1)?.id)
             revisions.deleteRevision(newer.id)
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
@@ -301,7 +315,15 @@ class VerificationRefreshTest {
             repository.recordLegacyRevision(newerCopy, 1, 3)
             assertEquals(revision.id, repository.rebuildLocalIndex { _, _, _ -> }.single().revision.id)
             assertEquals("Newer copy", revisions.getApp(config.packageName, 0)?.label)
-            assertEquals(true, repository.deleteRevision(revisions.getRevisions(":${secondRoot.path}").single()))
+            val removed = revisions.getRevisions(":${secondRoot.path}").single()
+            val deleting = launch {
+                afterMutation = { cancel() }
+                repository.deleteRevision(removed)
+            }
+            deleting.join()
+            check(deleting.isCancelled)
+            afterMutation = null
+            assertEquals(false, revisions.hasRevision(removed.id))
             assertEquals(config.label, revisions.getApp(config.packageName, 0)?.label)
             val selected = dao.queryRevisions(config.packageName, OpType.RESTORE, 0, config.createdAt).single()
             assertEquals(restore.id, selected.id)

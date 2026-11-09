@@ -28,6 +28,7 @@ import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.LogUtil
+import com.xayah.core.util.AppIconName
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.model.ShellResult
@@ -195,18 +196,12 @@ class PackageRepository @Inject constructor(
         }
     }
 
-    suspend fun delete(p: PackageEntity): Boolean {
+    suspend fun deleteArchives(p: PackageEntity): Boolean {
         if (p.indexInfo.opType != OpType.RESTORE) return false
         val relativeDir = PathUtil.getPackageArchiveRelativeDir(p.packageName, p.userId, p.preserveId) ?: return false
-        val isSuccess = if (p.indexInfo.cloud.isEmpty()) {
+        return if (p.indexInfo.cloud.isEmpty()) {
             val backupDir = FileUtil.normalizeAbsolutePath(p.indexInfo.backupDir) ?: return false
-            if (!isBackupVolumeMounted(backupDir)) return false
-            val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
-            val src = "$appsDir/$relativeDir"
-            rootService.deleteRecursively(src).also { deleted ->
-                val packageDir = "${appsDir}/${p.packageName}"
-                if (deleted) rootService.removeEntry(packageDir, directory = true)
-            }
+            deleteLocalArchives("$backupDir/${PathUtil.getAppsRelativeDir()}/$relativeDir")
         } else {
             runCatching {
                 cloudRepository.withClient(p.indexInfo.cloud) { client, _ ->
@@ -218,9 +213,18 @@ class PackageRepository @Inject constructor(
                 }
             }.onFailure(rootService.onFailure).isSuccess
         }
+    }
 
-        if (isSuccess) packageDao.delete(p.id)
-        return isSuccess
+    internal suspend fun deleteLocalArchives(revisionDir: String): Boolean {
+        if (!isBackupVolumeMounted(revisionDir) || !rootService.deleteRecursively(revisionDir)) return false
+        val packageDir = PathUtil.getParentPath(revisionDir)
+        val iconPath = "$packageDir/$AppIconName"
+        val remaining = runCatching { rootService.readDirectory(packageDir, includeFiles = true) }.getOrNull()
+        if (remaining != null && remaining.directories.isEmpty() && remaining.files.all { it == iconPath }) {
+            rootService.removeEntry(iconPath)
+            rootService.removeEntry(packageDir, directory = true)
+        }
+        return true
     }
 
     /**

@@ -109,6 +109,10 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                     keyboardActions = KeyboardActions(onDone = { scan(viewModel, focusManager, validCount) }),
                     singleLine = true,
                 )
+                state.error?.let { error ->
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                    if (state.deleteTotal > 0) Text(stringResource(R.string.old_backup_cleanup_progress, state.completed, state.deleteTotal))
+                }
                 if (state.isScanning) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 if (state.isDeleting) {
                     LinearProgressIndicator(

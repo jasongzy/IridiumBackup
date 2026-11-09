@@ -37,6 +37,7 @@ import com.xayah.core.model.matchesRevision
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.FileUtil
+import com.xayah.core.util.archive.finishArchiveStep
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -561,12 +562,17 @@ class AppBackupRepository @Inject constructor(
 
     suspend fun deleteOldRevision(id: String, keep: Int): RetentionResult = revisionMutex.withLock {
         require(keep >= 1)
-        val revision = dao.getOldRevision(id, ":${context.localBackupSaveDir()}", keep)
-        when {
-            revision == null || revision.isProtectedByNote() -> RetentionResult.SKIPPED
-            removeRevision(revision) -> RetentionResult.DELETED
-            else -> RetentionResult.FAILED
+        val revision = dao.getOldRevision(id, ":${context.localBackupSaveDir()}", keep) ?: return@withLock RetentionResult.SKIPPED
+        if (revision.isProtectedByNote()) return@withLock RetentionResult.SKIPPED
+        val dir = getLocalRevisionDir(revision) ?: return@withLock RetentionResult.FAILED
+        val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(dir))
+            ?.takeIf { it.matchesRevision(revision) && it.hasValidFileEntries() } ?: return@withLock RetentionResult.FAILED
+        val recorded = revision.copy(note = manifest.note.orEmpty())
+        if (recorded.isProtectedByNote()) {
+            dao.updateRevisionNote(id, recorded.note)
+            return@withLock RetentionResult.SKIPPED
         }
+        if (removeRevision(revision)) RetentionResult.DELETED else RetentionResult.FAILED
     }
 
     suspend fun deleteRevision(revision: BackupRevisionEntity): Boolean = revisionMutex.withLock { removeRevision(revision) }
@@ -575,36 +581,32 @@ class AppBackupRepository @Inject constructor(
         if (app.indexInfo.opType != OpType.RESTORE) return@withLock false
         val repositoryId = "${app.indexInfo.cloud}:${app.indexInfo.backupDir}"
         val revision = dao.getRevisions(repositoryId, listOf(app.archivesRelativeDir)).singleOrNull()
-        if (revision == null) packageRepository.delete(app) else removeRevision(revision)
+        if (revision != null) return@withLock removeRevision(revision)
+        finishArchiveStep {
+            packageRepository.deleteArchives(app).also { if (it) database.packageDao().delete(app.id) }
+        }
     }
 
     private suspend fun removeRevision(revision: BackupRevisionEntity): Boolean {
         if (!hasValidArtifactId(revision) || !dao.hasRevision(revision.id)) return false
         val packageEntity = findLegacyRevision(revision)
-        val deleted = if (packageEntity != null) {
-            packageRepository.delete(packageEntity)
-        } else {
-            val revisionDir = getLocalRevisionDir(revision) ?: return false
-            if (!isBackupVolumeMounted(revisionDir)) return false
-            rootService.deleteRecursively(revisionDir)
-        }
-        if (!deleted) return false
-        database.withTransaction {
-            dao.deleteRevisionAndSync(revision)
-            refreshArchivedMetadata(listOf(AppKey(revision.packageName, revision.userId)))
-            dao.deleteUninstalledAppsWithoutRevisions(revision.userId)
-        }
-        _verificationResults.update { it - revision.id }
-        getLocalRevisionDir(revision)?.let { revisionDir ->
-            val packageDir = PathUtil.getParentPath(revisionDir)
-            val iconPath = PathUtil.getAppIconPath(PathUtil.getParentPath(packageDir), revision.packageName)
-            val remaining = runCatching { rootService.readDirectory(packageDir, includeFiles = true) }.getOrNull()
-            if (remaining != null && remaining.directories.isEmpty() && remaining.files.all { it == iconPath }) {
-                rootService.removeEntry(iconPath)
-                rootService.removeEntry(packageDir, directory = true)
+        return finishArchiveStep {
+            val deleted = if (packageEntity != null) {
+                packageRepository.deleteArchives(packageEntity)
+            } else {
+                val revisionDir = getLocalRevisionDir(revision) ?: return@finishArchiveStep false
+                packageRepository.deleteLocalArchives(revisionDir)
             }
+            if (!deleted) return@finishArchiveStep false
+            database.withTransaction {
+                if (packageEntity != null) database.packageDao().delete(packageEntity.id)
+                dao.deleteRevisionAndSync(revision)
+                refreshArchivedMetadata(listOf(AppKey(revision.packageName, revision.userId)))
+                dao.deleteUninstalledAppsWithoutRevisions(revision.userId)
+            }
+            _verificationResults.update { it - revision.id }
+            true
         }
-        return true
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -626,9 +628,11 @@ class AppBackupRepository @Inject constructor(
             val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
             val manifest = rootService.readJson<BackupManifest>(manifestPath) ?: return@withLock false
             if (!manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return@withLock false
-            if (!rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) return@withLock false
-            dao.updateRevisionNote(revision.id, normalized)
-            true
+            finishArchiveStep {
+                if (!rootService.writeJson(manifest.copy(note = normalized), manifestPath).isSuccess) return@finishArchiveStep false
+                dao.updateRevisionNote(revision.id, normalized)
+                true
+            }
         }
     }
 

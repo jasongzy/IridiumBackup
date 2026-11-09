@@ -9,6 +9,7 @@ import com.xayah.core.data.repository.AppBackupRepository.RetentionResult
 import com.xayah.feature.main.settings.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +24,7 @@ data class RetentionUiState(
     val isDeleting: Boolean = false,
     val completed: Int = 0,
     val deleteTotal: Int = 0,
+    val error: String? = null,
     val candidates: List<AppBackupRepository.RetentionCandidate> = emptyList(),
     val selectedIds: Set<String> = emptySet(),
 )
@@ -39,6 +41,7 @@ class RetentionViewModel @Inject constructor(
         if (value.isNotEmpty() && value.any { !it.isDigit() }) return
         _uiState.value = _uiState.value.copy(
             retainCount = value,
+            error = null,
             hasScanned = false,
             candidates = emptyList(),
             selectedIds = emptySet(),
@@ -74,10 +77,12 @@ class RetentionViewModel @Inject constructor(
     fun scan() {
         val count = _uiState.value.retainCount.toIntOrNull()?.takeIf { it >= 1 } ?: return
         if (_uiState.value.isScanning || _uiState.value.isDeleting) return
-        _uiState.value = _uiState.value.copy(isScanning = true)
+        _uiState.value = _uiState.value.copy(isScanning = true, error = null, deleteTotal = 0)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 updateCandidates(repository.getLocalRetentionCandidates(count))
+            } catch (e: Exception) {
+                reportError(e)
             } finally {
                 _uiState.value = _uiState.value.copy(isScanning = false)
             }
@@ -91,6 +96,7 @@ class RetentionViewModel @Inject constructor(
         if (candidateIds.isEmpty() || state.isScanning || state.isDeleting) return
         _uiState.value = _uiState.value.copy(
             isDeleting = true,
+            error = null,
             completed = 0,
             deleteTotal = candidateIds.size,
         )
@@ -107,7 +113,7 @@ class RetentionViewModel @Inject constructor(
                     }
                     _uiState.value = _uiState.value.copy(completed = index + 1)
                 }
-                updateCandidates(repository.getLocalRetentionCandidates(retainCount))
+                updateCandidates(repository.getLocalRetentionCandidates(retainCount), candidateIds)
                 withContext(Dispatchers.Main.immediate) {
                     Toast.makeText(
                         context,
@@ -119,17 +125,27 @@ class RetentionViewModel @Inject constructor(
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
+            } catch (e: Exception) {
+                reportError(e)
             } finally {
                 _uiState.value = _uiState.value.copy(isDeleting = false)
             }
         }
     }
 
-    private fun updateCandidates(candidates: List<AppBackupRepository.RetentionCandidate>) {
+    private fun reportError(error: Exception) {
+        if (error is CancellationException) throw error
+        _uiState.value = _uiState.value.copy(
+            error = error.localizedMessage ?: error.javaClass.simpleName,
+            hasScanned = false, candidates = emptyList(), selectedIds = emptySet(),
+        )
+    }
+
+    private fun updateCandidates(candidates: List<AppBackupRepository.RetentionCandidate>, selection: Set<String>? = null) {
         _uiState.value = _uiState.value.copy(
             hasScanned = true,
             candidates = candidates,
-            selectedIds = candidates.filter { it.removable }.mapTo(mutableSetOf()) { it.revision.id },
+            selectedIds = candidates.filter { it.removable && (selection == null || it.revision.id in selection) }.mapTo(mutableSetOf()) { it.revision.id },
         )
     }
 }
