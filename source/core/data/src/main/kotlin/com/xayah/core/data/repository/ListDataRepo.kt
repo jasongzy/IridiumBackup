@@ -185,9 +185,9 @@ class ListDataRepo @Inject constructor(
 
     fun getSelectedAppKeys(): StateFlow<Set<AppKey>> = selectedAppKeys
 
-    suspend fun getSelectedInstalledAppIds(): Set<Long> = appList.first()
+    suspend fun getSelectedAppIds(): Set<Long> = appList.first()
         .asSequence()
-        .filter { it.selected && it.isInstalled }
+        .filter(App::selected)
         .map(App::id)
         .toSet()
 

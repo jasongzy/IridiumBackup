@@ -28,4 +28,5 @@
     <string name="backup_delete_failed">Couldn’t delete this backup</string>
     <string name="backup_note_save_failed">Couldn’t save the note. Check the backup files or rebuild the index.</string>
     <string name="restore_revision_unavailable">This backup is no longer available. Refresh its index.</string>
+    <string name="backup_app_unavailable">This app is no longer available for backup.</string>
 </resources>

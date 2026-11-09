@@ -5,7 +5,6 @@ import android.widget.Toast
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.NavHostController
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.data.repository.AppBackupRepository
@@ -15,7 +14,6 @@ import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.util.ifEmptyEncodeURLWithSpace
-import com.xayah.core.util.navigateSingle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.SharingStarted
@@ -60,20 +58,13 @@ class AppRevisionsViewModel @Inject constructor(
     private val _verifyingRevisionIds = MutableStateFlow<Set<String>>(emptySet())
     val verifyingRevisionIds = _verifyingRevisionIds.asStateFlow()
 
-    fun startBackup(dataStates: PackageDataStates, navController: NavHostController) {
-        val appId = installedApp.value?.id ?: return
-        viewModelScope.launch {
-            backupRequestStore.prepare(
-                ids = listOf(appId),
-                dataStates = mapOf(appId to dataStates),
-            )
-            val route = if (directoryRepository.querySelectedByDirectoryTypeFlow().first() == null) {
-                MainRoutes.Directory.route
-            } else {
-                MainRoutes.PackagesBackupProcessingGraph.route
-            }
-            navController.navigateSingle(route)
+    suspend fun prepareBackup(appId: Long, dataStates: PackageDataStates): String? {
+        val hasDirectory = directoryRepository.querySelectedByDirectoryTypeFlow().first() != null
+        if (!backupRequestStore.prepare(listOf(appId), mapOf(appId to dataStates))) {
+            Toast.makeText(context, R.string.backup_app_unavailable, Toast.LENGTH_SHORT).show()
+            return null
         }
+        return if (hasDirectory) MainRoutes.PackagesBackupProcessingGraph.route else MainRoutes.Directory.route
     }
 
     fun deleteRevision(revision: BackupRevisionEntity) {
@@ -112,24 +103,15 @@ class AppRevisionsViewModel @Inject constructor(
         }
     }
 
-    fun startRestore(
-        revision: BackupRevisionEntity,
-        dataStates: PackageDataStates,
-        navController: NavHostController,
-    ) {
-        viewModelScope.launch {
-            val result = repository.inspectRevision(revision)
-            repository.rememberVerification(result)
-            val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
-                Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            navController.navigateSingle(
-                MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-                    cloudName = selection.cloudName.ifEmptyEncodeURLWithSpace(),
-                    backupDir = selection.backupDir.ifEmptyEncodeURLWithSpace(),
-                )
-            )
+    suspend fun prepareRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): String? {
+        if (revision.repositoryId.startsWith(':')) repository.rememberVerification(repository.inspectRevision(revision))
+        val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
+            Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
+            return null
         }
+        return MainRoutes.PackagesRestoreProcessingGraph.getRoute(
+            cloudName = selection.cloudName.ifEmptyEncodeURLWithSpace(),
+            backupDir = selection.backupDir.ifEmptyEncodeURLWithSpace(),
+        )
     }
 }

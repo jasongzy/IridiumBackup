@@ -47,4 +47,5 @@
     <item name="ic_rounded_folder_open" type="drawable" />
     <item name="ic_rounded_acute" type="drawable" />
     <item name="ic_rounded_history" type="drawable" />
+    <item name="loading" type="string" />
 </resources>

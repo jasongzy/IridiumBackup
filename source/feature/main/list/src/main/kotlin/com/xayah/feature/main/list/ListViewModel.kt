@@ -1,10 +1,10 @@
 package com.xayah.feature.main.list
 
 import android.content.Context
+import android.widget.Toast
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.navigation.NavHostController
 import com.xayah.core.data.repository.AppsRepo
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.BackupRequestStore
@@ -23,7 +23,6 @@ import com.xayah.core.util.decodeURL
 import com.xayah.core.util.ifEmptyEncodeURLWithSpace
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.util.localBackupSaveDir
-import com.xayah.core.util.navigateSingle
 import com.xayah.core.work.WorkManagerInitializer
 import com.xayah.feature.main.list.ListUiState.Loading
 import com.xayah.feature.main.list.ListUiState.Success
@@ -36,7 +35,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
@@ -132,84 +130,52 @@ class ListViewModel @Inject constructor(
         listDataRepo.clearAppSelection()
     }
 
-    fun toNextPage(navController: NavHostController) {
-        if (target == Target.Apps && opType == OpType.BACKUP) {
-            if (isPreparing.value) return
-            isPreparing.value = true
-            viewModelScope.launch {
-                try {
-                    val ids = listDataRepo.getSelectedInstalledAppIds()
-                    backupRequestStore.prepare(ids)
+    suspend fun nextRoute(): String? = when (target) {
+        Target.Apps -> prepareAppRoute {
+            val ids = listDataRepo.getSelectedAppIds()
+            if (ids.isEmpty()) return@prepareAppRoute null
+            when (opType) {
+                OpType.BACKUP -> {
                     val hasDirectory = directoryRepository.querySelectedByDirectoryTypeFlow().first() != null
-                    navController.navigateSingle(
-                        if (hasDirectory) MainRoutes.PackagesBackupProcessingGraph.route else MainRoutes.Directory.route
-                    )
-                } finally {
-                    isPreparing.value = false
+                    if (!backupRequestStore.prepare(ids)) null
+                    else if (hasDirectory) MainRoutes.PackagesBackupProcessingGraph.route else MainRoutes.Directory.route
+                }
+                OpType.RESTORE -> {
+                    appsRepo.replaceSelection(opType, ids)
+                    restoreRoute(cloudName, backupDir)
                 }
             }
-            return
         }
-        when (target) {
-            Target.Apps -> {
-                when (opType) {
-                    OpType.BACKUP -> Unit
-
-                    OpType.RESTORE -> {
-                        viewModelScope.launch {
-                            appsRepo.replaceSelection(opType, listDataRepo.getSelectedInstalledAppIds())
-                            navController.navigateSingle(
-                                MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-                                    cloudName = cloudName.ifEmptyEncodeURLWithSpace(),
-                                    backupDir = backupDir.ifEmptyEncodeURLWithSpace()
-                                )
-                            )
-                        }
-                    }
-                }
-            }
-
-            Target.Files -> {
-                when (opType) {
-                    OpType.BACKUP -> {
-                        navController.navigateSingle(MainRoutes.MediumBackupProcessingGraph.route)
-                    }
-
-                    OpType.RESTORE -> {
-                        navController.navigateSingle(
-                            MainRoutes.MediumRestoreProcessingGraph.getRoute(
-                                cloudName = cloudName.ifEmptyEncodeURLWithSpace(),
-                                backupDir = backupDir.ifEmptyEncodeURLWithSpace()
-                            )
-                        )
-                    }
-                }
-            }
+        Target.Files -> when (opType) {
+            OpType.BACKUP -> MainRoutes.MediumBackupProcessingGraph.route
+            OpType.RESTORE -> MainRoutes.MediumRestoreProcessingGraph.getRoute(
+                cloudName = cloudName.ifEmptyEncodeURLWithSpace(), backupDir = backupDir.ifEmptyEncodeURLWithSpace(),
+            )
         }
     }
+
+    private suspend fun prepareAppRoute(route: suspend () -> String?): String? {
+        if (!isPreparing.compareAndSet(false, true)) return null
+        return try {
+            route().also {
+                if (it == null) Toast.makeText(context, com.xayah.core.service.R.string.package_request_expired, Toast.LENGTH_SHORT).show()
+            }
+        } finally {
+            isPreparing.value = false
+        }
+    }
+
+    private fun restoreRoute(cloud: String, directory: String) = MainRoutes.PackagesRestoreProcessingGraph.getRoute(
+        cloudName = cloud.ifEmptyEncodeURLWithSpace(), backupDir = directory.ifEmptyEncodeURLWithSpace(),
+    )
 
     override fun onCleared() {
         WorkManagerInitializer.cancelAppSizeUpdate(context)
     }
 
-    fun restoreSelected(navController: NavHostController) {
-        if (isPreparing.value) return
-        isPreparing.value = true
-        viewModelScope.launch {
-            try {
-                val selection = appBackupRepository.selectLatestLocalRevisionsForRestore(
-                    listDataRepo.getSelectedAppKeys().value
-                ) ?: return@launch
-                navController.navigateSingle(
-                    MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-                        cloudName = selection.cloudName.ifEmptyEncodeURLWithSpace(),
-                        backupDir = selection.backupDir.ifEmptyEncodeURLWithSpace(),
-                    )
-                )
-            } finally {
-                isPreparing.value = false
-            }
-        }
+    suspend fun restoreSelectedRoute(): String? = prepareAppRoute {
+        appBackupRepository.selectLatestLocalRevisionsForRestore(listDataRepo.getSelectedAppKeys().value)
+            ?.let { restoreRoute(it.cloudName, it.backupDir) }
     }
 }
 

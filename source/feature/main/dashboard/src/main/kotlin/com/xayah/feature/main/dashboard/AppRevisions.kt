@@ -39,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -49,12 +50,15 @@ import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.data.repository.AppBackupRepository
-import com.xayah.core.model.DataState
+import com.xayah.core.model.DataType
+import com.xayah.core.model.database.PackageDataStats
+import com.xayah.core.util.navigateSingle
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import com.xayah.core.util.DateUtil
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
 import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
-import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.util.formatSize
 import com.xayah.core.model.isProtectedByNote
 import com.xayah.core.ui.component.DataChips
@@ -336,12 +340,17 @@ fun AppRevisionsRoute(
     }
 
     revisions.firstOrNull { it.id == restoreCandidate }?.let { revision ->
-        RestoreScopeDialog(
-            revision = revision,
+        val available = remember(revision.contentMask) { PackageDataStates.fromArchiveMask(revision.contentMask) }
+        PackageScopeDialog(
+            id = revision.id, title = R.string.restore_scope, action = R.string.restore,
+            initial = available, available = available,
+            busyLabel = if (revision.repositoryId.startsWith(':')) R.string.verifying else R.string.loading,
             onDismiss = { restoreCandidate = null },
             onConfirm = { dataStates ->
-                restoreCandidate = null
-                viewModel.startRestore(revision, dataStates, navController)
+                viewModel.prepareRestore(revision, dataStates)?.let { route ->
+                    restoreCandidate = null
+                    navController.navigateSingle(route)
+                }
             },
         )
     }
@@ -370,12 +379,15 @@ fun AppRevisionsRoute(
     }
 
     installedApp?.takeIf { showBackupScope }?.let { candidate ->
-        BackupScopeDialog(
-            app = candidate,
+        PackageScopeDialog(
+            id = candidate.id, title = R.string.backup_scope, action = R.string.back_up,
+            initial = candidate.dataStates, displayStats = candidate.displayStats,
             onDismiss = { showBackupScope = false },
             onConfirm = { dataStates ->
-                showBackupScope = false
-                viewModel.startBackup(dataStates, navController)
+                viewModel.prepareBackup(candidate.id, dataStates)?.let { route ->
+                    showBackupScope = false
+                    navController.navigateSingle(route)
+                }
             },
         )
     }
@@ -383,91 +395,57 @@ fun AppRevisionsRoute(
 }
 
 @Composable
-private fun BackupScopeDialog(
-    app: PackageEntity,
+private fun PackageScopeDialog(
+    id: Any,
+    title: Int,
+    action: Int,
+    initial: PackageDataStates,
+    displayStats: PackageDataStats? = null,
+    available: PackageDataStates? = null,
+    busyLabel: Int = R.string.loading,
     onDismiss: () -> Unit,
-    onConfirm: (PackageDataStates) -> Unit,
+    onConfirm: suspend (PackageDataStates) -> Unit,
 ) {
-    var selections by rememberSaveable(app.id, stateSaver = PackageDataStatesSaver) { mutableStateOf(app.dataStates.copy()) }
-    val hasSelection = with(selections) {
-        apkState == DataState.Selected || userState == DataState.Selected ||
-            userDeState == DataState.Selected || dataState == DataState.Selected ||
-            obbState == DataState.Selected || mediaState == DataState.Selected
+    var selections by rememberSaveable(id, stateSaver = PackageDataStatesSaver) { mutableStateOf(initial) }
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    val dismiss = {
+        scope.cancel()
+        onDismiss()
     }
     AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.backup_scope)) },
+        onDismissRequest = dismiss,
+        title = { Text(stringResource(title)) },
         text = {
             DataChips(
                 selections = selections,
-                displayStats = app.displayStats,
+                displayStats = displayStats,
                 maxItemsInEachRow = 1,
-            ) { type, selected ->
-                selections = type.setSelected(selections, selected.not())
-            }
+                isEnabled = { type -> !busy && (available == null || type.getSelected(available)) },
+            ) { type, selected -> selections = type.setSelected(selections, !selected) }
         },
         confirmButton = {
             androidx.compose.material3.TextButton(
-                enabled = hasSelection,
-                onClick = { onConfirm(selections) },
-            ) {
-                Text(stringResource(R.string.back_up))
-            }
+                enabled = !busy && DataType.packageArchives.any { it.getSelected(selections) },
+                onClick = {
+                    if (!busy) {
+                        busy = true
+                        scope.launch {
+                            try {
+                                onConfirm(selections)
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    }
+                },
+            ) { Text(stringResource(if (busy) busyLabel else action)) }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
+            androidx.compose.material3.TextButton(onClick = dismiss) { Text(stringResource(R.string.cancel)) }
         },
     )
 }
-
-@Composable
-private fun RestoreScopeDialog(
-    revision: BackupRevisionEntity,
-    onDismiss: () -> Unit,
-    onConfirm: (PackageDataStates) -> Unit,
-) {
-    val available = remember(revision.contentMask) { revision.contentMask.toDataStates() }
-    var selections by rememberSaveable(revision.id, stateSaver = PackageDataStatesSaver) { mutableStateOf(available) }
-    val hasSelection = with(selections) {
-        apkState == DataState.Selected || userState == DataState.Selected ||
-            userDeState == DataState.Selected || dataState == DataState.Selected ||
-            obbState == DataState.Selected || mediaState == DataState.Selected
-    }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.restore_scope)) },
-        text = {
-            DataChips(
-                selections = selections,
-                maxItemsInEachRow = 1,
-                isEnabled = { type -> type.getSelected(available) },
-            ) { type, selected ->
-                selections = type.setSelected(selections, !selected)
-            }
-        },
-        confirmButton = {
-            androidx.compose.material3.TextButton(enabled = hasSelection, onClick = { onConfirm(selections) }) {
-                Text(stringResource(R.string.restore))
-            }
-        },
-        dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
-            }
-        },
-    )
-}
-
-private fun Int.toDataStates() = PackageDataStates(
-    apkState = if (this and 1 != 0) DataState.Selected else DataState.NotSelected,
-    userState = if (this and 2 != 0) DataState.Selected else DataState.NotSelected,
-    userDeState = if (this and 4 != 0) DataState.Selected else DataState.NotSelected,
-    dataState = if (this and 8 != 0) DataState.Selected else DataState.NotSelected,
-    obbState = if (this and 16 != 0) DataState.Selected else DataState.NotSelected,
-    mediaState = if (this and 32 != 0) DataState.Selected else DataState.NotSelected,
-)
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

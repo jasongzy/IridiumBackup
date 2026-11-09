@@ -19,7 +19,6 @@ import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.ConfigsPackageRestoreName
-import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION
@@ -622,7 +621,7 @@ class AppBackupRepository @Inject constructor(
                 .filter { AppKey(it.packageName, it.userId) in keys }
                 .distinctBy { AppKey(it.packageName, it.userId) }
             val items = latest.mapNotNull { revision ->
-                findLegacyRevision(revision)?.let { PackageDataStatesEntity(it.id, revision.contentMask.toDataStates()) }
+                findLegacyRevision(revision)?.let { PackageDataStatesEntity(it.id, PackageDataStates.fromArchiveMask(revision.contentMask)) }
             }
             if (items.isEmpty()) return@withTransaction null
             selectRestoreItems(items)
@@ -658,14 +657,6 @@ class AppBackupRepository @Inject constructor(
         PathUtil.getPackageArchiveRelativeDir(revision.packageName, revision.userId, revision.createdAt)
             ?.let { it == revision.artifactId } == true
 
-    private fun Int.toDataStates() = PackageDataStates(
-        apkState = if (this and 1 != 0) DataState.Selected else DataState.NotSelected,
-        userState = if (this and 2 != 0) DataState.Selected else DataState.NotSelected,
-        userDeState = if (this and 4 != 0) DataState.Selected else DataState.NotSelected,
-        dataState = if (this and 8 != 0) DataState.Selected else DataState.NotSelected,
-        obbState = if (this and 16 != 0) DataState.Selected else DataState.NotSelected,
-        mediaState = if (this and 32 != 0) DataState.Selected else DataState.NotSelected,
-    )
 
     private fun PackageEntity.toBackupApp(isInstalled: Boolean = true) = BackupAppEntity(
         packageName = packageName,

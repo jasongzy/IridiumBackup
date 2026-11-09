@@ -107,6 +107,14 @@ data class PackageDataStates(
     var ssaidState: DataState = DataState.Selected,
 ) {
     companion object {
+        fun fromArchiveMask(mask: Int): PackageDataStates {
+            fun state(bit: Int) = if (mask and bit != 0) DataState.Selected else DataState.NotSelected
+            return PackageDataStates(
+                apkState = state(1), userState = state(2), userDeState = state(4),
+                dataState = state(8), obbState = state(16), mediaState = state(32),
+            )
+        }
+
         fun DataType.getSelected(states: PackageDataStates) = when (this) {
             DataType.PACKAGE_APK -> states.apkState == DataState.Selected
             DataType.PACKAGE_USER -> states.userState == DataState.Selected

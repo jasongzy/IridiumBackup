@@ -27,7 +27,7 @@ class BackupRequestStore @Inject constructor(
     suspend fun prepare(
         ids: Collection<Long>,
         dataStates: Map<Long, PackageDataStates> = emptyMap(),
-    ) {
+    ): Boolean {
         val orderedIds = ids.distinct()
         val packagesById = orderedIds.chunked(SQLITE_BIND_LIMIT).flatMap { packageDao.queryByIds(it) }.associateBy(PackageEntity::id)
         val packages = orderedIds.mapNotNull { id ->
@@ -40,12 +40,13 @@ class BackupRequestStore @Inject constructor(
         }
         if (packages.isEmpty()) {
             pending.set(null)
-            return
+            return false
         }
         pending.set(PackageTaskRequest.Backup(
             packages = packages,
             backupItself = context.readBackupItself().first(),
             backupConfigs = context.readBackupConfigs().first(),
         ))
+        return true
     }
 }

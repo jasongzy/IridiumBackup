@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -23,6 +22,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -31,6 +31,8 @@ import com.xayah.core.ui.component.CircularProgressIndicator
 import com.xayah.core.ui.component.InnerTopSpacer
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.token.SizeTokens
+import com.xayah.core.util.navigateSingle
+import kotlinx.coroutines.launch
 
 @Composable
 fun ListRoute(
@@ -47,12 +49,20 @@ fun ListRoute(
     LaunchedEffect(isDashboard) {
         if (isDashboard) viewModel.refresh(initial = true)
     }
+    val scope = rememberCoroutineScope()
+    fun open(prepare: suspend () -> String?) {
+        val origin = navController.currentBackStackEntry ?: return
+        scope.launch {
+            val route = prepare() ?: return@launch
+            if (navController.currentBackStackEntry === origin) navController.navigateSingle(route)
+        }
+    }
     ListScreen(
         uiState = uiState,
         isDashboard = isDashboard,
         onRefresh = viewModel::refresh,
-        onBackup = { viewModel.toNextPage(navController) },
-        onRestore = { viewModel.restoreSelected(navController) },
+        onBackup = { open(viewModel::nextRoute) },
+        onRestore = { open(viewModel::restoreSelectedRoute) },
     )
 }
 
