@@ -35,11 +35,6 @@ class AppRevisionsViewModel @Inject constructor(
     private val backupRequestStore: BackupRequestStore,
     private val directoryRepository: DirectoryRepository,
 ) : ViewModel() {
-    data class RestoreRequest(
-        val revision: BackupRevisionEntity,
-        val dataStates: PackageDataStates,
-    )
-
     private val packageName = checkNotNull(savedStateHandle.get<String>(MainRoutes.ARG_PACKAGE_NAME))
     private val userId = checkNotNull(savedStateHandle.get<String>(MainRoutes.ARG_USER_ID)).toInt()
 
@@ -64,8 +59,6 @@ class AppRevisionsViewModel @Inject constructor(
     val verificationResults = repository.verificationResults
     private val _verifyingRevisionIds = MutableStateFlow<Set<String>>(emptySet())
     val verifyingRevisionIds = _verifyingRevisionIds.asStateFlow()
-    private val _damagedRestoreRequest = MutableStateFlow<RestoreRequest?>(null)
-    val damagedRestoreRequest = _damagedRestoreRequest.asStateFlow()
 
     fun startBackup(dataStates: PackageDataStates, navController: NavHostController) {
         val appId = installedApp.value?.id ?: return
@@ -125,15 +118,10 @@ class AppRevisionsViewModel @Inject constructor(
         revision: BackupRevisionEntity,
         dataStates: PackageDataStates,
         navController: NavHostController,
-        allowDamaged: Boolean = false,
     ) {
         viewModelScope.launch {
             val result = repository.inspectRevision(revision)
             repository.rememberVerification(result)
-            if (result.status == BackupVerificationStatus.DAMAGED && !allowDamaged) {
-                _damagedRestoreRequest.value = RestoreRequest(revision, dataStates)
-                return@launch
-            }
             val selection = repository.selectRevisionForRestore(revision, dataStates) ?: return@launch
             navController.navigateSingle(
                 MainRoutes.PackagesRestoreProcessingGraph.getRoute(
@@ -142,9 +130,5 @@ class AppRevisionsViewModel @Inject constructor(
                 )
             )
         }
-    }
-
-    fun dismissDamagedRestoreWarning() {
-        _damagedRestoreRequest.value = null
     }
 }

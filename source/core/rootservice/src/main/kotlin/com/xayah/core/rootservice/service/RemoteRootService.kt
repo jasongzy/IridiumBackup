@@ -323,13 +323,7 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun fileLength(path: String): Long? = runCatching { getService().fileLength(path) }.onFailure(onFailure).getOrNull()
 
-    /**
-     * Get the uid and gid of the file/directory
-     *
-     * @param path
-     * @return Uid to Gid
-     */
-    suspend fun getUidGid(path: String): Pair<UInt, UInt> = runCatching { getService().getUidGid(path).let { it[0].toUInt() to it[1].toUInt() } }.onFailure(onFailure).getOrElse { UInt.MAX_VALUE to UInt.MAX_VALUE }
+    suspend fun fileGroupId(path: String): UInt = getService().fileGroupId(path).toUInt()
 
     suspend fun getInstalledPackagesAsUser(flags: Int, userId: Int): Result<List<PackageInfo>> = runCatching {
         val pfd = getService().getInstalledPackagesAsUser(flags, userId)

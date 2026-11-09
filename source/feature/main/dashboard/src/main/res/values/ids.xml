@@ -33,8 +33,6 @@
     <item name="verification_file_size_mismatch" type="string" />
     <item name="verification_file_checksum_mismatch" type="string" />
     <item name="verification_not_local" type="string" />
-    <item name="backup_damaged_restore_warning" type="string" />
-    <item name="restore_anyway" type="string" />
     <item name="share" type="string" />
     <item name="uninstall_keep_data" type="string" />
     <item name="confirm_uninstall_keep_data" type="string" />

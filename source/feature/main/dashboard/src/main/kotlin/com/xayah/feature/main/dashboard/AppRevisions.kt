@@ -81,7 +81,6 @@ fun AppRevisionsRoute(
     val installedApp by viewModel.installedApp.collectAsStateWithLifecycle()
     val verificationResults by viewModel.verificationResults.collectAsStateWithLifecycle()
     val verifyingRevisionIds by viewModel.verifyingRevisionIds.collectAsStateWithLifecycle()
-    val damagedRestoreRequest by viewModel.damagedRestoreRequest.collectAsStateWithLifecycle()
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
     val furtherOperations by detailsViewModel.furtherOperations.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
@@ -381,28 +380,6 @@ fun AppRevisionsRoute(
         )
     }
 
-    damagedRestoreRequest?.let { request ->
-        AlertDialog(
-            onDismissRequest = viewModel::dismissDamagedRestoreWarning,
-            title = { Text(stringResource(R.string.backup_damaged)) },
-            text = { Text(stringResource(R.string.backup_damaged_restore_warning)) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = {
-                        viewModel.dismissDamagedRestoreWarning()
-                        viewModel.startRestore(request.revision, request.dataStates, navController, allowDamaged = true)
-                    },
-                ) {
-                    Text(stringResource(R.string.restore_anyway))
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = viewModel::dismissDamagedRestoreWarning) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
-    }
 }
 
 @Composable

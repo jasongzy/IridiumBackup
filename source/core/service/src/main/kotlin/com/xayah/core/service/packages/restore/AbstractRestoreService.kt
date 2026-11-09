@@ -91,7 +91,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
     override suspend fun onPreprocessing(entity: ProcessingInfoEntity) = Unit
 
     override suspend fun onProcessing() {
-        mTaskEntity.update(rawBytes = mPkgEntities.sumOf { it.packageEntity.selectedDisplayStatsBytes }.toDouble(), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
+        mTaskEntity.update(rawBytes = restoreRequest.sizeBytes.toDouble(), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
         log { "Task count: ${mPkgEntities.size}." }
 
         val killAppOption = mContext.readKillAppOption().first()

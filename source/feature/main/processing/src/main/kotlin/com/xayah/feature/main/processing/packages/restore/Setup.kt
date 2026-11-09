@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
@@ -37,6 +38,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import com.xayah.core.model.util.formatSize
 import com.xayah.core.datastore.KeyAutoScreenOff
 import com.xayah.core.ui.component.Clickable
 import com.xayah.core.ui.component.LocalSlotScope
@@ -64,15 +66,16 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 @Composable
 fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, viewModel: RestoreViewModelImpl) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
-    val packages by viewModel.packages.collectAsStateWithLifecycle()
-    val packagesSize by viewModel.packagesSize.collectAsStateWithLifecycle()
+    val preview by viewModel.preview.collectAsStateWithLifecycle()
+    val packages = preview?.packages.orEmpty()
     val restoreUsers by viewModel.restoreUsers.collectAsStateWithLifecycle()
-    val keystoreRiskPackages by viewModel.keystoreRiskPackages.collectAsStateWithLifecycle()
-    val isCheckingKeystoreRisk by viewModel.isCheckingKeystoreRisk.collectAsStateWithLifecycle()
+    val warnings by viewModel.warnings.collectAsStateWithLifecycle()
+    val isCheckingRestore by viewModel.isCheckingRestore.collectAsStateWithLifecycle()
     val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var restoreUser by rememberSaveable { mutableIntStateOf(-1) }
-    val currentIndex = restoreUsers.indexOfFirst { it.enum == restoreUser }.coerceAtLeast(0)
+    val currentIndex = restoreUsers.indexOfFirst { it.enum == restoreUser }
+    val targetConflict = remember(preview, restoreUser) { preview?.copy(userId = restoreUser)?.conflictingTarget() }
 
     LaunchedEffect(null) {
         viewModel.launchOnIO {
@@ -95,7 +98,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                 horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level12, Alignment.End),
             ) {
                 Button(
-                    enabled = packages.isNotEmpty() && !isCheckingKeystoreRisk && !isStarting,
+                    enabled = packages.isNotEmpty() && currentIndex >= 0 && targetConflict == null && !isCheckingRestore && !isStarting,
                     onClick = {
                         viewModel.continueRestore(restoreUser, localNavController)
                     }) {
@@ -113,7 +116,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                 val interactionSource = remember { MutableInteractionSource() }
                 Clickable(
                     title = stringResource(id = R.string.apps),
-                    value = packagesSize,
+                    value = preview?.sizeBytes?.toDouble()?.formatSize() ?: stringResource(R.string.loading),
                     leadingIcon = ImageVector.vectorResource(id = R.drawable.ic_rounded_apps),
                     interactionSource = interactionSource,
                     content = {
@@ -124,21 +127,29 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
             Title(title = stringResource(id = R.string.settings)) {
                 val dialogState = LocalSlotScope.current!!.dialogSlot
                 Selectable(
-                    enabled = restoreUsers.size != 1 && !isCheckingKeystoreRisk && !isStarting,
+                    enabled = (restoreUsers.size > 1 || currentIndex < 0) && !isCheckingRestore && !isStarting,
                     title = stringResource(id = R.string.restore_user),
                     value = stringResource(id = R.string.restore_user_desc),
-                    current = restoreUsers[currentIndex].title,
+                    current = restoreUsers.getOrNull(currentIndex)?.title ?: restoreUser.toString(),
                 ) {
                     viewModel.launchOnIO {
                         val (state, selectedIndex) = dialogState.select(
                             title = context.getString(R.string.restore_user),
-                            defIndex = currentIndex,
+                            defIndex = currentIndex.coerceAtLeast(0),
                             items = restoreUsers
                         )
                         if (state.isConfirm) {
                             restoreUser = restoreUsers[selectedIndex].enum ?: -1
                         }
                     }
+                }
+                if (targetConflict != null || currentIndex < 0 && preview != null) {
+                    Text(
+                        text = if (targetConflict != null) stringResource(com.xayah.core.service.R.string.restore_target_conflict, targetConflict.packageName, targetConflict.userId)
+                        else stringResource(com.xayah.core.service.R.string.restore_user_missing, restoreUser),
+                        modifier = Modifier.paddingHorizontal(SizeTokens.Level24),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
                 Switchable(
                     key = KeyAutoScreenOff,
@@ -150,37 +161,39 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
         }
     }
 
-    if (keystoreRiskPackages.isNotEmpty()) {
+    warnings?.let { risks ->
         val isBatch = packages.size > 1
         AlertDialog(
-            onDismissRequest = viewModel::dismissKeystoreRisk,
-            title = { Text(stringResource(R.string.possible_keystore_data)) },
+            onDismissRequest = viewModel::dismissWarnings,
+            title = { Text(stringResource(when {
+                risks.damaged.isEmpty() -> R.string.possible_keystore_data
+                risks.keystore.isEmpty() -> R.string.backup_damaged
+                else -> R.string.restore
+            })) },
             text = {
                 Column(
                     modifier = Modifier
                         .heightIn(max = 320.dp)
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    Text(
-                        stringResource(
-                            if (isBatch) R.string.keystore_restore_warning_batch else R.string.keystore_restore_warning
-                        )
-                    )
-                    if (isBatch) {
-                        Spacer(Modifier.height(SizeTokens.Level12))
-                        keystoreRiskPackages.forEach { app ->
-                            Text("- ${app.label} (${app.packageName})")
-                        }
+                    if (risks.damaged.isNotEmpty()) {
+                        Text(stringResource(R.string.backup_damaged_restore_warning))
+                        risks.damaged.forEach { Text("• ${it.packageInfo.label} (${it.packageName}, ${it.userId})") }
+                    }
+                    if (risks.keystore.isNotEmpty()) {
+                        if (risks.damaged.isNotEmpty()) Spacer(Modifier.height(SizeTokens.Level12))
+                        Text(stringResource(if (isBatch) R.string.keystore_restore_warning_batch else R.string.keystore_restore_warning))
+                        if (isBatch) risks.keystore.forEach { Text("• ${it.packageInfo.label} (${it.packageName}, ${it.userId})") }
                     }
                 }
             },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmKeystoreRisk(localNavController) }) {
-                    Text(stringResource(R.string._continue))
+                TextButton(onClick = { viewModel.confirmWarnings(localNavController) }) {
+                    Text(stringResource(R.string.restore_anyway))
                 }
             },
             dismissButton = {
-                TextButton(onClick = viewModel::dismissKeystoreRisk) {
+                TextButton(onClick = viewModel::dismissWarnings) {
                     Text(stringResource(R.string.cancel))
                 }
             },

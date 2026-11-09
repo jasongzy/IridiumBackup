@@ -140,8 +140,8 @@ interface AppBackupDao {
     @Query("SELECT COUNT(*) FROM backup_revisions WHERE repositoryId = :repositoryId")
     suspend fun countRevisions(repositoryId: String): Int
 
-    @Query("SELECT COALESCE(SUM(sizeBytes), 0) FROM backup_revisions WHERE repositoryId = :repositoryId AND artifactId IN (:artifactIds)")
-    suspend fun getRevisionSizeBytes(repositoryId: String, artifactIds: List<String>): Long
+    @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId AND artifactId IN (:artifactIds)")
+    suspend fun getRevisions(repositoryId: String, artifactIds: List<String>): List<BackupRevisionEntity>
 
     @Query("SELECT * FROM backup_revisions")
     fun observeRevisions(): Flow<List<BackupRevisionEntity>>

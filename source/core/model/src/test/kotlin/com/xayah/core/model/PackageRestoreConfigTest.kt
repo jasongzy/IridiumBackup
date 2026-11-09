@@ -41,7 +41,7 @@ class PackageRestoreConfigTest {
     fun restoringTwoProfilesOnlyConflictsWhenTheyShareADestination() {
         val owner = config().toPackageEntity("", "/backup")
         val profile = config().copy(userId = 10).toPackageEntity("", "/backup")
-        val request = PackageTaskRequest.Restore(listOf(owner, profile), -1)
+        val request = PackageTaskRequest.Restore(listOf(owner, profile), sizeBytes = 0)
 
         assertNull(request.conflictingTarget())
         assertEquals(AppKey(owner.packageName, 0), request.copy(userId = 0).conflictingTarget())

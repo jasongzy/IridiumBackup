@@ -13,7 +13,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.PackageEntity
-import com.xayah.core.model.util.formatSize
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyLocalImpl
@@ -53,7 +52,7 @@ class RestoreViewModelImpl @Inject constructor(
     mCloudService: ProcessingServiceProxyCloudImpl,
     private val args: SavedStateHandle,
 ) : AbstractPackagesProcessingViewModel(mContext, mRootService, mTaskRepo, mLocalService, mCloudService) {
-    data class KeystoreRiskPackage(val label: String, val packageName: String)
+    data class RestoreWarnings(val damaged: List<PackageEntity>, val keystore: List<PackageEntity>)
 
     override suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
@@ -71,12 +70,9 @@ class RestoreViewModelImpl @Inject constructor(
                 val packages = mPkgRepo.queryActivated(OpType.RESTORE, cloud, backupSaveDir)
                 LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Query activated apps, cloud: $cloud, backupDir: $backupSaveDir" }
                 LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Queried apps count: ${packages.size}" }
-                _packages.value = packages
-                val bytes = appBackupRepository.getRevisionSizeBytes(
-                    repositoryId = "$cloud:$backupSaveDir",
-                    artifactIds = packages.map { it.archivesRelativeDir },
+                _preview.value = PackageTaskRequest.Restore(
+                    packages, appBackupRepository.getRestoreSizeBytes("$cloud:$backupSaveDir", packages),
                 )
-                _packagesSize.value = bytes.toDouble().formatSize()
             }
 
             is SetCloudEntity -> {
@@ -110,47 +106,46 @@ class RestoreViewModelImpl @Inject constructor(
     }
 
     private val backupUser = DialogRadioItem(enum = -1, title = mContext.getString(R.string.backup_user))
-    private val _packages: MutableStateFlow<List<PackageEntity>> = MutableStateFlow(listOf())
-    private val _packagesSize: MutableStateFlow<String> = MutableStateFlow(mContext.getString(R.string.loading))
+    private val _preview = MutableStateFlow<PackageTaskRequest.Restore?>(null)
     private val _restoreUsers = MutableStateFlow(listOf(backupUser))
-    private val _keystoreRiskPackages = MutableStateFlow<List<KeystoreRiskPackage>>(emptyList())
-    private val _isCheckingKeystoreRisk = MutableStateFlow(false)
+    private val _warnings = MutableStateFlow<RestoreWarnings?>(null)
+    private val _isCheckingRestore = MutableStateFlow(false)
 
-    val packages: StateFlow<List<PackageEntity>> = _packages
-    val packagesSize: StateFlow<String> = _packagesSize
+    val preview: StateFlow<PackageTaskRequest.Restore?> = _preview
     val restoreUsers: StateFlow<List<DialogRadioItem<Int>>> = _restoreUsers
-    val keystoreRiskPackages: StateFlow<List<KeystoreRiskPackage>> = _keystoreRiskPackages
-    val isCheckingKeystoreRisk: StateFlow<Boolean> = _isCheckingKeystoreRisk
+    val warnings: StateFlow<RestoreWarnings?> = _warnings
+    val isCheckingRestore: StateFlow<Boolean> = _isCheckingRestore
 
     fun continueRestore(restoreUser: Int, navController: NavController) {
-        if (isStarting.value || !_isCheckingKeystoreRisk.compareAndSet(false, true)) return
+        if (isStarting.value || !_isCheckingRestore.compareAndSet(false, true)) return
         launchOnIO {
             try {
-                val request = PackageTaskRequest.Restore(_packages.value, restoreUser)
+                val request = _preview.value?.copy(userId = restoreUser) ?: return@launchOnIO
                 confirmedRequest = request
-                val risks = request.packages.filter { app ->
+                val damaged = appBackupRepository.knownDamagedBackups(request.packages)
+                val keystore = request.packages.filter { app ->
                     app.extraInfo.hasKeystore &&
                         app.selectionFlag and PackageEntity.FLAG_DATA != 0 &&
                         mRootService.getPackageUid(app.packageName, request.targetUser(app)) == -1
-                }.map { KeystoreRiskPackage(it.packageInfo.label, it.packageName) }
-                if (risks.isEmpty()) {
+                }
+                if (damaged.isEmpty() && keystore.isEmpty()) {
                     emitIntent(FinishSetup(navController))
                 } else {
-                    _keystoreRiskPackages.value = risks
+                    _warnings.value = RestoreWarnings(damaged, keystore)
                 }
             } finally {
-                _isCheckingKeystoreRisk.value = false
+                _isCheckingRestore.value = false
             }
         }
     }
 
-    fun confirmKeystoreRisk(navController: NavController) {
-        _keystoreRiskPackages.value = emptyList()
+    fun confirmWarnings(navController: NavController) {
+        _warnings.value = null
         emitIntentOnIO(FinishSetup(navController))
     }
 
-    fun dismissKeystoreRisk() {
+    fun dismissWarnings() {
         confirmedRequest = null
-        _keystoreRiskPackages.value = emptyList()
+        _warnings.value = null
     }
 }

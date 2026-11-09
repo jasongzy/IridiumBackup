@@ -384,9 +384,8 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         it.st_size
     }
 
-    override fun getUidGid(path: String): IntArray = synchronized(lock) {
-        NativeLib.getUidGid(path)
-    }
+    override fun fileGroupId(path: String): Int =
+        checkNotNull(FileUtil.statIfPresent(path)) { "Directory not found: $path" }.st_gid
 
     /**
      * AIDL limits transaction to 1M which means it may throw [android.os.TransactionTooLargeException]

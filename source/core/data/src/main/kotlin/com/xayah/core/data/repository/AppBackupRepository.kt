@@ -122,8 +122,15 @@ class AppBackupRepository @Inject constructor(
 
     fun observeRevisions(): Flow<List<BackupRevisionEntity>> = dao.observeRevisions()
 
-    suspend fun getRevisionSizeBytes(repositoryId: String, artifactIds: List<String>): Long =
-        artifactIds.distinct().chunked(SQLITE_BIND_LIMIT - 1).sumOf { dao.getRevisionSizeBytes(repositoryId, it) }
+    suspend fun getRestoreSizeBytes(repositoryId: String, packages: List<PackageEntity>): Long {
+        val revisions = packages.map { it.archivesRelativeDir }.distinct().chunked(SQLITE_BIND_LIMIT - 1)
+            .flatMap { dao.getRevisions(repositoryId, it) }.associateBy { it.artifactId }
+        return packages.sumOf { app ->
+            val revision = revisions[app.archivesRelativeDir]
+            if (revision != null && revision.contentMask == app.selectionFlag && revision.sizeBytes > 0)
+                revision.sizeBytes else app.selectedDisplayStatsBytes
+        }
+    }
 
     suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) {
         dao.replaceInstalledApps(userId, apps.map { it.toBackupApp() })
@@ -222,6 +229,13 @@ class AppBackupRepository @Inject constructor(
         if (result.status != BackupVerificationStatus.NOT_VERIFIED) {
             _verificationResults.update { it + (result.revision.id to result) }
         }
+    }
+
+    fun knownDamagedBackups(packages: List<PackageEntity>): List<PackageEntity> {
+        val damaged = verificationResults.value.values.asSequence()
+            .filter { it.status == BackupVerificationStatus.DAMAGED }
+            .map { it.revision.repositoryId to it.revision.artifactId }.toSet()
+        return packages.filter { ("${it.indexInfo.cloud}:${it.indexInfo.backupDir}" to it.archivesRelativeDir) in damaged }
     }
 
     suspend fun saveBackupIcon(packageName: String, appsDir: String, revisionDir: String): String? {

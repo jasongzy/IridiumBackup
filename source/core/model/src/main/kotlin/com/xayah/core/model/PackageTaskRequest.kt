@@ -11,7 +11,7 @@ sealed interface PackageTaskRequest {
         val backupConfigs: Boolean,
     ) : PackageTaskRequest
 
-    data class Restore(override val packages: List<PackageEntity>, val userId: Int) : PackageTaskRequest {
+    data class Restore(override val packages: List<PackageEntity>, val sizeBytes: Long, val userId: Int = -1) : PackageTaskRequest {
         fun targetUser(app: PackageEntity): Int = if (userId == -1) app.userId else userId
 
         fun conflictingTarget(): AppKey? {

@@ -5,6 +5,8 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
+import com.xayah.core.model.DataType
+import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
 import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageRestoreConfig
 import com.xayah.core.model.database.PackageDataStates
@@ -43,7 +45,9 @@ class BackupRecordingTest {
             }
             packages.upsert(app)
             val requests = BackupRequestStore(context, packages)
-            val temporaryScope = app.dataStates.copy(apkState = DataState.NotSelected)
+            val temporaryScope = DataType.packageArchives.fold(app.dataStates) { states, type ->
+                type.setSelected(states, type == DataType.PACKAGE_USER)
+            }
             requests.prepare(listOf(app.id), mapOf(app.id to temporaryScope))
             val request = checkNotNull(requests.take()).packages.single()
             val current = app.copy(
@@ -74,6 +78,11 @@ class BackupRecordingTest {
             assertEquals(1L, recorded.appVersionCode)
             assertEquals(2, recorded.contentMask)
             assertEquals(512L, recorded.sizeBytes)
+            val partial = stored.copy(displayStats = PackageDataStats(userBytes = 400))
+            assertEquals(512L, repository.getRestoreSizeBytes(recorded.repositoryId, listOf(partial)))
+            dao.upsertRevisions(listOf(recorded.copy(contentMask = 3)))
+            assertEquals(400L, repository.getRestoreSizeBytes(recorded.repositoryId, listOf(partial)))
+            assertEquals(400L, repository.getRestoreSizeBytes("cloud:/backup", listOf(partial)))
 
             packages.deleteByIds(listOf(app.id))
             repository.syncInstalledApps(0, emptyList())

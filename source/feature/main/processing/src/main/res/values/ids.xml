@@ -40,6 +40,9 @@
     <item name="setup" type="string" />
     <item name="_continue" type="string" />
     <item name="cancel" type="string" />
+    <item name="backup_damaged" type="string" />
+    <item name="backup_damaged_restore_warning" type="string" />
+    <item name="restore_anyway" type="string" />
     <item name="keystore_restore_warning" type="string" />
     <item name="keystore_restore_warning_batch" type="string" />
     <item name="possible_keystore_data" type="string" />

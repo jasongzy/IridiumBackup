@@ -184,9 +184,13 @@ class VerificationRefreshTest {
             apk.writeText("damaged")
             val damaged = repository.inspectRevision(revision)
             check(damaged.canClean)
+            repository.rememberVerification(damaged)
+            val other = restore.copy(indexInfo = restore.indexInfo.copy(backupDir = "/other"))
+            assertEquals(listOf(restore), repository.knownDamagedBackups(listOf(other, restore)))
             apk.writeBytes(byteArrayOf(1, 2, 3))
             val repaired = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }
             assertEquals(0, repaired.deletedCount)
+            assertEquals(emptyList<PackageEntity>(), repository.knownDamagedBackups(listOf(restore)))
             assertEquals(BackupVerificationStatus.VALID, repaired.results.single().status)
             readable = false
             val unreadable = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }

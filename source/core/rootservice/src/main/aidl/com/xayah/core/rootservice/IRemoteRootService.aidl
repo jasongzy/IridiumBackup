@@ -28,7 +28,7 @@ interface IRemoteRootService {
     ParcelFileDescriptor readBytes(String path);
     long calculateSize(String path);
     long fileLength(String path);
-    int[] getUidGid(String path);
+    int fileGroupId(String path);
 
     ParcelFileDescriptor getInstalledPackagesAsUser(int flags, int userId);
     PackageInfo getPackageInfoAsUser(String packageName, int flags, int userId);

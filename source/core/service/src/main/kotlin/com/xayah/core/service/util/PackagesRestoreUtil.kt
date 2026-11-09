@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
-import com.xayah.core.data.util.srcDir
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.readCleanRestoring
 import com.xayah.core.data.util.archiveExclusions
@@ -171,6 +170,10 @@ class PackagesRestoreUtil @Inject constructor(
                     // Decompress the archive.
                     val linkDir = "${context.cacheDir}/restore-links-${UUID.randomUUID()}"
                     try {
+                        val gid = when (dataType) {
+                            DataType.PACKAGE_DATA, DataType.PACKAGE_OBB, DataType.PACKAGE_MEDIA -> rootService.fileGroupId(dstDir)
+                            else -> uid.toUInt()
+                        }
                         val extraction = rootService.extractArchive(
                             source = src,
                             destination = dstDir,
@@ -186,11 +189,6 @@ class PackagesRestoreUtil @Inject constructor(
                         out.addAll(extraction.result.out)
 
                         if (isSuccess) {
-                            var gid: UInt = uid.toUInt()
-                            if (dataType == DataType.PACKAGE_DATA || dataType == DataType.PACKAGE_OBB || dataType == DataType.PACKAGE_MEDIA) {
-                                val (_, pathGid) = rootService.getUidGid(dataType.srcDir(userId))
-                                gid = pathGid
-                            }
                             SELinux.chown(uid = uid.toUInt(), gid = gid, path = dst).also { result ->
                                 isSuccess = isSuccess && result.isSuccess
                                 out.addAll(result.out)
