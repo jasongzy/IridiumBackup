@@ -1,7 +1,6 @@
 package com.xayah.feature.main.processing
 
 import android.content.Context
-import android.view.SurfaceControlHidden
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.datastore.readScreenOffCountDown
@@ -21,8 +20,8 @@ import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
 import com.xayah.core.util.LogUtil
-import com.xayah.core.util.command.BaseUtil
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -48,10 +47,8 @@ data class IndexUiState(
 
 open class ProcessingUiIntent : UiIntent {
     data object Process : ProcessingUiIntent()
-    data object DestroyService : ProcessingUiIntent()
-    data object Cancel : ProcessingUiIntent()
+    data object Exit : ProcessingUiIntent()
     data object TurnOffScreen : ProcessingUiIntent()
-    data object ClearTask : ProcessingUiIntent()
 }
 
 @ExperimentalCoroutinesApi
@@ -70,12 +67,16 @@ abstract class AbstractProcessingViewModel(
         cloudEntity = null
     )
 ) {
+    enum class ExitState { IDLE, WAITING, COMPLETE }
+
+    private val _exitState = MutableStateFlow(ExitState.IDLE)
+    val exitState: StateFlow<ExitState> = _exitState
     private val processingJob = AtomicReference<Job?>()
     private var initializationJob: Job? = null
     protected var confirmedRequest: PackageTaskRequest? = null
 
     fun initialize(autoStart: Boolean) {
-        if (initializationJob != null) return
+        if (initializationJob != null || _exitState.value != ExitState.IDLE) return
         initializationJob = launchOnIO {
             val state = uiState.value
             val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
@@ -126,7 +127,7 @@ abstract class AbstractProcessingViewModel(
     override suspend fun onEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
             is ProcessingUiIntent.Process -> {
-                if (state.state != OperationState.IDLE || _taskId.value < 0) return
+                if (state.state != OperationState.IDLE || _taskId.value < 0 || _exitState.value != ExitState.IDLE) return
                 val job = currentCoroutineContext().job
                 if (!processingJob.compareAndSet(null, job)) return
                 emitState(state.copy(state = OperationState.PROCESSING))
@@ -149,33 +150,32 @@ abstract class AbstractProcessingViewModel(
                 }
             }
 
-            is ProcessingUiIntent.Cancel -> {
-                processingJob.get()?.let { job ->
-                    job.cancel()
-                    BaseUtil.cancelArchiveCommands(mContext)
-                    job.join()
-                }
-            }
-
-            is ProcessingUiIntent.DestroyService -> {
-                initializationJob?.cancel()
-                initializationJob?.join()
-                withMainContext {
-                    if (state.storageType == StorageMode.Cloud) mCloudService.destroyService(true)
-                    else mLocalService.destroyService(true)
+            is ProcessingUiIntent.Exit -> {
+                if (!_exitState.compareAndSet(ExitState.IDLE, ExitState.WAITING)) return
+                try {
+                    initializationJob?.cancel()
+                    processingJob.get()?.cancelAndJoin()
+                    initializationJob?.join()
+                    withMainContext {
+                        if (state.storageType == StorageMode.Cloud) mCloudService.destroyService(true)
+                        else mLocalService.destroyService(true)
+                    }
+                    val id = _taskId.value
+                    if (id >= 0) mTaskRepo.deleteTask(id)
+                    _exitState.value = ExitState.COMPLETE
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _exitState.value = ExitState.IDLE
+                    fail(e)
                 }
             }
 
             is ProcessingUiIntent.TurnOffScreen -> {
-                if (uiState.value.state == OperationState.PROCESSING) {
-                    mRootService.setScreenOffTimeout(Int.MAX_VALUE)
-                    mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_OFF)
+                if (uiState.value.state == OperationState.PROCESSING && _exitState.value == ExitState.IDLE) {
+                    val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
+                    service.turnOffScreen()
                 }
-            }
-
-            is ProcessingUiIntent.ClearTask -> {
-                val id = _taskId.value
-                if (id >= 0) mTaskRepo.deleteTask(id)
             }
 
             else -> {

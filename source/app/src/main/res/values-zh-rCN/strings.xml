@@ -71,7 +71,9 @@
     <string name="date">日期</string>
     <string name="restoring">恢复中</string>
     <string name="prompt">提示</string>
-    <string name="processing_exit_confirmation">确定退出吗？这将会中断操作。</string>
+    <string name="processing_exit_confirmation">等当前步骤完成后，取消剩余任务？</string>
+    <string name="cancel_task">取消任务</string>
+    <string name="processing_cancelling">正在取消…</string>
     <string name="reload">重建备份索引</string>
     <string name="databases_reload_failed">数据库重载失败</string>
     <string name="icon_reload_failed">图标重载失败</string>

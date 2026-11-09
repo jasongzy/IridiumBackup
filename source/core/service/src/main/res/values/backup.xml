@@ -7,4 +7,7 @@
     <string name="restore_user_missing">Android user %1$d is unavailable. Choose another restore user.</string>
     <string name="restore_target_conflict">More than one backup would restore %1$s to user %2$d. Restore them separately or keep their original users.</string>
     <string name="package_stop_failed">Couldn’t end %1$s: %2$s</string>
+    <string name="processing_service_bind_failed">Unable to connect to the task service</string>
+    <string name="processing_service_disconnected">The task service disconnected</string>
+    <string name="processing_service_timeout">Timed out connecting to the task service</string>
 </resources>

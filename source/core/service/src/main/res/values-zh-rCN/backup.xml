@@ -7,4 +7,7 @@
     <string name="restore_user_missing">Android 用户 %1$d 不可用，请选择其他恢复用户</string>
     <string name="restore_target_conflict">多份备份会将 %1$s 恢复到用户 %2$d，请分别恢复或保留各自的原用户</string>
     <string name="package_stop_failed">无法结束 %1$s：%2$s</string>
+    <string name="processing_service_bind_failed">无法连接任务服务</string>
+    <string name="processing_service_disconnected">任务服务已断开</string>
+    <string name="processing_service_timeout">连接任务服务超时</string>
 </resources>

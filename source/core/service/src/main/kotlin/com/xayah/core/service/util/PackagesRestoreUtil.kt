@@ -1,5 +1,6 @@
 package com.xayah.core.service.util
 
+import com.xayah.core.util.archive.finishArchiveStep
 import android.app.AppOpsManagerHidden
 import android.content.Context
 import android.content.pm.PackageManager
@@ -60,7 +61,7 @@ class PackagesRestoreUtil @Inject constructor(
         taskDao.upsert(this)
     }
 
-    suspend fun restoreApk(userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String): ShellResult = run {
+    suspend fun restoreApk(userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, srcDir: String): ShellResult = finishArchiveStep {
         log { "Restoring apk..." }
 
         val dataType = DataType.PACKAGE_APK
@@ -134,7 +135,7 @@ class PackagesRestoreUtil @Inject constructor(
     /**
      * Package data: USER, USER_DE, DATA, OBB, MEDIA
      */
-    suspend fun restoreData(userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, srcDir: String): ShellResult = run {
+    suspend fun restoreData(userId: Int, p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, srcDir: String): ShellResult = finishArchiveStep {
         log { "Restoring ${dataType.type}..." }
 
         val packageName = p.packageName

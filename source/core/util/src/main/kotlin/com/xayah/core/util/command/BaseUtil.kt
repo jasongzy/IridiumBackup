@@ -27,14 +27,11 @@ import com.xayah.core.util.filesDir
 import com.xayah.core.util.logDir
 import com.xayah.core.util.model.ShellResult
 import com.xayah.core.util.withIOContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import net.lingala.zip4j.ZipFile
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.util.concurrent.TimeUnit
 
 private val supportedBinaryAbis = setOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
 private val requiredBinaries = setOf("busybox", "tar", "zstd")
@@ -66,8 +63,6 @@ object BaseUtil {
         .setCommands(context.readCustomSUFile().first())
         .setTimeout(3)
 
-    private suspend fun getNewShell(context: Context): Shell? = runCatching { getShellBuilder(context).build() }.getOrNull()
-
     suspend fun initializeEnvironment(context: Context) = run {
         if (hasBaseBinaries(context).not()) {
             releaseBase(context)
@@ -81,24 +76,16 @@ object BaseUtil {
         LogUtil.initialize(context, context.logDir())
     }
 
-    suspend fun execute(vararg args: String, shell: Shell? = null, log: Boolean = true): ShellResult = withIOContext {
+    suspend fun execute(vararg args: String, log: Boolean = true): ShellResult = withIOContext {
         val shellResult = ShellResult(code = -1, input = args.toList().trim(), out = listOf())
 
         if (log) {
             log { TAG_SHELL_IN to shellResult.inputString }
         }
 
-        if (shell == null) {
-            Shell.cmd(shellResult.inputString).exec().also { result ->
-                shellResult.code = result.code
-                shellResult.out = result.out
-            }
-        } else {
-            val outList = mutableListOf<String>()
-            shell.newJob().to(outList, outList).add(shellResult.inputString).exec().also { result ->
-                shellResult.code = result.code
-                shellResult.out = outList
-            }
+        Shell.cmd(shellResult.inputString).exec().also { result ->
+            shellResult.code = result.code
+            shellResult.out = result.out
         }
 
         if (log) {
@@ -108,62 +95,6 @@ object BaseUtil {
         }
 
         shellResult
-    }
-
-    suspend fun execute(vararg args: String, shell: Shell, log: Boolean = true, timeout: Long): ShellResult = withIOContext {
-        var shellResult = ShellResult(code = -1, input = args.toList().trim(), out = listOf())
-
-        val job = launch {
-            shellResult = execute(args = args, shell = shell, log = log)
-        }
-        delay(50)
-        runCatching {
-            if (timeout != -1L) {
-                shell.waitAndClose(timeout, TimeUnit.SECONDS)
-            } else {
-                shell.waitAndClose()
-            }
-        }.onFailure {
-            log("Execution timeout.")
-        }
-        job.join()
-
-        shellResult
-    }
-
-    suspend fun kill(context: Context, vararg keys: String) {
-        val shell = getNewShell(context)
-        if (shell != null) {
-            // ps -A | grep -w $key1 | grep -w $key2 | ... | awk 'NF>1{print $1}' | xargs kill -9
-            val keysArg = keys.map { "| grep -w $it" }.toTypedArray()
-            execute(
-                "ps -A",
-                *keysArg,
-                "| awk 'NF>1{print ${USD}1}'",
-                "| xargs kill -9",
-                shell = shell,
-                timeout = -1
-            )
-        } else {
-            log { "kill" to "Failed to get a new shell!" }
-        }
-    }
-
-    suspend fun cancelArchiveCommands(context: Context) {
-        val shell = getNewShell(context) ?: return
-        val bin = context.binDir()
-        val command = """
-            for process in /proc/[0-9]*/exe; do
-                for tool in '$bin/tar' '$bin/zstd'; do
-                    [ ! -L "${USD}tool" ] && [ "${USD}process" -ef "${USD}tool" ] || continue
-                    pid=${USD}{process#/proc/}
-                    pid=${USD}{pid%/exe}
-                    kill -9 "${USD}pid" 2>/dev/null
-                    break
-                done
-            done
-        """.trimIndent()
-        execute(command, shell = shell, timeout = -1)
     }
 
     suspend fun mkdirs(dst: String) = withIOContext {

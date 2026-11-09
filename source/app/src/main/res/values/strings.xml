@@ -74,7 +74,9 @@
     <string name="date">Date</string>
     <string name="restoring">Restoring</string>
     <string name="prompt">Prompt</string>
-    <string name="processing_exit_confirmation">Exit the app and interrupt ongoing operation\?</string>
+    <string name="processing_exit_confirmation">Cancel the remaining work after the current step finishes?</string>
+    <string name="cancel_task">Cancel task</string>
+    <string name="processing_cancelling">Cancelling…</string>
     <string name="reload">Rebuild backup index</string>
     <string name="databases_reload_failed">Could not reload databases</string>
     <string name="icon_reload_failed">Could not reload icon</string>

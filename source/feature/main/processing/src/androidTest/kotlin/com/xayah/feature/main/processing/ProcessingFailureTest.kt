@@ -86,19 +86,23 @@ class ProcessingFailureTest {
 
     @Test
     fun initializationFailureIsAnInspectableTerminalState() = runBlocking {
-        val model = create()
+        val binding = BindingContext(context)
+        val model = create(binding)
         model.initialize(autoStart = true)
         val state = withTimeout(5_000) { model.uiState.first { it.state == OperationState.ERROR } }
-        assertTrue(state.failure.orEmpty().contains("Unable to bind"))
+        assertEquals(context.getString(com.xayah.core.service.R.string.processing_service_bind_failed), state.failure)
+        assertEquals(1, binding.unbindCount)
     }
 
     @Test
-    fun processingFailureIsAnInspectableTerminalState() = runBlocking {
-        val model = create()
+    fun processingNeverStartsANewServiceForAnExistingTask() = runBlocking {
+        val binding = BindingContext(context)
+        val model = create(binding)
         model.setTaskId(1)
         model.emitIntent(ProcessingUiIntent.Process)
         assertEquals(OperationState.ERROR, model.uiState.value.state)
-        assertTrue(model.uiState.value.failure.orEmpty().contains("Unable to bind"))
+        assertFalse(binding.bound.isCompleted)
+        assertEquals(context.getString(com.xayah.core.service.R.string.processing_service_disconnected), model.uiState.value.failure)
     }
 
     @Test
@@ -107,7 +111,8 @@ class ProcessingFailureTest {
         val model = create(binding)
         model.initialize(autoStart = true)
         withTimeout(5_000) { binding.bound.await() }
-        model.emitIntent(ProcessingUiIntent.DestroyService)
+        model.emitIntent(ProcessingUiIntent.Exit)
+        assertEquals(AbstractProcessingViewModel.ExitState.COMPLETE, model.exitState.value)
         withContext(Dispatchers.Main) {
             assertEquals(1, binding.unbindCount)
             assertEquals(OperationState.IDLE, model.uiState.value.state)

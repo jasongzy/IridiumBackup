@@ -208,6 +208,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 if (relativeDir != null) {
                     val dstDir = "$mAppsDir/$relativeDir"
                     for (type in DataType.packageArchives) {
+                        currentCoroutineContext().ensureActive()
                         backup(type, revisionApp, previousRevision, pkg, dstDir)
                         revisionApp.dataStates = type.setSelected(revisionApp.dataStates, pkg.get(type).state == OperationState.DONE)
                     }
@@ -266,6 +267,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 } else {
                     val message = mContext.getString(R.string.backup_revision_directory_failed, revisionApp.archivesRelativeDir)
                     for (type in DataType.packageArchives) {
+                        currentCoroutineContext().ensureActive()
                         pkg.update(dataType = type, state = OperationState.ERROR, log = message.takeIf { type == DataType.PACKAGE_APK })
                     }
                     mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)

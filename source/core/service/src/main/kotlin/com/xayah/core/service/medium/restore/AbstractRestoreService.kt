@@ -17,6 +17,8 @@ import com.xayah.core.service.medium.AbstractMediumService
 import com.xayah.core.service.util.MediumRestoreUtil
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 
 internal abstract class AbstractRestoreService : AbstractMediumService() {
@@ -86,6 +88,7 @@ internal abstract class AbstractRestoreService : AbstractMediumService() {
         log { "Task count: ${mMediaEntities.size}." }
 
         mMediaEntities.forEachIndexed { index, media ->
+            currentCoroutineContext().ensureActive()
             NotificationUtil.notify(
                 mContext,
                 mNotificationBuilder,

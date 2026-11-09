@@ -1,5 +1,6 @@
 package com.xayah.core.service.util
 
+import com.xayah.core.util.archive.finishArchiveStep
 import android.content.Context
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.CloudRepository
@@ -55,7 +56,7 @@ class MediumRestoreUtil @Inject constructor(
         taskDao.upsert(this)
     }
 
-    suspend fun restoreMedia(m: MediaEntity, t: TaskDetailMediaEntity, srcDir: String): ShellResult = run {
+    suspend fun restoreMedia(m: MediaEntity, t: TaskDetailMediaEntity, srcDir: String): ShellResult = finishArchiveStep {
         log { "Restoring ${DataType.MEDIA_MEDIA.type}..." }
 
         val ct = m.indexInfo.compressionType
@@ -95,7 +96,7 @@ class MediumRestoreUtil @Inject constructor(
             isSuccess = false
             out.add(log { "Not exist: $src" })
             t.updateInfo(state = OperationState.ERROR, log = out.toLineString())
-            return@run ShellResult(code = -1, input = listOf(), out = out)
+            return@finishArchiveStep ShellResult(code = -1, input = listOf(), out = out)
         }
         t.updateInfo(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
 

@@ -12,6 +12,7 @@ import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -25,37 +26,27 @@ abstract class AbstractProcessingServiceProxy {
     private suspend fun bindService(): AbstractProcessingService = suspendCancellableCoroutine { continuation ->
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                if (!continuation.isActive || mConnection !== this) return
+                val remote = (service as AbstractProcessingService.OperationLocalBinder).getService()
                 mBinder = service
-
-                mService = (mBinder as AbstractProcessingService.OperationLocalBinder).getService()
-                if (continuation.isActive) continuation.resume(mService!!)
+                mService = remote
+                continuation.resume(remote)
             }
 
-            override fun onServiceDisconnected(name: ComponentName) {
+            private fun disconnected() {
+                if (mConnection !== this) return
                 mBinder = null
                 mService = null
-                val msg = "Service disconnected."
-                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
+                if (continuation.isActive) continuation.resumeWithException(RemoteException(context.getString(R.string.processing_service_disconnected)))
             }
 
-            override fun onBindingDied(name: ComponentName) {
-                mBinder = null
-                mService = null
-                val msg = "Binding died."
-                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
-            }
-
-            override fun onNullBinding(name: ComponentName) {
-                mBinder = null
-                mService = null
-                val msg = "Null binding."
-                if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
-            }
+            override fun onServiceDisconnected(name: ComponentName) = disconnected()
+            override fun onBindingDied(name: ComponentName) = disconnected()
+            override fun onNullBinding(name: ComponentName) = disconnected()
         }
         mConnection = connection
         if (!context.bindService(intent, connection, Context.BIND_AUTO_CREATE)) {
-            mConnection = null
-            continuation.resumeWithException(RemoteException("Unable to bind processing service."))
+            continuation.resumeWithException(RemoteException(context.getString(R.string.processing_service_bind_failed)))
         }
         continuation.invokeOnCancellation {
             Handler(Looper.getMainLooper()).post {
@@ -69,33 +60,32 @@ abstract class AbstractProcessingServiceProxy {
      */
     fun destroyService(clearNotification: Boolean = false) {
         if (clearNotification) NotificationUtil.cancel(context)
-        if (mConnection != null)
-            context.unbindService(mConnection!!)
+        mConnection?.let(context::unbindService)
         mService?.stopSelf()
         mBinder = null
         mService = null
         mConnection = null
     }
 
-    private suspend fun getService(): AbstractProcessingService = withMainContext {
-        if (mService == null) {
-            bindService()
-        } else if (mBinder!!.isBinderAlive.not()) {
-            destroyService()
-            bindService()
-        } else {
-            mService!!
-        }
+    private suspend fun activeService(): AbstractProcessingService = withMainContext {
+        mService?.takeIf { mBinder?.isBinderAlive == true }
+            ?: throw RemoteException(context.getString(R.string.processing_service_disconnected))
     }
 
-    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?) =
-        getService().initialize(cloudName, backupDir, request)
+    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?): Long {
+        val service = withMainContext {
+            withTimeoutOrNull(15_000) { bindService() }
+                ?: throw RemoteException(context.getString(R.string.processing_service_timeout))
+        }
+        return service.initialize(cloudName, backupDir, request)
+    }
 
-    suspend fun preprocessing() = getService().preprocessing()
+    suspend fun preprocessing() = activeService().preprocessing()
 
-    suspend fun processing() = getService().processing()
+    suspend fun processing() = activeService().processing()
 
-    suspend fun postProcessing() = getService().postProcessing()
+    suspend fun postProcessing() = activeService().postProcessing()
 
     suspend fun cleanup() = mService?.cleanup()
+    suspend fun turnOffScreen() = mService?.turnOffScreen()
 }

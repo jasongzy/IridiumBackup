@@ -32,7 +32,6 @@ import android.view.SurfaceControlHidden
 import androidx.core.content.pm.PermissionInfoCompat
 import com.android.server.display.DisplayControl
 import com.topjohnwu.superuser.ShellUtils
-import com.xayah.core.datastore.ConstantUtil.DEFAULT_IDLE_TIMEOUT
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.rootservice.IRemoteRootService
@@ -625,11 +624,12 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
     }
 
     override fun getScreenOffTimeout(): Int = synchronized(lock) {
-        ShellUtils.fastCmd("settings get system screen_off_timeout").toIntOrNull() ?: DEFAULT_IDLE_TIMEOUT
+        ShellUtils.fastCmd("settings get system screen_off_timeout").trim().toInt()
     }
 
     override fun setScreenOffTimeout(timeout: Int): Unit = synchronized(lock) {
         ShellUtils.fastCmd("settings put system screen_off_timeout $timeout")
+        check(getScreenOffTimeout() == timeout) { "Unable to set screen timeout" }
     }
 
     override fun forceStopPackageAsUser(packageName: String, userId: Int) = synchronized(lock) {

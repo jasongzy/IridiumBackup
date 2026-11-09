@@ -50,12 +50,10 @@ import com.xayah.core.model.OperationState
 import com.xayah.core.ui.component.AnimatedTextContainer
 import com.xayah.core.ui.component.BodyLargeText
 import com.xayah.core.ui.component.HeadlineMediumText
-import com.xayah.core.ui.component.LocalSlotScope
 import com.xayah.core.ui.component.PackageIconImage
 import com.xayah.core.ui.component.ProcessingCard
 import com.xayah.core.ui.component.SegmentCircularProgressIndicator
 import com.xayah.core.ui.component.Surface
-import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.component.paddingBottom
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.component.paddingTop
@@ -68,7 +66,6 @@ import com.xayah.core.ui.token.AnimationTokens
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.viewmodel.IndexUiEffect
-import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 
@@ -117,9 +114,10 @@ fun PageProcessing(
         viewModel.initialize(autoStart)
     }
 
-    LaunchedEffect(screenOffCountDown, uiState.state) {
+    val exitState by viewModel.exitState.collectAsStateWithLifecycle()
+    LaunchedEffect(screenOffCountDown, uiState.state, exitState) {
         if (screenOffCountDown != 0) {
-            if (uiState.state != OperationState.PROCESSING) {
+            if (uiState.state != OperationState.PROCESSING || exitState != AbstractProcessingViewModel.ExitState.IDLE) {
                 context.saveScreenOffCountDown(0)
             } else {
                 viewModel.launchOnIO {
@@ -140,32 +138,32 @@ fun PageProcessing(
         }
     }
 
-    val onBack: () -> Unit = remember {
-        {
-            if (uiState.state == OperationState.PROCESSING) {
-                viewModel.launchOnIO {
-                    if (dialogState.confirm(title = context.getString(R.string.prompt), text = context.getString(R.string.processing_exit_confirmation))) {
-                        viewModel.emitIntent(ProcessingUiIntent.Cancel)
-                        viewModel.emitIntent(ProcessingUiIntent.ClearTask)
-                        withMainContext {
-                            navController.popBackStack()
-                        }
-                    }
-                }
-            } else {
-                viewModel.launchOnIO {
-                    viewModel.emitIntent(ProcessingUiIntent.DestroyService)
-                    viewModel.emitIntent(ProcessingUiIntent.ClearTask)
-                    withMainContext {
-                        navController.popBackStack()
-                    }
-                }
-            }
+    LaunchedEffect(exitState) {
+        if (exitState == AbstractProcessingViewModel.ExitState.COMPLETE) navController.popBackStack()
+    }
+    var confirmExit by rememberSaveable { mutableStateOf(false) }
+    val onBack: () -> Unit = {
+        if (exitState == AbstractProcessingViewModel.ExitState.IDLE) {
+            if (uiState.state == OperationState.PROCESSING) confirmExit = true
+            else viewModel.emitIntentOnIO(ProcessingUiIntent.Exit)
         }
     }
-
-    BackHandler {
-        onBack()
+    BackHandler(onBack = onBack)
+    if (confirmExit && uiState.state == OperationState.PROCESSING) {
+        AlertDialog(
+            onDismissRequest = { confirmExit = false },
+            title = { Text(stringResource(R.string.prompt)) },
+            text = { Text(stringResource(R.string.processing_exit_confirmation)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmExit = false
+                    viewModel.emitIntentOnIO(ProcessingUiIntent.Exit)
+                }) { Text(stringResource(R.string.cancel_task)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmExit = false }) { Text(stringResource(R.string._continue)) }
+            },
+        )
     }
 
     ProcessingSetupScaffold(
@@ -182,7 +180,7 @@ fun PageProcessing(
             ) {
                 Button(
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = when (uiState.state) {
+                    enabled = exitState == AbstractProcessingViewModel.ExitState.IDLE && when (uiState.state) {
                         OperationState.IDLE -> !autoStart
                         OperationState.PROCESSING, OperationState.DONE, OperationState.ERROR -> true
                         else -> false
@@ -192,7 +190,7 @@ fun PageProcessing(
                         else onBack()
                     },
                 ) {
-                    val actionText = when (uiState.state) {
+                    val actionText = if (exitState == AbstractProcessingViewModel.ExitState.WAITING && uiState.state == OperationState.PROCESSING) R.string.processing_cancelling else when (uiState.state) {
                         OperationState.PROCESSING -> R.string.cancel
                         OperationState.DONE, OperationState.ERROR -> R.string.finish
                         else -> R.string._continue

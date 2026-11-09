@@ -4,16 +4,29 @@ import android.os.Binder
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import androidx.test.platform.app.InstrumentationRegistry
+import com.topjohnwu.superuser.Shell
 import com.xayah.core.rootservice.service.RemoteRootService
 import java.io.File
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeFalse
 import org.junit.Test
 
 class ParcelReadTest {
+    @Test
+    fun unavailableRootDoesNotWaitForAServiceCallback() = runBlocking {
+        assumeFalse(Shell.getShell().isRoot)
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val error = runCatching {
+            withTimeout(5_000) { RemoteRootService(context).readTextIfPresent(context.filesDir.path) }
+        }.exceptionOrNull()
+        assertEquals(context.getString(R.string.root_access_unavailable), error?.message)
+    }
+
     @Test
     fun closesDescriptorsAfterSuccessfulAndFailedDecoding() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

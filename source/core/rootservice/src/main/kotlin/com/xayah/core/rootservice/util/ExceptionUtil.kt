@@ -22,39 +22,11 @@ object ExceptionUtil {
     }
 
     /**
-     * Run suspend block and catch all exception without handling.
-     */
-    suspend fun tryOnScope(block: suspend () -> Unit) {
-        try {
-            block()
-        } catch (_: Exception) {
-        }
-    }
-
-    /**
      * Run block and catch all exception with handling.
      */
     fun <T> tryOn(block: () -> T, onException: () -> T): T = try {
         block()
     } catch (_: Exception) {
         onException()
-    }
-
-    /**
-     * Run block and catch all exception with handling.
-     */
-    suspend fun <T> tryOnScope(block: suspend () -> T, onException: suspend (e: Exception) -> T): T = try {
-        block()
-    } catch (e: Exception) {
-        onException(e)
-    }
-
-    /**
-     * Run remote service and catch all exception.
-     */
-    suspend fun tryService(onFailed: (msg: String?) -> Unit = {}, block: suspend () -> Unit) = try {
-        block()
-    } catch (e: Exception) {
-        onFailed(e.message)
     }
 }

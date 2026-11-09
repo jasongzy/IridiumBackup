@@ -1,0 +1,4 @@
+<resources>
+    <string name="root_access_unavailable">Root access is unavailable</string>
+    <string name="root_service_timeout">Timed out connecting to the root service</string>
+</resources>

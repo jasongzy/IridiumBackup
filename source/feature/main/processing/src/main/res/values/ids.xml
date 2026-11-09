@@ -109,4 +109,6 @@
     <item name="ic_rounded_deployed_code" type="drawable" />
     <item name="ic_rounded_acute" type="drawable" />
     <item name="ic_rounded_folder_open" type="drawable" />
+    <item name="processing_cancelling" type="string" />
+    <item name="cancel_task" type="string" />
 </resources>

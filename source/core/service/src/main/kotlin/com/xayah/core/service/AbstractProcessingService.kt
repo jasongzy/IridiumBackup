@@ -33,6 +33,8 @@ import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.withLog
 import com.xayah.core.util.withMainContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -151,6 +153,7 @@ internal abstract class AbstractProcessingService : Service() {
     private val mPostProcessingEntities: MutableList<ProcessingInfoEntity> = mutableListOf()
     private var mIsInitialized: Boolean = false
     private var cleanupResult: Boolean? = null
+    private val screenMutex = Mutex()
     protected var mStartTimestamp: Long = 0
     protected var mEndTimestamp: Long = 0
     protected var requestedCloudName: String? = null
@@ -196,11 +199,11 @@ internal abstract class AbstractProcessingService : Service() {
             beforePreprocessing()
 
             if (mContext.readAutoScreenOff().first()) {
-                mContext.saveScreenOffTimeout(mRootService.getScreenOffTimeout())
                 mContext.saveScreenOffCountDown(3)
             }
 
             mPreprocessingEntities.forEach {
+                currentCoroutineContext().ensureActive()
                 it.update(state = OperationState.PROCESSING)
                 onPreprocessing(it)
                 if (it.state == OperationState.ERROR) throw IOException(it.log.ifBlank { it.title })
@@ -233,6 +236,7 @@ internal abstract class AbstractProcessingService : Service() {
             beforePostProcessing()
 
             mPostProcessingEntities.forEach {
+                currentCoroutineContext().ensureActive()
                 it.update(state = OperationState.PROCESSING)
                 try {
                     onPostProcessing(it)
@@ -255,19 +259,41 @@ internal abstract class AbstractProcessingService : Service() {
         }
     }
 
-    suspend fun cleanup(): Boolean = withContext(NonCancellable) {
-        cleanupResult ?: runCatchingOnService {
-            try {
-                clear()
-            } finally {
-                mContext.saveScreenOffCountDown(0)
-                val timeout = mContext.readScreenOffTimeout().first()
-                if (timeout != DEFAULT_IDLE_TIMEOUT) {
-                    mRootService.setScreenOffTimeout(timeout)
-                    mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_NORMAL)
-                    mContext.saveScreenOffTimeout(DEFAULT_IDLE_TIMEOUT)
-                }
+    suspend fun turnOffScreen() = screenMutex.withLock {
+        if (cleanupResult != null) return@withLock
+        val current = mRootService.getScreenOffTimeout().getOrNull() ?: return@withLock
+        if (current == DEFAULT_IDLE_TIMEOUT) return@withLock
+        if (current != Int.MAX_VALUE || mContext.readScreenOffTimeout().first() == DEFAULT_IDLE_TIMEOUT) {
+            mContext.saveScreenOffTimeout(current)
+        }
+        if (mRootService.setScreenOffTimeout(Int.MAX_VALUE).isSuccess) {
+            mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_OFF)
+        }
+    }
+
+    private suspend fun restoreDisplay() {
+        mContext.saveScreenOffCountDown(0)
+        val saved = mContext.readScreenOffTimeout().first()
+        if (saved == DEFAULT_IDLE_TIMEOUT) return
+        try {
+            if (mRootService.getScreenOffTimeout().getOrThrow() == Int.MAX_VALUE) {
+                mRootService.setScreenOffTimeout(saved).getOrThrow()
             }
-        }.also { cleanupResult = it }
+        } finally {
+            mRootService.setDisplayPowerMode(SurfaceControlHidden.POWER_MODE_NORMAL).getOrThrow()
+        }
+        mContext.saveScreenOffTimeout(DEFAULT_IDLE_TIMEOUT)
+    }
+
+    suspend fun cleanup(): Boolean = withContext(NonCancellable) {
+        screenMutex.withLock {
+            cleanupResult ?: runCatchingOnService {
+                try {
+                    clear()
+                } finally {
+                    restoreDisplay()
+                }
+            }.also { cleanupResult = it }
+        }
     }
 }

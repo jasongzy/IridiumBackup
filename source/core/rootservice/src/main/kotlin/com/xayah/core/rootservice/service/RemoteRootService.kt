@@ -14,26 +14,25 @@ import android.os.Process
 import android.os.RemoteException
 import android.os.UserHandle
 import com.google.gson.reflect.TypeToken
+import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
-import com.xayah.core.datastore.ConstantUtil.DEFAULT_TIMEOUT
 import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.rootservice.IRemoteRootService
+import com.xayah.core.rootservice.R
 import com.xayah.core.rootservice.impl.RemoteRootServiceImpl
 import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.rootservice.parcelables.StatFsParcelable
 import com.xayah.core.rootservice.parcelables.StorageStatsParcelable
-import com.xayah.core.rootservice.util.ExceptionUtil.tryOnScope
 import com.xayah.core.rootservice.util.withIOContext
 import com.xayah.core.rootservice.util.withMainContext
 import com.xayah.core.util.GsonUtil
 import com.xayah.core.util.FileUtil
-import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
 import com.xayah.core.util.withLog
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.ExperimentalSerializationApi
@@ -42,8 +41,6 @@ import kotlinx.serialization.encodeToByteArray
 import kotlinx.serialization.protobuf.ProtoBuf
 import java.io.File
 import java.io.IOException
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 data class ArchiveExtraction(
     val result: ShellResult,
@@ -55,9 +52,8 @@ data class DirectoryEntries(val directories: List<String>, val files: List<Strin
 
 class RemoteRootService(private val context: Context) {
     private var mService: IRemoteRootService? = null
-    private var mConnection: ServiceConnection? = null
-    private var mutex = Mutex()
-    private var retries = 0
+    private var binding: CompletableDeferred<IRemoteRootService>? = null
+    private val mutex = Mutex()
     private val intent by lazy {
         Intent().apply {
             component = ComponentName(context.packageName, RemoteRootService::class.java.name)
@@ -66,8 +62,6 @@ class RemoteRootService(private val context: Context) {
     val gsonUtil by lazy { GsonUtil() }
 
     var onFailure: (Throwable) -> Unit = {}
-
-    private fun log(msg: () -> String) = LogUtil.log { "RemoteRootService" to msg() }
 
     class RemoteRootService : RootService() {
         init {
@@ -85,95 +79,50 @@ class RemoteRootService(private val context: Context) {
         }
     }
 
-    private suspend fun bindService(): IRemoteRootService = run {
-        delay(1000)
-        suspendCancellableCoroutine { continuation ->
-            if (mService == null) {
-                retries++
-                destroyService()
-                log { "Trying to bind the service..." }
-                mConnection = object : ServiceConnection {
-                    override fun onServiceConnected(name: ComponentName, service: IBinder) {
-                        mService = IRemoteRootService.Stub.asInterface(service)
-                        if (continuation.isActive) continuation.resume(mService!!)
-                    }
-
-                    override fun onServiceDisconnected(name: ComponentName) {
-                        mService = null
-                        mConnection = null
-                        val msg = "Service disconnected."
-                        log { msg }
-                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
-                    }
-
-                    override fun onBindingDied(name: ComponentName) {
-                        mService = null
-                        mConnection = null
-                        val msg = "Binding died."
-                        log { msg }
-                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
-                    }
-
-                    override fun onNullBinding(name: ComponentName) {
-                        mService = null
-                        mConnection = null
-                        val msg = "Null binding."
-                        log { msg }
-                        if (continuation.isActive) continuation.resumeWithException(RemoteException(msg))
-                    }
+    private fun bindService(): CompletableDeferred<IRemoteRootService> {
+        val pending = CompletableDeferred<IRemoteRootService>()
+        binding = pending
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName, service: IBinder) {
+                if (binding !== pending) {
+                    RootService.unbind(this)
+                    return
                 }
-                RootService.bind(intent, mConnection!!)
-            } else {
-                retries = 0
-                continuation.resume(mService!!)
+                val remote = IRemoteRootService.Stub.asInterface(service)
+                mService = remote
+                pending.complete(remote)
             }
-        }
-    }
 
-    /**
-     * Destroy the service.
-     */
-    fun destroyService(killDaemon: Boolean = false) {
-        log { "Trying to destroy the service..." }
-        if (killDaemon) {
-            if (mConnection != null) {
-                RootService.unbind(mConnection!!)
-            }
-            RootService.stopOrTask(intent)
-        }
-
-        mConnection = null
-        mService = null
-    }
-
-    private suspend fun getService(): IRemoteRootService = mutex.withLock {
-        return tryOnScope(
-            block = {
-                withMainContext {
-                    if (mService == null) {
-                        val msg = "Service is null, trying to bind: $retries."
-                        log { msg }
-                        bindService()
-                    } else if (mService!!.asBinder().isBinderAlive.not()) {
-                        mService = null
-                        val msg = "Service is dead, trying to bind: $retries."
-                        log { msg }
-                        bindService()
-                    } else {
-                        mService!!
-                    }
-                }
-            },
-            onException = {
-                withMainContext {
+            private fun disconnected(reason: String) {
+                if (binding === pending) {
                     mService = null
-                    val msg = it.message
-                    if (msg != null)
-                        log { msg }
-                    bindService()
+                    binding = null
                 }
+                pending.completeExceptionally(RemoteException(reason))
             }
-        )
+
+            override fun onServiceDisconnected(name: ComponentName) = disconnected("Root service disconnected")
+            override fun onBindingDied(name: ComponentName) = disconnected("Root service binding died")
+            override fun onNullBinding(name: ComponentName) = disconnected("Root service returned an empty binding")
+        }
+        try {
+            RootService.bind(intent, connection)
+        } catch (e: Exception) {
+            binding = null
+            throw e
+        }
+        return pending
+    }
+
+    private suspend fun getService(): IRemoteRootService = withMainContext {
+        val pending = mutex.withLock {
+            mService?.takeIf { it.asBinder().isBinderAlive }?.let { return@withMainContext it }
+            binding?.takeUnless { it.isCompleted } ?: run {
+                check(withIOContext { Shell.getShell().isRoot }) { context.getString(R.string.root_access_unavailable) }
+                bindService()
+            }
+        }
+        withTimeoutOrNull(15_000) { pending.await() } ?: throw RemoteException(context.getString(R.string.root_service_timeout))
     }
 
     suspend fun startActivity(intent: Intent, userId: Int = 0): Boolean = withIOContext {
@@ -382,7 +331,7 @@ class RemoteRootService(private val context: Context) {
         runCatching { getService().setDisplayPowerMode(mode) }.onFailure(onFailure)
 
     suspend fun getScreenOffTimeout() =
-        runCatching { getService().getScreenOffTimeout() }.onFailure(onFailure).getOrElse { DEFAULT_TIMEOUT }
+        runCatching { getService().getScreenOffTimeout() }.onFailure(onFailure)
 
     suspend fun setScreenOffTimeout(timeout: Int) =
         runCatching { getService().setScreenOffTimeout(timeout) }.onFailure(onFailure)

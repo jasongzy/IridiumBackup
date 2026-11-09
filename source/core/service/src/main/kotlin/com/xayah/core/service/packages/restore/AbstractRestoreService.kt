@@ -21,6 +21,8 @@ import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.PathUtil
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 
 internal abstract class AbstractRestoreService : AbstractPackagesService() {
@@ -98,6 +100,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
         log { "Kill app option: $killAppOption" }
 
         mPkgEntities.forEach { pkg ->
+            currentCoroutineContext().ensureActive()
             log { "Current package: ${pkg.packageEntity}" }
 
             val p = pkg.packageEntity
@@ -107,6 +110,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
             pkg.update(state = OperationState.PROCESSING)
             val srcDir = "${mAppsDir}/${p.archivesRelativeDir}"
             for (type in DataType.packageArchives) {
+                currentCoroutineContext().ensureActive()
                 if (pkg.apkInfo.state == OperationState.ERROR) {
                     pkg.update(dataType = type, state = OperationState.SKIP)
                 } else {
