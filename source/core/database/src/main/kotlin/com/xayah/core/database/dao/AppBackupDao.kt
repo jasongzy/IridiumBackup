@@ -114,6 +114,9 @@ interface AppBackupDao {
     @Query("SELECT * FROM backup_revisions WHERE packageName = :packageName AND userId = :userId AND repositoryId = :repositoryId AND (contentMask & 1) != 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatestApkRevision(packageName: String, userId: Int, repositoryId: String): BackupRevisionEntity?
 
+    @Query("SELECT MAX(createdAt) FROM backup_revisions WHERE packageName = :packageName AND userId = :userId")
+    suspend fun lastRevisionTime(packageName: String, userId: Int): Long?
+
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC, revisionId")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>
 

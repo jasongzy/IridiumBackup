@@ -218,17 +218,12 @@ internal object ArchiveLinkStore {
         }
     }
 
-    fun read(file: File): Sequence<Link> = sequence {
+    fun read(file: File, roots: Array<out String>): Sequence<Link> = sequence {
         DataInputStream(BufferedInputStream(FileInputStream(file))).use { input ->
             check(input.readInt() == MAGIC) { "Invalid archive link index" }
             repeat(input.readInt()) {
-                yield(
-                    Link(
-                        type = LinkType.fromValue(input.readUnsignedByte()),
-                        path = input.readString(),
-                        target = input.readString(),
-                    ),
-                )
+                val link = Link(LinkType.fromValue(input.readUnsignedByte()), input.readString(), input.readString())
+                if (roots.isEmpty() || roots.any { link.path.startsWith("$it/") }) yield(link)
             }
         }
     }

@@ -307,9 +307,9 @@ class AppBackupRepository @Inject constructor(
         )
     }
 
-    private suspend fun detectXposedModule(packageName: String, userId: Int, revisionDir: String): Boolean? =
+    private suspend fun detectXposedModule(packageName: String, userId: Int, revisionDir: String, apk: String? = null): Boolean? =
         xposedModuleDetector.isInstalledModule(packageName, userId)
-            ?: xposedModuleDetector.isModuleInBackup(revisionDir)
+            ?: if (apk == null) xposedModuleDetector.isModuleInBackup(revisionDir) else xposedModuleDetector.isModule(apk)
 
     private suspend fun inspectRevisionFiles(
         revision: BackupRevisionEntity,
@@ -444,29 +444,10 @@ class AppBackupRepository @Inject constructor(
         }
         onProgress(0, revisionDirs.size, 0)
         revisionDirs.forEachIndexed { index, revisionDir ->
-            val config = readIndexMetadata(PathUtil.getPackageRestoreConfigDst(revisionDir), PackageRestoreConfig::class.java)
-            val manifest = readIndexMetadata(PathUtil.getBackupManifestDst(revisionDir), BackupManifest::class.java)
-            val app = manifest?.restorePackage(config, backupDir)?.takeIf {
-                PathUtil.getPackageArchiveRelativeDir(it.packageName, it.userId, it.preserveId)
-                    ?.let { relative -> FileUtil.normalizeAbsolutePath("$appsDir/$relative") } == FileUtil.normalizeAbsolutePath(revisionDir)
-            }
-            if (app != null && manifest != null) {
-                app.displayStats = manifest.displayStats(app.indexInfo.compressionType)
-                detectXposedModule(app.packageName, app.userId, revisionDir)?.let {
-                    app.packageInfo.isXposedModule = it
-                }
-                rebuilt += app to manifest
-            }
+            readLocalRevision(backupDir, revisionDir)?.let(rebuilt::add)
             onProgress(index + 1, revisionDirs.size, rebuilt.size)
         }
-        val revisions = rebuilt.map { (app, manifest) ->
-            app.toRevision(
-                repositoryId = repositoryId,
-                contentMask = manifest.contentMask,
-                sizeBytes = manifest.files.orEmpty().sumOf(BackupManifestFile::sizeBytes),
-                note = manifest.note.orEmpty(),
-            )
-        }
+        val revisions = rebuilt.map { (app, manifest) -> app.toRevision(repositoryId, manifest) }
         revisionMutex.withLock {
             database.withTransaction {
                 check(dao.getRevisions(repositoryId) == original) { context.getString(R.string.rebuild_source_changed) }
@@ -483,6 +464,53 @@ class AppBackupRepository @Inject constructor(
         _verificationResults.update { results -> results.filterValues { it.revision.repositoryId != repositoryId } }
         return rebuilt.zip(revisions) { (app, _), revision -> RebuildResult(app.packageInfo.label, revision) }
     }
+
+    internal suspend fun isLocalRevisionIndexed(backupDir: String, artifactId: String): Boolean {
+        val revision = dao.getRevisions(":$backupDir", listOf(artifactId)).singleOrNull() ?: return false
+        return findLegacyRevision(revision) != null
+    }
+
+    internal suspend fun indexImportedRevision(
+        backupDir: String, dir: String, apk: String? = null, publish: suspend () -> Unit = {},
+    ): Boolean = revisionMutex.withLock {
+        publish()
+        val (app, manifest) = checkNotNull(readLocalRevision(backupDir, dir, apk)) { "Invalid backup metadata: $dir" }
+        val revision = app.toRevision(":$backupDir", manifest)
+        val (previousId, added) = database.withTransaction {
+            val packages = database.packageDao()
+            val stored = packages.query(app.packageName, OpType.RESTORE, app.userId, app.preserveId, "", backupDir)
+            val previous = dao.getRevisions(revision.repositoryId, listOf(revision.artifactId)).singleOrNull()
+            val metadata = dao.getApp(app.packageName, app.userId)
+            if (metadata == null || !metadata.isInstalled && (dao.lastRevisionTime(app.packageName, app.userId) ?: 0) <= app.preserveId) {
+                dao.upsertApps(listOf(app.toBackupApp(isInstalled = false).copy(note = metadata?.note.orEmpty())))
+            }
+            packages.upsert(if (stored == null) app else app.copy(
+                id = stored.id,
+                extraInfo = app.extraInfo.copy(activated = stored.extraInfo.activated, blocked = stored.extraInfo.blocked),
+                dataStates = if (stored.extraInfo.activated) stored.dataStates else app.dataStates,
+            ))
+            dao.upsertRevisions(listOf(previous?.let { revision.copy(id = it.id) } ?: revision))
+            dao.syncLastBackupTime(app.packageName, app.userId, OpType.BACKUP)
+            previous?.id to (previous == null || stored == null)
+        }
+        if (previousId != null) _verificationResults.update { it - previousId }
+        added
+    }
+
+    private suspend fun readLocalRevision(backupDir: String, dir: String, apk: String? = null): Pair<PackageEntity, BackupManifest>? {
+        val config = readIndexMetadata(PathUtil.getPackageRestoreConfigDst(dir), PackageRestoreConfig::class.java)
+        val manifest = readIndexMetadata(PathUtil.getBackupManifestDst(dir), BackupManifest::class.java) ?: return null
+        val app = manifest.restorePackage(config, backupDir) ?: return null
+        val relative = PathUtil.getPackageArchiveRelativeDir(app.packageName, app.userId, app.preserveId) ?: return null
+        if (FileUtil.normalizeAbsolutePath("$backupDir/${PathUtil.getAppsRelativeDir()}/$relative") != FileUtil.normalizeAbsolutePath(dir)) return null
+        app.displayStats = manifest.displayStats(app.indexInfo.compressionType)
+        detectXposedModule(app.packageName, app.userId, dir, apk)?.let { app.packageInfo.isXposedModule = it }
+        return app to manifest
+    }
+
+    private fun PackageEntity.toRevision(repositoryId: String, manifest: BackupManifest) = toRevision(
+        repositoryId, manifest.contentMask, manifest.files.orEmpty().sumOf(BackupManifestFile::sizeBytes), manifest.note.orEmpty(),
+    )
 
     private fun BackupManifest.restorePackage(config: PackageRestoreConfig?, backupDir: String): PackageEntity? = runCatching {
         if (config == null || config.schemaVersion != PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION ||

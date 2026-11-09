@@ -203,13 +203,9 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         FileUtil.listFilePaths(path = path, listFiles = listFiles, listDirs = listDirs)
     }
 
-    override fun restoreArchiveLinks(linkDir: String, destination: String): Int = synchronized(lock) {
-        val root = FileUtil.normalizeAbsolutePath(destination) ?: return@synchronized 0
-        runCatching {
-            ArchiveLinkStore.read(File(linkDir, ArchiveExtractor.LINKS_FILE)).count { link ->
-                restoreArchiveLink(link, root)
-            }
-        }.getOrDefault(0)
+    override fun restoreArchiveLinks(linkDir: String, destination: String, roots: Array<out String>): Int = synchronized(lock) {
+        val root = requireNotNull(FileUtil.normalizeAbsolutePath(destination))
+        ArchiveLinkStore.read(File(linkDir, ArchiveExtractor.LINKS_FILE), roots).count { restoreArchiveLink(it, root) }
     }
 
     override fun extractArchive(

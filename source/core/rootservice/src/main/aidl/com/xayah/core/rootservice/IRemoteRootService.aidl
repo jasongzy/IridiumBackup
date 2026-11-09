@@ -16,7 +16,7 @@ interface IRemoteRootService {
     boolean replaceFile(String path, String targetPath);
     boolean exportApks(in String[] paths, String targetPath);
     boolean createHardLink(String path, String targetPath);
-    int restoreArchiveLinks(String linkDir, String destination);
+    int restoreArchiveLinks(String linkDir, String destination, in String[] roots);
     ArchiveExtractionParcelable extractArchive(String source, String destination, String compression, String workspace, String cleanDestination, String requiredPrefix, in String[] excludedPathPrefixes, in String[] excludedNamePrefixes, boolean preservePermissions, boolean ignoreModificationTime);
     boolean renameTo(String src, String dst);
     boolean exists(String path);

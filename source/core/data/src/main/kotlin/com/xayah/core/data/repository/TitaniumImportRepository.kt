@@ -62,7 +62,6 @@ class TitaniumImportRepository @Inject constructor(
     private val pathUtil: PathUtil,
     private val appBackupRepository: AppBackupRepository,
     private val appIconRepository: AppIconRepository,
-    private val xposedModuleDetector: XposedModuleDetector,
     private val labelsRepo: LabelsRepo,
 ) {
     enum class Status { IMPORTED, PARTIAL, SKIPPED, FAILED }
@@ -171,7 +170,7 @@ class TitaniumImportRepository @Inject constructor(
                 scanBackup(sourceDir, path, previewDir, backupDir)
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Throwable) {
+            } catch (error: Exception) {
                 val name = PathUtil.getFileName(path)
                 val packageName = metadataPattern.matchEntire(name)!!.groupValues[1]
                 BackupCandidate(
@@ -187,7 +186,7 @@ class TitaniumImportRepository @Inject constructor(
                     imported = false,
                     missingFiles = emptyList(),
                     iconPath = null,
-                    scanError = error.message ?: error.javaClass.simpleName,
+                    scanError = error.message.orEmpty().ifBlank { error.javaClass.simpleName },
                 )
             }.also { onProgress(index + 1, metadataFiles.size) }
         }
@@ -220,46 +219,36 @@ class TitaniumImportRepository @Inject constructor(
     suspend fun importBackups(
         candidates: List<BackupCandidate>,
         onProgress: suspend (completed: Int, total: Int, result: BackupResult?) -> Unit,
-    ): List<BackupResult> = backupImportMutex.withLock {
-        val results = mutableListOf<BackupResult>()
+    ) = backupImportMutex.withLock {
         onProgress(0, candidates.size, null)
-        val backupDir = candidates.firstOrNull()?.backupDir ?: return@withLock results
+        val backupDir = candidates.firstOrNull()?.backupDir ?: return@withLock
         check(candidates.all { it.backupDir == backupDir } && context.localBackupSaveDir() == backupDir) {
             context.getString(R.string.import_destination_changed)
         }
-        try {
-            candidates.forEachIndexed { index, candidate ->
-                coroutineContext.ensureActive()
-                val result = try {
-                    importBackup(candidate)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Throwable) {
-                    BackupResult(
-                        packageName = candidate.packageName,
-                        label = candidate.label,
-                        versionName = candidate.versionName,
-                        createdAt = candidate.createdAt,
-                        status = Status.FAILED,
-                        detail = error.message.orEmpty(),
-                    )
-                }
-                results += result
-                onProgress(index + 1, candidates.size, result)
+        candidates.forEachIndexed { index, candidate ->
+            coroutineContext.ensureActive()
+            val result = try {
+                importBackup(candidate)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                BackupResult(
+                    packageName = candidate.packageName,
+                    label = candidate.label,
+                    versionName = candidate.versionName,
+                    createdAt = candidate.createdAt,
+                    status = Status.FAILED,
+                    detail = error.message.orEmpty().ifBlank { error.javaClass.simpleName },
+                )
             }
-        } finally {
-            withContext(NonCancellable) {
-                appBackupRepository.rebuildLocalIndex(backupDir) { _, _, _ -> }
-            }
+            onProgress(index + 1, candidates.size, result)
         }
-        results
     }
 
     suspend fun importLabels(
         candidates: List<LabelCandidate>,
         onProgress: suspend (completed: Int, total: Int, result: LabelResult?) -> Unit,
-    ): List<LabelResult> {
-        val results = mutableListOf<LabelResult>()
+    ) {
         onProgress(0, candidates.size, null)
         candidates.forEachIndexed { index, group ->
             coroutineContext.ensureActive()
@@ -274,13 +263,11 @@ class TitaniumImportRepository @Inject constructor(
                 }
             } catch (error: CancellationException) {
                 throw error
-            } catch (error: Throwable) {
-                LabelResult(group.name, group.color, group.packages.size, Status.FAILED, error.message.orEmpty())
+            } catch (error: Exception) {
+                LabelResult(group.name, group.color, group.packages.size, Status.FAILED, error.message.orEmpty().ifBlank { error.javaClass.simpleName })
             }
-            results += result
             onProgress(index + 1, candidates.size, result)
         }
-        return results
     }
 
     private suspend fun scanBackup(sourceDir: String, metadataPath: String, previewDir: File?, backupDir: String): BackupCandidate {
@@ -324,7 +311,8 @@ class TitaniumImportRepository @Inject constructor(
         )
         if (!candidate.isComplete) return candidate
         val existing = existingManifest(destination, candidate)
-        return candidate.copy(imported = existing != null && existing.files.orEmpty().all { hasExpectedSize(destination, it) })
+        return candidate.copy(imported = existing != null && existing.files.orEmpty().all { hasExpectedSize(destination, it) } &&
+            appBackupRepository.isLocalRevisionIndexed(backupDir, "$packageName/user_0@$createdAt"))
     }
 
     private suspend fun existingManifest(destination: String, candidate: BackupCandidate): BackupManifest? {
@@ -403,10 +391,11 @@ class TitaniumImportRepository @Inject constructor(
             hasExpectedSize(destination, file) && checkNotNull(rootService.calculateSHA256(path)) { "Unable to read $path" } == file.sha256
         }
         if (existing != null && verifiedFiles.size == existing.files.orEmpty().size) {
+            val indexed = appBackupRepository.indexImportedRevision(backupRoot, destination)
             if (!importIcon(properties, packageName, appsDir)) {
                 appIconRepository.repairFromBackup(destination, appsDir, packageName, overwrite = true)
             }
-            return BackupResult(packageName, label, versionName, createdAt, Status.SKIPPED)
+            return BackupResult(packageName, label, versionName, createdAt, if (indexed) Status.IMPORTED else Status.SKIPPED)
         }
         val dataSource = if (candidate.hasData) "$sourceDir/${fileName.removeSuffix(".properties")}.tar.gz" else null
         if (dataSource != null) check(rootService.exists(dataSource)) { "Missing data archive: $dataSource" }
@@ -461,7 +450,6 @@ class TitaniumImportRepository @Inject constructor(
                 createdAt = createdAt,
                 compression = compression,
                 systemApp = properties.getProperty("app_is_system") == "1",
-                xposedModule = importedApk?.let { xposedModuleDetector.isModule(it) } == true,
                 states = states,
                 backupDir = backupRoot,
             )
@@ -476,8 +464,12 @@ class TitaniumImportRepository @Inject constructor(
             val manifest = checkNotNull(appBackupRepository.writeManifest(app, createdAt, output, existing?.note ?: note, retained, candidate.source)) {
                 "Unable to write the backup manifest"
             }
-            if (!createdDestination) publishRepair(output, destination, manifest, existing, retained)
-            committed = true
+            if (createdDestination) {
+                committed = true
+                withContext(NonCancellable) { appBackupRepository.indexImportedRevision(backupRoot, destination, importedApk) }
+            } else {
+                publishRepair(candidate, output, destination, manifest, existing, retained, importedApk)
+            }
             if (!importIcon(properties, packageName, appsDir) && importedApk != null) {
                 appIconRepository.saveApkIcon(importedApk, appsDir, packageName)
             }
@@ -503,7 +495,8 @@ class TitaniumImportRepository @Inject constructor(
     }
 
     private suspend fun publishRepair(
-        source: String, destination: String, manifest: BackupManifest, existing: BackupManifest?, retained: List<BackupManifestFile>,
+        candidate: BackupCandidate, source: String, destination: String, manifest: BackupManifest,
+        existing: BackupManifest?, retained: List<BackupManifestFile>, apk: String?,
     ) {
         val originalNames = existing?.files.orEmpty().mapTo(mutableSetOf()) { it.name }
         if (existing != null) {
@@ -530,10 +523,13 @@ class TitaniumImportRepository @Inject constructor(
             }
             coroutineContext.ensureActive()
             withContext(NonCancellable) {
-                staged.forEach { (temporary, file) ->
-                    val target = "$destination/${file.name}"
-                    check(rootService.renameTo(temporary, target)) { "Unable to publish ${file.name}" }
-                    reserved.remove(target)
+                appBackupRepository.indexImportedRevision(candidate.backupDir, destination, apk) {
+                    if (existing != null) check(existingManifest(destination, candidate) == existing) { "Backup changed during import: $destination" }
+                    staged.forEach { (temporary, file) ->
+                        val target = "$destination/${file.name}"
+                        check(rootService.renameTo(temporary, target)) { "Unable to publish ${file.name}" }
+                        reserved.remove(target)
+                    }
                 }
             }
         } finally {
@@ -585,17 +581,19 @@ class TitaniumImportRepository @Inject constructor(
             preservePermissions = false,
         )
         check(extraction.result.isSuccess) { extraction.result.outString.ifBlank { "Invalid or unsafe data archive" } }
-        val restoredLinks = rootService.restoreArchiveLinks(linkDir, extracted)
         val sources = listOf(
-            DataType.PACKAGE_USER to listOf("$extracted/data/data/$packageName", "$extracted/data/user/0/$packageName"),
-            DataType.PACKAGE_USER_DE to listOf("$extracted/data/user_de/0/$packageName"),
-            DataType.PACKAGE_DATA to listOf("$extracted/data/media/0/Android/data/$packageName", "$extracted/storage/emulated/0/Android/data/$packageName", "$extracted/sdcard/Android/data/$packageName"),
-            DataType.PACKAGE_OBB to listOf("$extracted/data/media/0/Android/obb/$packageName", "$extracted/storage/emulated/0/Android/obb/$packageName", "$extracted/sdcard/Android/obb/$packageName"),
-            DataType.PACKAGE_MEDIA to listOf("$extracted/data/media/0/Android/media/$packageName", "$extracted/storage/emulated/0/Android/media/$packageName", "$extracted/sdcard/Android/media/$packageName"),
+            DataType.PACKAGE_USER to listOf("data/data/$packageName", "data/user/0/$packageName"),
+            DataType.PACKAGE_USER_DE to listOf("data/user_de/0/$packageName"),
+            DataType.PACKAGE_DATA to listOf("data/media/0/Android/data/$packageName", "storage/emulated/0/Android/data/$packageName", "sdcard/Android/data/$packageName"),
+            DataType.PACKAGE_OBB to listOf("data/media/0/Android/obb/$packageName", "storage/emulated/0/Android/obb/$packageName", "sdcard/Android/obb/$packageName"),
+            DataType.PACKAGE_MEDIA to listOf("data/media/0/Android/media/$packageName", "storage/emulated/0/Android/media/$packageName", "sdcard/Android/media/$packageName"),
         )
+        val restoredLinks = if (extraction.pendingLinks > 0) {
+            rootService.restoreArchiveLinks(linkDir, extracted, sources.flatMap { it.second })
+        } else 0
         val imported = mutableSetOf<DataType>()
         sources.forEach { (type, candidates) ->
-            val sourcePath = candidates.firstOrNull { rootService.exists(it) } ?: return@forEach
+            val sourcePath = candidates.asSequence().map { "$extracted/$it" }.firstOrNull { rootService.existsChecked(it) } ?: return@forEach
             val parent = sourcePath.substringBeforeLast('/')
             val target = "$destination/${type.type}.${compression.suffix}"
             reserve(target)
@@ -630,7 +628,6 @@ class TitaniumImportRepository @Inject constructor(
         createdAt: Long,
         compression: CompressionType,
         systemApp: Boolean,
-        xposedModule: Boolean,
         states: Map<DataType, DataState>,
         backupDir: String,
     ) = PackageEntity(
@@ -643,7 +640,6 @@ class TitaniumImportRepository @Inject constructor(
             flags = if (systemApp) ApplicationInfo.FLAG_SYSTEM else 0,
             firstInstallTime = 0,
             lastUpdateTime = 0,
-            isXposedModule = xposedModule,
         ),
         extraInfo = PackageExtraInfo(0, false, emptyList(), "", createdAt, false, false, firstUpdated = false, enabled = true),
         dataStates = PackageDataStates(

@@ -159,8 +159,8 @@ class RemoteRootService(private val context: Context) {
     suspend fun createHardLink(path: String, targetPath: String): Boolean =
         runCatching { getService().createHardLink(path, targetPath) }.onFailure(onFailure).getOrElse { false }
 
-    suspend fun restoreArchiveLinks(linkDir: String, destination: String): Int =
-        runCatching { getService().restoreArchiveLinks(linkDir, destination) }.onFailure(onFailure).getOrElse { 0 }
+    suspend fun restoreArchiveLinks(linkDir: String, destination: String, roots: List<String> = emptyList()): Int =
+        getService().restoreArchiveLinks(linkDir, destination, roots.toTypedArray())
 
     suspend fun extractArchive(
         source: String,

@@ -18,6 +18,9 @@ import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import java.util.UUID
 import javax.inject.Inject
@@ -85,12 +88,17 @@ class MediumRestoreUtil @Inject constructor(
                 isSuccess = extraction.result.isSuccess
                 out.addAll(extraction.result.out)
                 if (isSuccess) {
-                    val restoredLinks = rootService.restoreArchiveLinks(linkDir, dstDir)
+                    val restoredLinks = if (extraction.pendingLinks == 0) 0 else rootService.restoreArchiveLinks(linkDir, dstDir)
                     val skippedLinks = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
                     if (skippedLinks > 0) out.add(log { "Skipped $skippedLinks unsafe or conflicting archive entries." })
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                isSuccess = false
+                out.add(log { e.message ?: e.javaClass.simpleName })
             } finally {
-                rootService.deleteRecursively(linkDir)
+                withContext(NonCancellable) { rootService.deleteRecursively(linkDir) }
             }
         } else {
             isSuccess = false

@@ -226,6 +226,21 @@ class VerificationRefreshTest {
             revisions.insertRevision(newer)
             assertEquals(listOf(newer.id, revision.id), repository.getLocalRetentionCandidates(1).map { it.revision.id })
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
+            val importer = TitaniumImportRepository(
+                context, root, paths, repository, AppIconRepository(context, root, paths),
+                LabelsRepo(context, kotlinx.coroutines.Dispatchers.Default, database.labelDao()),
+            )
+            val invalid = TitaniumImportRepository.BackupCandidate(
+                metadataPath = "invalid.properties", backupDir = directory.path, packageName = revision.packageName,
+                label = "Invalid", versionName = "1.0", versionCode = 1, createdAt = 1234, apkMd5 = null,
+                hasData = true, imported = false, missingFiles = emptyList(), iconPath = null,
+            )
+            var result: TitaniumImportRepository.BackupResult? = null
+            importer.importBackups(listOf(invalid)) { _, _, item -> result = item }
+            assertEquals(TitaniumImportRepository.Status.FAILED, result?.status)
+            assertEquals(false, repository.indexImportedRevision(directory.path, revisionDir.path))
+            assertEquals(setOf(revision.id, newer.id), revisions.getRevisions(revision.repositoryId).map { it.id }.toSet())
+            assertEquals("protected", revisions.getRevisions(revision.repositoryId).first { it.id == revision.id }.note)
             val manifest = checkNotNull(root.readJson<BackupManifest>(manifestPath))
             val different = manifest.copy(versionCode = manifest.versionCode + 1)
             check(root.writeJson(different, manifestPath).isSuccess)

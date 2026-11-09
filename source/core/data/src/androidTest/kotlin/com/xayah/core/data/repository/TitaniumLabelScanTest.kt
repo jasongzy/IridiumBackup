@@ -58,7 +58,7 @@ class TitaniumLabelScanTest {
             val modules = XposedModuleDetector(context, root)
             val backups = AppBackupRepository(context, database, packages, icons, modules, root)
             val labels = LabelsRepo(context, Dispatchers.Default, database.labelDao())
-            val repository = TitaniumImportRepository(context, root, paths, backups, icons, modules, labels)
+            val repository = TitaniumImportRepository(context, root, paths, backups, icons, labels)
             val otherRefs = listOf(
                 LabelAppCrossRefEntity("tag", "com.example.secondary", 10, 0),
                 LabelAppCrossRefEntity("tag", "com.example.revision", 0, 1234),
@@ -72,8 +72,9 @@ class TitaniumLabelScanTest {
             assertEquals(0xFF0000FFL, candidates.single().color)
             assertEquals(otherRefs.toSet(), labels.getAppRefs().toSet())
 
-            val results = repository.importLabels(candidates) { _, _, _ -> }
-            assertEquals(TitaniumImportRepository.Status.IMPORTED, results.single().status)
+            var result: TitaniumImportRepository.LabelResult? = null
+            repository.importLabels(candidates) { _, _, item -> result = item }
+            assertEquals(TitaniumImportRepository.Status.IMPORTED, result?.status)
             assertEquals(
                 (otherRefs + otherRefs.map { it.copy(userId = 0, preserveId = 0) }).toSet(),
                 labels.getAppRefs().toSet(),

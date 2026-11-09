@@ -215,11 +215,16 @@ class PackagesRestoreUtil @Inject constructor(
                                 }
                             }
                             if (isSuccess) {
-                                val restoredLinks = rootService.restoreArchiveLinks(linkDir, dstDir)
+                                val restoredLinks = if (extraction.pendingLinks == 0) 0 else rootService.restoreArchiveLinks(linkDir, dstDir)
                                 val skippedLinks = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
                                 if (skippedLinks > 0) out.add(log { "Skipped $skippedLinks unsafe or conflicting archive entries." })
                             }
                         }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        isSuccess = false
+                        out.add(log { e.message ?: e.javaClass.simpleName })
                     } finally {
                         withContext(NonCancellable) { rootService.deleteRecursively(linkDir) }
                     }
