@@ -107,8 +107,8 @@ interface AppBackupDao {
         syncLastBackupTimes(OpType.BACKUP)
     }
 
-    @Query("SELECT * FROM backup_revisions WHERE packageName = :packageName AND userId = :userId AND repositoryId = :repositoryId ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getLatestRevision(packageName: String, userId: Int, repositoryId: String): BackupRevisionEntity?
+    @Query("SELECT * FROM backup_revisions WHERE packageName = :packageName AND userId = :userId AND repositoryId = :repositoryId AND (contentMask & 1) != 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatestApkRevision(packageName: String, userId: Int, repositoryId: String): BackupRevisionEntity?
 
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>

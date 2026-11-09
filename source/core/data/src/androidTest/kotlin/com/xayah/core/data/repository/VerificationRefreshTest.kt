@@ -14,6 +14,7 @@ import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.model.CompressionType
+import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.model.DataState
 import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageRestoreConfig
@@ -29,6 +30,7 @@ import java.lang.reflect.Proxy
 import java.security.MessageDigest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VerificationRefreshTest {
@@ -41,13 +43,16 @@ class VerificationRefreshTest {
             val config = PackageRestoreConfig(
                 packageName = "com.example.module", userId = 0, createdAt = 1234, compressionType = CompressionType.TAR,
                 label = "Module", versionName = "1.0", versionCode = 1, isSystemApp = false, hasKeystore = false,
-                permissions = emptyList(), ssaid = "", dataStates = PackageDataStates(),
+                permissions = emptyList(), ssaid = "", dataStates = PackageDataStates(
+                    userState = DataState.NotSelected, userDeState = DataState.NotSelected, dataState = DataState.NotSelected,
+                    obbState = DataState.NotSelected, mediaState = DataState.NotSelected,
+                ),
                 dataStats = PackageDataStats(), displayStats = PackageDataStats(),
             )
             val restore = config.toPackageEntity("", directory.path).copy(id = 2)
             val installed = restore.copy(id = 1, indexInfo = restore.indexInfo.copy(opType = OpType.BACKUP, preserveId = 0))
             val revisionDir = File(directory, "apps/${restore.archivesRelativeDir}").apply { mkdirs() }
-            File(revisionDir, "apk.tar").writeBytes(byteArrayOf(1, 2, 3))
+            File(revisionDir, "unrelated.txt").writeText("not backup content")
             File(revisionDir.parentFile, "icon.bin").createNewFile()
             val binder = Binder()
             val remote = Proxy.newProxyInstance(
@@ -57,15 +62,13 @@ class VerificationRefreshTest {
                     "asBinder" -> binder
                     "exists" -> File(args!![0] as String).exists()
                     "mkdirs" -> File(args!![0] as String).let { it.mkdirs() || it.isDirectory }
-                    "copyTo" -> {
-                        File(args!![0] as String).copyTo(File(args[1] as String), overwrite = args[2] as Boolean)
+                    "replaceFile" -> {
+                        File(args!![0] as String).copyTo(File(args[1] as String), overwrite = true)
                         true
                     }
-                    "setAllPermissions" -> Unit
                     "calculateSize" -> File(args!![0] as String).length()
                     "calculateSHA256" -> MessageDigest.getInstance("SHA-256")
                         .digest(File(args!![0] as String).readBytes()).joinToString("") { "%02x".format(it) }
-                    "listFilePaths" -> File(args!![0] as String).listFiles().orEmpty().filter(File::isFile).map(File::getPath)
                     "readText" -> {
                         val parcel = Parcel.obtain()
                         val file = File.createTempFile("parcel-", ".tmp", directory)
@@ -115,11 +118,15 @@ class VerificationRefreshTest {
                 AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root, paths,
             )
             val revision = BackupRevisionEntity(config.packageName, 0, 1234, "1.0", 1, BackupEngine.LEGACY, ":${directory.path}", restore.archivesRelativeDir, 1)
+            root.writeJson(config, PathUtil.getPackageRestoreConfigDst(revisionDir.path))
+            assertNull(repository.writeManifest(restore, 1234, revisionDir.path))
+            File(revisionDir, "apk.tar").writeBytes(byteArrayOf(1, 2, 3))
             for (remove in listOf(false, true)) {
                 removeAfterRead = remove
                 dao.upsert(listOf(installed, restore))
                 root.writeJson(config, PathUtil.getPackageRestoreConfigDst(revisionDir.path))
-                repository.writeManifest(restore, 1234, revisionDir.path)
+                val manifest = repository.writeManifest(restore, 1234, revisionDir.path)
+                assertEquals(listOf("apk.tar", ConfigsPackageRestoreName), manifest?.files?.map { it.name })
 
                 assertEquals(BackupVerificationStatus.VALID, repository.inspectRevision(revision).status)
                 assertEquals(

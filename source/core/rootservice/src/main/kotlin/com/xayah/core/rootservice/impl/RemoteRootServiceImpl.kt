@@ -148,6 +148,17 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         tryWithBoolean { writeApkArchive(paths.map(::File), File(targetPath)) }
     }
 
+    override fun replaceFile(path: String, targetPath: String): Boolean = synchronized(lock) {
+        tryWithBoolean {
+            publishFile(File(targetPath)) { temporary ->
+                temporary.outputStream().use { output ->
+                    File(path).inputStream().use { it.copyTo(output) }
+                    output.fd.sync()
+                }
+            }
+        }
+    }
+
     override fun hasZipEntry(path: String, entries: Array<out String>): Boolean = synchronized(lock) {
         tryOn(
             block = { ZipFile(path).use { archive -> entries.any { archive.getEntry(it) != null } } },
@@ -176,7 +187,7 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
     }
 
     private fun createHardLinkDirect(path: String, targetPath: String): Boolean = runCatching {
-        Files.createLink(Paths.get(targetPath), Paths.get(path))
+        Os.link(path, targetPath)
         true
     }.getOrDefault(false)
 

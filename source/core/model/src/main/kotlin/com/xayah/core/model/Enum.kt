@@ -25,7 +25,9 @@ enum class DataType(val type: String) {
     MEDIA_MEDIA("media"),
     MEDIA_CONFIG("config");
 
-    companion object
+    companion object {
+        val packageArchives = listOf(PACKAGE_APK, PACKAGE_USER, PACKAGE_USER_DE, PACKAGE_DATA, PACKAGE_OBB, PACKAGE_MEDIA)
+    }
 }
 
 enum class OpType {

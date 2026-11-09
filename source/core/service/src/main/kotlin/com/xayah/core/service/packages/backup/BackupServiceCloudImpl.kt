@@ -68,7 +68,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
             mClient = c
         }
 
-        mRemotePath = mCloudEntity.remote
+        mRemotePath = requestedBackupDir ?: mCloudEntity.remote
         mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(mRemotePath)
         mRemoteConfigsDir = mPathUtil.getCloudRemoteConfigsDir(mRemotePath)
         mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
@@ -81,9 +81,11 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
 
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"
 
-    override suspend fun onAppDirCreated(archivesRelativeDir: String): Boolean = runCatchingOnService {
+    override suspend fun createRemoteRevisionDirectory(relativeDir: String) {
         uploadedManifestFiles.clear()
-        mClient.mkdirRecursively(getRemoteAppDir(archivesRelativeDir))
+        val directory = getRemoteAppDir(relativeDir)
+        mClient.mkdirRecursively(PathUtil.getParentPath(directory))
+        mClient.mkdir(directory)
     }
 
     override suspend fun backup(type: DataType, p: PackageEntity, previous: PackageEntity?, t: TaskDetailPackageEntity, dstDir: String) {

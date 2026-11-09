@@ -16,6 +16,23 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class BackupRevisionTest {
     @Test
+    fun latestApkSkipsNewerDataOnlyRevisions() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        try {
+            val dao = database.appBackupDao()
+            val app = AppKey("com.example.app", 0).toBackupApp()
+            dao.upsertApps(listOf(app))
+            val apk = BackupRevisionEntity(app.packageName, 0, 1, "1.0", 1, BackupEngine.LEGACY, ":/backup", "app/user_0@1", 1)
+            dao.insertRevision(apk)
+            dao.insertRevision(apk.copy(createdAt = 2, artifactId = "app/user_0@2", contentMask = 2, id = "data"))
+            assertEquals(apk, dao.getLatestApkRevision(app.packageName, 0, apk.repositoryId))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun sizeRefreshPreservesEditsAndDoesNotRecreateDeletedBackups() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

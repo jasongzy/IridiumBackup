@@ -1,0 +1,5 @@
+<resources>
+    <string name="backup_revision_directory_failed">Couldn’t create a new backup directory: %1$s</string>
+    <string name="backup_no_content">The selected items contain no files to restore</string>
+    <string name="backup_metadata_failed">Couldn’t save the backup metadata</string>
+</resources>

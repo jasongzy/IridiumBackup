@@ -33,8 +33,8 @@ class AppIconRepairTest {
                 "deleteRecursively" -> File(args!![0] as String).deleteRecursively()
                 "listFilePaths" -> File(args!![0] as String).listFiles().orEmpty()
                     .sortedBy(File::getName).map(File::getPath)
-                "copyTo" -> {
-                    File(args!![0] as String).copyTo(File(args[1] as String), overwrite = args[2] as Boolean)
+                "copyTo", "replaceFile" -> {
+                    File(args!![0] as String).copyTo(File(args[1] as String), overwrite = method.name == "replaceFile" || args[2] as Boolean)
                     true
                 }
                 "extractArchive" -> {

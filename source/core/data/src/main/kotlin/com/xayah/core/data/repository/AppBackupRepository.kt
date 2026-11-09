@@ -167,15 +167,16 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun getLatestReusableLegacyRevision(app: PackageEntity, repositoryId: String): PackageEntity? {
-        if (!app.apkSelected || !context.readFastSameVersionBackup().first()) return null
-        val revision = dao.getLatestRevision(app.packageName, app.userId, repositoryId) ?: return null
+        if (!app.apkSelected || !repositoryId.startsWith(':') || !context.readFastSameVersionBackup().first()) return null
+        val revision = dao.getLatestApkRevision(app.packageName, app.userId, repositoryId) ?: return null
         val previous = findLegacyRevision(revision) ?: return null
         if (!app.canReuseApkFrom(previous)) return null
         val revisionDir = getLocalRevisionDir(revision) ?: return null
         val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir)) ?: return null
         if (!manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return null
         val file = manifest.files.orEmpty().firstOrNull { it.name == "apk.${app.indexInfo.compressionType.suffix}" } ?: return null
-        if (getManifestFile("$revisionDir/${file.name}") != file) return null
+        val path = "$revisionDir/${file.name}"
+        if (rootService.fileLength(path) != file.sizeBytes || rootService.calculateSHA256(path) != file.sha256) return null
         return previous
     }
 
@@ -192,16 +193,11 @@ class AppBackupRepository @Inject constructor(
         knownFiles: List<BackupManifestFile> = emptyList(),
         titaniumSource: TitaniumSource? = null,
     ): BackupManifest? {
-        val manifestPath = PathUtil.getBackupManifestDst(revisionDir)
-        val paths = if (titaniumSource == null) {
-            rootService.listFilePaths(revisionDir, listFiles = true, listDirs = false).filterNot { it == manifestPath }
-        } else {
-            DataType.entries.filter { it.getSelected(app.dataStates) }.map { "$revisionDir/${it.type}.${app.indexInfo.compressionType.suffix}" } +
-                PathUtil.getPackageRestoreConfigDst(revisionDir)
-        }
-        val knownNames = knownFiles.mapTo(mutableSetOf()) { it.name }
-        val localFiles = paths.filterNot { PathUtil.getFileName(it) in knownNames }.map { path -> getManifestFile(path) ?: return null }
-        val files = (knownFiles + localFiles).sortedBy(BackupManifestFile::name)
+        val archives = DataType.packageArchives.filter { it.getSelected(app.dataStates) }
+        if (archives.isEmpty()) return null
+        val names = archives.map { "${it.type}.${app.indexInfo.compressionType.suffix}" } + ConfigsPackageRestoreName
+        val known = knownFiles.associateBy(BackupManifestFile::name)
+        val files = names.sorted().map { name -> known[name] ?: getManifestFile("$revisionDir/$name") ?: return null }
         val manifest = BackupManifest(
             packageName = app.packageName,
             userId = app.userId,
@@ -213,7 +209,7 @@ class AppBackupRepository @Inject constructor(
             files = files,
             titaniumSource = titaniumSource,
         )
-        return manifest.takeIf { it.hasValidFileEntries() && rootService.writeJson(data = it, dst = manifestPath).isSuccess }
+        return manifest.takeIf { it.hasValidFileEntries() && rootService.writeJson(it, PathUtil.getBackupManifestDst(revisionDir)).isSuccess }
     }
 
     fun rememberVerification(result: VerificationResult) {

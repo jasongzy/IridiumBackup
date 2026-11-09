@@ -268,7 +268,7 @@ class RemoteRootService(private val context: Context) {
         try {
             tmpFile.writeBytes(bytes)
             val service = getService()
-            service.mkdirs(PathUtil.getParentPath(dst)) && service.copyTo(tmpFile.path, dst, true)
+            service.mkdirs(PathUtil.getParentPath(dst)) && service.replaceFile(tmpFile.path, dst)
         } finally {
             tmpFile.delete()
         }
@@ -479,8 +479,6 @@ class RemoteRootService(private val context: Context) {
                 out.add("Failed to write configs: $dst")
             }
         }
-        setAllPermissions(src = dst)
-
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }.onFailure(onFailure).getOrElse { ShellResult(code = -1, input = listOf(), out = listOf()) }
 
@@ -503,8 +501,6 @@ class RemoteRootService(private val context: Context) {
                 out.add("Failed to write configs: $dst")
             }
         }
-        setAllPermissions(src = dst)
-
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }.onFailure(onFailure).getOrElse { ShellResult(code = -1, input = listOf(), out = listOf()) }
 

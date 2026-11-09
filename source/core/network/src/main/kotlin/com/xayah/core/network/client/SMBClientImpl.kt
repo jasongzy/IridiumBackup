@@ -145,7 +145,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
 
     override fun mkdir(dst: String) = withDiskShare { diskShare ->
         log { "mkdir: $dst" }
-        if (exists(dst).not()) diskShare.mkdir(dst)
+        diskShare.mkdir(dst)
     }
 
     override fun mkdirRecursively(dst: String) {

@@ -1,0 +1,5 @@
+<resources>
+    <string name="backup_revision_directory_failed">无法新建备份目录：%1$s</string>
+    <string name="backup_no_content">所选项目中没有可恢复的文件</string>
+    <string name="backup_metadata_failed">无法保存备份元数据</string>
+</resources>
