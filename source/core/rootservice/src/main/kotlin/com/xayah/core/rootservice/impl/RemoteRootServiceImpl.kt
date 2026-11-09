@@ -704,19 +704,23 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
 
     fun closePauses() = pauses.close()
 
-    override fun uninstallPackageAsUser(packageName: String, userId: Int): Boolean = synchronized(lock) {
-        ShellUtils.fastCmd("pm uninstall --user $userId $packageName").trim() == "Success"
+    private fun checkPackageTarget(packageName: String, userId: Int) {
+        require(PathUtil.isValidPackageName(packageName) && userId >= 0) { "Invalid package target: $packageName ($userId)" }
     }
 
-    override fun uninstallPackageKeepingDataAsUser(packageName: String, userId: Int): Boolean = synchronized(lock) {
-        ShellUtils.fastCmd("pm uninstall -k --user $userId $packageName").trim() == "Success"
+    override fun uninstallPackageAsUser(packageName: String, userId: Int, keepData: Boolean): Boolean = synchronized(lock) {
+        checkPackageTarget(packageName, userId)
+        val command = if (keepData) "pm uninstall -k" else "pm uninstall"
+        ShellUtils.fastCmd("$command --user $userId $packageName").trim() == "Success"
     }
 
     override fun clearPackageDataAsUser(packageName: String, userId: Int): Boolean = synchronized(lock) {
+        checkPackageTarget(packageName, userId)
         ShellUtils.fastCmd("pm clear --user $userId $packageName").trim() == "Success"
     }
 
     override fun clearPackageCacheAsUser(packageName: String, userId: Int): Boolean = synchronized(lock) {
+        checkPackageTarget(packageName, userId)
         listOf(
             "${PathUtil.getPackageUserDir(userId)}/$packageName/cache",
             "${PathUtil.getPackageUserDir(userId)}/$packageName/code_cache",

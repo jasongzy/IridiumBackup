@@ -337,14 +337,11 @@ class DetailsViewModel @Inject constructor(
 
     fun launchApp() {
         viewModelScope.launchOnDefault {
-            when (uiState.value) {
-                is Success.App -> {
-                    val state = uiState.value.castTo<Success.App>()
-                    val app = state.app
-                    appsRepo.launchApp(app.packageName, app.userId)
-                }
-
-                else -> {}
+            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                .setPackage(app.packageName).addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            if (!rootService.startActivity(intent, app.userId)) {
+                showToast(if (app.extraInfo.enabled) R.string.external_action_failed else com.xayah.core.data.R.string.app_is_frozen)
             }
         }
     }
@@ -361,23 +358,15 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun uninstallApp() {
+    fun uninstallApp(keepData: Boolean) {
         viewModelScope.launchOnDefault {
             val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
-            if (rootService.uninstallPackageAsUser(app.packageName, app.userId)) {
-                appsRepo.removeUninstalledApp(app.packageName, app.userId)
-                showToast(R.string.app_uninstalled)
+            if (!rootService.uninstallPackageAsUser(app.packageName, app.userId, keepData)) {
+                showToast(R.string.app_uninstall_failed)
+                return@launchOnDefault
             }
-        }
-    }
-
-    fun uninstallAppKeepingData() {
-        viewModelScope.launchOnDefault {
-            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
-            if (rootService.uninstallPackageKeepingDataAsUser(app.packageName, app.userId)) {
-                appsRepo.removeUninstalledApp(app.packageName, app.userId)
-                showToast(R.string.app_uninstalled_data_kept)
-            }
+            appsRepo.removeUninstalledApp(app.packageName, app.userId)
+            showToast(if (keepData) R.string.app_uninstalled_data_kept else R.string.app_uninstalled)
         }
     }
 
@@ -385,9 +374,9 @@ class DetailsViewModel @Inject constructor(
         viewModelScope.launchOnDefault {
             val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
             if (rootService.clearPackageDataAsUser(app.packageName, app.userId)) {
-                appsRepo.calculateLocalAppSize(app)
                 showToast(R.string.app_data_cleared)
-            }
+                appsRepo.calculateLocalAppSize(app)
+            } else showToast(R.string.app_clear_data_failed)
         }
     }
 
@@ -395,19 +384,18 @@ class DetailsViewModel @Inject constructor(
         viewModelScope.launchOnDefault {
             val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
             if (rootService.clearPackageCacheAsUser(app.packageName, app.userId)) {
-                appsRepo.calculateLocalAppSize(app)
                 showToast(R.string.app_cache_cleared)
-            }
+                appsRepo.calculateLocalAppSize(app)
+            } else showToast(R.string.app_clear_cache_failed)
         }
     }
 
     fun openAppSettings() {
-        val app = (uiState.value as? Success.App)?.app ?: return
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-            .setData(android.net.Uri.fromParts("package", app.packageName, null))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (runCatching { context.startActivity(intent) }.isFailure) {
-            viewModelScope.launch { showToast(R.string.external_action_failed) }
+        viewModelScope.launchOnDefault {
+            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                .setData(android.net.Uri.fromParts("package", app.packageName, null))
+            if (!rootService.startActivity(intent, app.userId)) showToast(R.string.external_action_failed)
         }
     }
 

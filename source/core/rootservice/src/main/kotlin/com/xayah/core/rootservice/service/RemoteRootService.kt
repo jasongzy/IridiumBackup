@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.LauncherApps
 import android.content.pm.PackageInfo
 import android.content.pm.UserInfo
 import android.os.Binder
@@ -13,6 +14,7 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.os.RemoteException
 import android.os.UserHandle
+import android.provider.Settings
 import com.google.gson.reflect.TypeToken
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
@@ -131,11 +133,41 @@ class RemoteRootService(private val context: Context) {
         withTimeoutOrNull(15_000) { pending.await() } ?: throw RemoteException(context.getString(R.string.root_service_timeout))
     }
 
-    suspend fun startActivity(intent: Intent, userId: Int = 0): Boolean = withIOContext {
-        val launchIntent = Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val rooted = runCatching { getService().startActivity(launchIntent, userId) }.onFailure(onFailure).getOrDefault(false)
-        rooted || withMainContext {
-            runCatching { context.startActivity(launchIntent) }.isSuccess
+    suspend fun startActivity(intent: Intent, userId: Int): Boolean = withIOContext {
+        val launch = Intent(intent).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val user = UserHandle.getUserHandleForUid(userId * 100_000)
+        val local = user == Process.myUserHandle()
+        if (!local || intent.action != Settings.ACTION_APPLICATION_DETAILS_SETTINGS) {
+            val rooted = try {
+                getService().startActivity(launch, userId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                false
+            }
+            if (rooted) return@withIOContext true
+        }
+        withMainContext {
+            runCatching {
+                if (local) {
+                    context.startActivity(launch)
+                } else {
+                    val launcher = context.getSystemService(LauncherApps::class.java) ?: return@withMainContext false
+                    if (user !in launcher.profiles) return@withMainContext false
+                    when (launch.action) {
+                        Intent.ACTION_MAIN -> {
+                            val name = launch.`package` ?: return@withMainContext false
+                            val activity = launcher.getActivityList(name, user).firstOrNull() ?: return@withMainContext false
+                            launcher.startMainActivity(activity.componentName, user, null, null)
+                        }
+                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS -> {
+                            val name = launch.data?.schemeSpecificPart ?: return@withMainContext false
+                            launcher.startAppDetailsActivity(ComponentName(name, ""), user, null, null)
+                        }
+                        else -> return@withMainContext false
+                    }
+                }
+            }.isSuccess
         }
     }
 
@@ -375,11 +407,8 @@ class RemoteRootService(private val context: Context) {
         null
     }
 
-    suspend fun uninstallPackageAsUser(packageName: String, userId: Int): Boolean =
-        runCatching { getService().uninstallPackageAsUser(packageName, userId) }.onFailure(onFailure).getOrDefault(false)
-
-    suspend fun uninstallPackageKeepingDataAsUser(packageName: String, userId: Int): Boolean =
-        runCatching { getService().uninstallPackageKeepingDataAsUser(packageName, userId) }.onFailure(onFailure).getOrDefault(false)
+    suspend fun uninstallPackageAsUser(packageName: String, userId: Int, keepData: Boolean): Boolean =
+        runCatching { getService().uninstallPackageAsUser(packageName, userId, keepData) }.onFailure(onFailure).getOrDefault(false)
 
     suspend fun clearPackageDataAsUser(packageName: String, userId: Int): Boolean =
         runCatching { getService().clearPackageDataAsUser(packageName, userId) }.onFailure(onFailure).getOrDefault(false)

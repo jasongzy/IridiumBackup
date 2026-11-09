@@ -5,4 +5,7 @@
     <string name="force_stop_failed">无法结束应用运行</string>
     <string name="confirm_merge_label">将所有应用的“%1$s”标签合并到“%2$s”吗？合并后的标签将使用所选颜色。</string>
     <string name="label_changed">标签已变更，请重试</string>
+    <string name="app_uninstall_failed">无法卸载应用</string>
+    <string name="app_clear_data_failed">无法清空应用数据</string>
+    <string name="app_clear_cache_failed">无法清除应用缓存</string>
 </resources>

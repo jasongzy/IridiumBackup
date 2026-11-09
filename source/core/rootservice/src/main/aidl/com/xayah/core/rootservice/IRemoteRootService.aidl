@@ -52,8 +52,7 @@ interface IRemoteRootService {
     void forceStopPackageAsUser(String packageName, int userId);
     void pausePackage(String packageName, int userId, IBinder owner);
     void resumePackage(IBinder owner);
-    boolean uninstallPackageAsUser(String packageName, int userId);
-    boolean uninstallPackageKeepingDataAsUser(String packageName, int userId);
+    boolean uninstallPackageAsUser(String packageName, int userId, boolean keepData);
     boolean clearPackageDataAsUser(String packageName, int userId);
     boolean clearPackageCacheAsUser(String packageName, int userId);
     void setApplicationEnabledSetting(in String packageName, in int newState, int flags, int userId, String callingPackage);

@@ -69,7 +69,7 @@ internal fun AppDetailsScreen(uiState: DetailsUiState, viewModel: DetailsViewMod
                                 onUpdateLabel = viewModel::updateLabel,
                                 onSelectLabel = viewModel::selectAppLabel,
                                 onUpdateAppNote = viewModel::updateAppNote,
-                                onUninstall = viewModel::uninstallApp,
+                                onUninstall = { viewModel.uninstallApp(keepData = false) },
                                 onClearData = viewModel::clearAppData,
                                 onResolveDataPath = viewModel::resolveDataPath,
                                 onCopyPath = viewModel::copyPath,

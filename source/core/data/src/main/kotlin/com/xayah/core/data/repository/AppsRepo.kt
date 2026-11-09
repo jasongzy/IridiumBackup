@@ -2,13 +2,10 @@ package com.xayah.core.data.repository
 
 import android.content.Context
 import com.xayah.core.datastore.LabelFilterMode
-import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserHandle
-import android.widget.Toast
 import com.xayah.core.data.R
 import com.xayah.core.data.util.srcDir
 import com.xayah.core.database.dao.PackageDao
@@ -47,7 +44,6 @@ import com.xayah.core.util.DateUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.command.PackageUtil
 import com.xayah.core.util.withLog
-import com.xayah.core.util.withMainContext
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
@@ -500,38 +496,6 @@ class AppsRepo @Inject constructor(
             else -> emptyList()
         }
         return (rootService.calculateSize(src) - excluded.sumOf { rootService.calculateSize(it) }).coerceAtLeast(0L)
-    }
-
-    /**
-     * @author <a href="https://github.com/MuntashirAkon">@MuntashirAkon</a>
-     */
-    suspend fun launchApp(packageName: String, userId: Int) {
-        val launcherApps = context.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-        val user = rootService.getUserHandle(userId)
-        if (launcherApps.isPackageEnabled(packageName, user).not()) {
-            // Package not enabled
-            withMainContext {
-                Toast.makeText(context, context.getString(R.string.app_is_frozen), Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-        val activityInfoList = launcherApps.getActivityList(packageName, user)
-        if (activityInfoList.isEmpty()) {
-            // No activities
-            withMainContext {
-                Toast.makeText(context, context.getString(R.string.no_activities_found), Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-
-        // Return the first openable activity
-        val info = activityInfoList[0]
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LAUNCHER)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
-            .setComponent(info.componentName)
-
-        rootService.startActivity(intent, userId)
     }
 
     suspend fun calculateLocalAppArchiveSize(app: PackageEntity) {

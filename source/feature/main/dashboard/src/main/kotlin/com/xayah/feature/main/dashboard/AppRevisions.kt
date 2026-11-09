@@ -227,7 +227,7 @@ fun AppRevisionsRoute(
                         onUpdateLabel = detailsViewModel::updateLabel,
                         onSelectLabel = detailsViewModel::selectAppLabel,
                         onUpdateAppNote = detailsViewModel::updateAppNote,
-                        onUninstall = detailsViewModel::uninstallApp,
+                        onUninstall = { detailsViewModel.uninstallApp(keepData = false) },
                         onClearData = detailsViewModel::clearAppData,
                         onResolveDataPath = detailsViewModel::resolveDataPath,
                         onCopyPath = detailsViewModel::copyPath,
@@ -292,7 +292,7 @@ fun AppRevisionsRoute(
                 androidx.compose.material3.TextButton(
                     onClick = {
                         uninstallKeepingDataConfirmation = false
-                        detailsViewModel.uninstallAppKeepingData()
+                        detailsViewModel.uninstallApp(keepData = true)
                     },
                 ) {
                     Text(stringResource(R.string.uninstall))
