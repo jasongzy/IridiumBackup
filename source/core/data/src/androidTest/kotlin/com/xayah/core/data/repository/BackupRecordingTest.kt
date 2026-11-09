@@ -44,12 +44,12 @@ class BackupRecordingTest {
                 indexInfo.opType = OpType.BACKUP
             }
             packages.upsert(app)
-            val requests = BackupRequestStore(context, packages)
+            val requests = PackageRequestStore(context, packages)
             val temporaryScope = DataType.packageArchives.fold(app.dataStates) { states, type ->
                 type.setSelected(states, type == DataType.PACKAGE_USER)
             }
-            requests.prepare(listOf(app.id), mapOf(app.id to temporaryScope))
-            val request = checkNotNull(requests.take()).packages.single()
+            requests.prepareBackup(listOf(app.id), mapOf(app.id to temporaryScope))
+            val request = checkNotNull(requests.takeBackup()).packages.single()
             val current = app.copy(
                 packageInfo = app.packageInfo.copy(versionName = "2.0", versionCode = 2),
                 extraInfo = app.extraInfo.copy(blocked = true, enabled = false),
@@ -72,8 +72,8 @@ class BackupRecordingTest {
             )
             assertEquals(temporaryScope, request.dataStates)
             val recorded = dao.getRevisions(":/backup").single()
-            repository.selectRevisionForRestore(recorded, temporaryScope)
-            assertEquals(stored.copy(dataStates = temporaryScope, extraInfo = stored.extraInfo.copy(activated = true)), packages.queryById(stored.id))
+            assertEquals(stored.copy(dataStates = temporaryScope), repository.revisionForRestore(recorded, temporaryScope))
+            assertEquals(stored, packages.queryById(stored.id))
             assertEquals("1.0", recorded.appVersionName)
             assertEquals(1L, recorded.appVersionCode)
             assertEquals(2, recorded.contentMask)

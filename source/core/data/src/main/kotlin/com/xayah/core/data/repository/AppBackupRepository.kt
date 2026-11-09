@@ -26,7 +26,6 @@ import com.xayah.core.model.PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION
 import com.xayah.core.model.PackageRestoreConfig
 import com.xayah.core.model.TitaniumSource
 import com.xayah.core.model.database.PackageDataStates
-import com.xayah.core.model.database.PackageDataStatesEntity
 import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
@@ -70,7 +69,6 @@ class AppBackupRepository @Inject constructor(
     val verificationResults = _verificationResults.asStateFlow()
     private val revisionMutex = Mutex()
 
-    data class RestoreSelection(val cloudName: String, val backupDir: String)
     data class VerificationResult(
         val revision: BackupRevisionEntity,
         val appLabel: String,
@@ -621,35 +619,17 @@ class AppBackupRepository @Inject constructor(
         }
     }
 
-    suspend fun selectRevisionForRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): RestoreSelection? = database.withTransaction {
-        val packageEntity = findLegacyRevision(revision) ?: return@withTransaction null
-        selectRestoreItems(listOf(PackageDataStatesEntity(packageEntity.id, dataStates)))
-        RestoreSelection(
-            cloudName = packageEntity.indexInfo.cloud,
-            backupDir = packageEntity.indexInfo.backupDir,
-        )
-    }
+    suspend fun revisionForRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): PackageEntity? =
+        findLegacyRevision(revision)?.copy(dataStates = dataStates.copy())
 
-    suspend fun selectLatestLocalRevisionsForRestore(keys: Set<AppKey>): RestoreSelection? {
-        val backupDir = context.localBackupSaveDir()
-        val repositoryId = ":$backupDir"
+    suspend fun latestLocalPackagesForRestore(keys: Set<AppKey>): List<PackageEntity> {
+        val repositoryId = ":${context.localBackupSaveDir()}"
         return database.withTransaction {
-            val latest = dao.getRevisions(repositoryId)
-                .filter { AppKey(it.packageName, it.userId) in keys }
+            dao.getRevisions(repositoryId)
                 .distinctBy { AppKey(it.packageName, it.userId) }
-            val items = latest.mapNotNull { revision ->
-                findLegacyRevision(revision)?.let { PackageDataStatesEntity(it.id, PackageDataStates.fromArchiveMask(revision.contentMask)) }
-            }
-            if (items.isEmpty()) return@withTransaction null
-            selectRestoreItems(items)
-            RestoreSelection(cloudName = "", backupDir = backupDir)
+                .filter { AppKey(it.packageName, it.userId) in keys }
+                .mapNotNull { revision -> revisionForRestore(revision, PackageDataStates.fromArchiveMask(revision.contentMask)) }
         }
-    }
-
-    private suspend fun selectRestoreItems(items: List<PackageDataStatesEntity>) {
-        val packages = database.packageDao()
-        packages.updatePackageDataStates(items)
-        packages.replaceSelection(OpType.RESTORE, items.map { it.id })
     }
 
     private suspend fun findLegacyRevision(revision: BackupRevisionEntity): PackageEntity? {

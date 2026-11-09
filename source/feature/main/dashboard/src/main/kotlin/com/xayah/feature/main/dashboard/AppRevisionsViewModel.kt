@@ -9,7 +9,7 @@ import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.AppsRepo
-import com.xayah.core.data.repository.BackupRequestStore
+import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.ui.route.MainRoutes
@@ -31,7 +31,7 @@ class AppRevisionsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: AppBackupRepository,
     private val appsRepo: AppsRepo,
-    private val backupRequestStore: BackupRequestStore,
+    private val requestStore: PackageRequestStore,
     private val directoryRepository: DirectoryRepository,
 ) : ViewModel() {
     private val packageName = checkNotNull(savedStateHandle.get<String>(MainRoutes.ARG_PACKAGE_NAME))
@@ -61,7 +61,7 @@ class AppRevisionsViewModel @Inject constructor(
 
     suspend fun prepareBackup(appId: Long, dataStates: PackageDataStates): String? {
         val hasDirectory = directoryRepository.querySelectedByDirectoryTypeFlow().first() != null
-        if (!backupRequestStore.prepare(listOf(appId), mapOf(appId to dataStates))) {
+        if (!requestStore.prepareBackup(listOf(appId), mapOf(appId to dataStates))) {
             Toast.makeText(context, R.string.backup_app_unavailable, Toast.LENGTH_SHORT).show()
             return null
         }
@@ -114,13 +114,14 @@ class AppRevisionsViewModel @Inject constructor(
 
     suspend fun prepareRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): String? {
         if (revision.repositoryId.startsWith(':') && inspect(revision) == null) return null
-        val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
+        val app = repository.revisionForRestore(revision, dataStates) ?: run {
             Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
             return null
         }
+        requestStore.prepareRestore(listOf(app))
         return MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-            cloudName = selection.cloudName.ifEmptyEncodeURLWithSpace(),
-            backupDir = selection.backupDir.ifEmptyEncodeURLWithSpace(),
+            cloudName = app.indexInfo.cloud.ifEmptyEncodeURLWithSpace(),
+            backupDir = app.indexInfo.backupDir.ifEmptyEncodeURLWithSpace(),
         )
     }
 }

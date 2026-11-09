@@ -7,9 +7,8 @@ import androidx.navigation.NavController
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.ListDataRepo
-import com.xayah.core.data.repository.PackageRepository
+import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.PackageEntity
@@ -18,9 +17,7 @@ import com.xayah.core.service.packages.restore.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyLocalImpl
 import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.LogUtil
 import com.xayah.core.util.decodeURL
-import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.AbstractPackagesProcessingViewModel
 import com.xayah.feature.main.processing.FinishSetup
@@ -44,7 +41,7 @@ class RestoreViewModelImpl @Inject constructor(
     @ApplicationContext private val mContext: Context,
     private val mRootService: RemoteRootService,
     mTaskRepo: TaskRepository,
-    private val mPkgRepo: PackageRepository,
+    requestStore: PackageRequestStore,
     private val appBackupRepository: AppBackupRepository,
     private val mCloudRepo: CloudRepository,
     private val listDataRepo: ListDataRepo,
@@ -52,27 +49,16 @@ class RestoreViewModelImpl @Inject constructor(
     mCloudService: ProcessingServiceProxyCloudImpl,
     private val args: SavedStateHandle,
 ) : AbstractPackagesProcessingViewModel(mContext, mRootService, mTaskRepo, mLocalService, mCloudService) {
+    private val packages = requestStore.takeRestore()
+
     data class RestoreWarnings(val damaged: List<PackageEntity>, val keystore: List<PackageEntity>)
 
     override suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
             is UpdateApps -> {
-                val cloud: String
-                val backupSaveDir: String
-                if (state.storageType == StorageMode.Local) {
-                    cloud = ""
-                    backupSaveDir = state.backupDir ?: mContext.localBackupSaveDir()
-                } else {
-                    val account = state.cloudEntity ?: return
-                    cloud = account.name
-                    backupSaveDir = state.backupDir ?: account.remote
-                }
-                val packages = mPkgRepo.queryActivated(OpType.RESTORE, cloud, backupSaveDir)
-                LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Query activated apps, cloud: $cloud, backupDir: $backupSaveDir" }
-                LogUtil.log { "RestoreViewModelImpl.UpdateApps" to "Queried apps count: ${packages.size}" }
-                _preview.value = PackageTaskRequest.Restore(
-                    packages, appBackupRepository.getRestoreSizeBytes("$cloud:$backupSaveDir", packages),
-                )
+                val source = packages.firstOrNull()?.indexInfo
+                val size = if (source == null) 0L else appBackupRepository.getRestoreSizeBytes("${source.cloud}:${source.backupDir}", packages)
+                _preview.value = PackageTaskRequest.Restore(packages, size)
             }
 
             is SetCloudEntity -> {

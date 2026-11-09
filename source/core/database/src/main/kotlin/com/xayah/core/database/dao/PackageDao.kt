@@ -125,26 +125,8 @@ interface PackageDao {
     )
     suspend fun query(packageName: String, opType: OpType, userId: Int, preserveId: Long, ct: CompressionType, cloud: String, backupDir: String): PackageEntity?
 
-    @Query("SELECT * FROM PackageEntity WHERE extraInfo_activated = 1 AND indexInfo_opType = :opType")
-    suspend fun queryActivated(opType: OpType): List<PackageEntity>
-
-    @Query("SELECT * FROM PackageEntity WHERE extraInfo_activated = 1 AND indexInfo_opType = :opType AND indexInfo_cloud = :cloud AND indexInfo_backupDir = :backupDir")
-    suspend fun queryActivated(opType: OpType, cloud: String, backupDir: String): List<PackageEntity>
-
-    @Query("UPDATE PackageEntity SET extraInfo_activated = 0 WHERE indexInfo_opType = :opType")
-    suspend fun clearActivated(opType: OpType)
-
     @Query("UPDATE PackageEntity SET extraInfo_activated = :activated WHERE id = :id")
     suspend fun activateById(id: Long, activated: Boolean)
-
-    @Transaction
-    suspend fun replaceSelection(opType: OpType, ids: Collection<Long>) {
-        clearActivated(opType)
-        ids.chunked(SQLITE_BIND_LIMIT - 1).forEach { activateChunk(opType, it) }
-    }
-
-    @Query("UPDATE PackageEntity SET extraInfo_activated = 1 WHERE indexInfo_opType = :opType AND id in (:ids)")
-    suspend fun activateChunk(opType: OpType, ids: List<Long>)
 
     @Transaction
     suspend fun blockByIds(ids: List<Long>) {

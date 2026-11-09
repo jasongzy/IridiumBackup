@@ -65,8 +65,6 @@ class PackageRepository @Inject constructor(
     suspend fun queryPackages(opType: OpType, blocked: Boolean) = packageDao.queryPackages(opType, blocked)
     suspend fun queryUserIds(opType: OpType) = packageDao.queryUserIds(opType)
     suspend fun queryPackages(opType: OpType, cloud: String, backupDir: String) = packageDao.queryPackages(opType, cloud, backupDir)
-    suspend fun queryActivated(opType: OpType) = packageDao.queryActivated(opType)
-    suspend fun queryActivated(opType: OpType, cloud: String, backupDir: String) = packageDao.queryActivated(opType, cloud, backupDir)
     private suspend fun extractArchive(source: String, destination: String, compression: String): ShellResult {
         val workspace = "${context.cacheDir}/archive-${UUID.randomUUID()}"
         return try {

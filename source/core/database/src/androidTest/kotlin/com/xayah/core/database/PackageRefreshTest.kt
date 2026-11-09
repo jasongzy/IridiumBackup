@@ -32,24 +32,15 @@ class PackageRefreshTest {
     )
 
     @Test
-    fun failedBatchKeepsThePreviousSelection() = runBlocking {
+    fun batchBlockIncludesEntriesAcrossTheBindLimit() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
             val dao = database.packageDao()
             val first = app()
             val second = first.copy(id = 2, indexInfo = first.indexInfo.copy(packageName = "second.app"))
-            val previous = first.copy(id = 3, indexInfo = first.indexInfo.copy(packageName = "previous.app"))
-            dao.upsert(listOf(first, second, previous))
-            dao.activateById(previous.id, true)
+            dao.upsert(listOf(first, second))
             val ids = listOf(first.id) + (1..SQLITE_BIND_LIMIT).map { -it.toLong() } + second.id
-            val sql = database.openHelper.writableDatabase
-            sql.execSQL("CREATE TRIGGER fail_selection BEFORE UPDATE ON PackageEntity WHEN NEW.id = 2 AND NEW.extraInfo_activated = 1 BEGIN SELECT RAISE(ABORT, 'selection failed'); END")
-            check(runCatching { dao.replaceSelection(OpType.BACKUP, ids) }.isFailure)
-            assertEquals(listOf(previous.id), dao.queryActivated(OpType.BACKUP).map { it.id })
-            sql.execSQL("DROP TRIGGER fail_selection")
-            dao.replaceSelection(OpType.BACKUP, ids)
-            assertEquals(setOf(first.id, second.id), dao.queryActivated(OpType.BACKUP).map { it.id }.toSet())
             dao.blockByIds(ids)
             assertEquals(setOf(first.id, second.id), dao.queryPackages(OpType.BACKUP, true).map { it.id }.toSet())
         } finally {

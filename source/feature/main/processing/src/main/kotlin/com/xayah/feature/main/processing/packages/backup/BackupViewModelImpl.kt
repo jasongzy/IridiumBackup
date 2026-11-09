@@ -2,7 +2,7 @@ package com.xayah.feature.main.processing.packages.backup
 
 import android.content.Context
 import androidx.compose.material3.ExperimentalMaterial3Api
-import com.xayah.core.data.repository.BackupRequestStore
+import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.ListDataRepo
 import com.xayah.core.data.repository.TaskRepository
@@ -34,12 +34,12 @@ class BackupViewModelImpl @Inject constructor(
     mRootService: RemoteRootService,
     taskRepo: TaskRepository,
     private val mCloudRepo: CloudRepository,
-    backupRequestStore: BackupRequestStore,
+    requestStore: PackageRequestStore,
     private val listDataRepo: ListDataRepo,
     mLocalService: ProcessingServiceProxyLocalImpl,
     mCloudService: ProcessingServiceProxyCloudImpl,
 ) : AbstractPackagesProcessingViewModel(mContext, mRootService, taskRepo, mLocalService, mCloudService) {
-    private val _request = MutableStateFlow(backupRequestStore.take())
+    private val _request = MutableStateFlow(requestStore.takeBackup())
     val request = _request.asStateFlow()
 
     fun setBackupOptions(value: PackageTaskRequest.Backup) {

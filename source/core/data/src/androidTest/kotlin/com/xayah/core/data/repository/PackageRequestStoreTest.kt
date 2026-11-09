@@ -19,7 +19,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class BackupRequestStoreTest {
+class PackageRequestStoreTest {
     @Test
     fun preparedSelectionIsConsumedOnceWithItsOwnDefaults() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -34,20 +34,20 @@ class BackupRequestStoreTest {
                 dataStats = PackageDataStats(), displayStats = PackageDataStats(),
             ).toPackageEntity("", "").apply { id = 1; indexInfo.opType = OpType.BACKUP }
             database.packageDao().upsert(app)
-            val requests = BackupRequestStore(context, database.packageDao())
+            val requests = PackageRequestStore(context, database.packageDao())
             context.saveBackupItself(true)
             context.saveBackupConfigs(false)
-            assertEquals(true, requests.prepare((1001L downTo 1L).toList() + app.id))
-            val first = checkNotNull(requests.take())
-            assertNull(requests.take())
+            assertEquals(true, requests.prepareBackup((1001L downTo 1L).toList() + app.id))
+            val first = checkNotNull(requests.takeBackup())
+            assertNull(requests.takeBackup())
             assertEquals(listOf(app.id), first.packages.map { it.id })
 
             context.saveBackupItself(false)
             context.saveBackupConfigs(true)
-            requests.prepare(listOf(app.id))
-            assertEquals(first.copy(backupItself = false, backupConfigs = true), requests.take())
-            assertEquals(false, requests.prepare(listOf(999)))
-            assertNull(requests.take())
+            requests.prepareBackup(listOf(app.id))
+            assertEquals(first.copy(backupItself = false, backupConfigs = true), requests.takeBackup())
+            assertEquals(false, requests.prepareBackup(listOf(999)))
+            assertNull(requests.takeBackup())
             assertEquals(true, first.backupItself)
             assertEquals(false, first.backupConfigs)
         } finally {

@@ -5,9 +5,8 @@ import android.widget.Toast
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xayah.core.data.repository.AppsRepo
 import com.xayah.core.data.repository.AppBackupRepository
-import com.xayah.core.data.repository.BackupRequestStore
+import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.data.repository.ListData
 import com.xayah.core.data.repository.ListDataRepo
@@ -42,8 +41,7 @@ class ListViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val listDataRepo: ListDataRepo,
-    private val appsRepo: AppsRepo,
-    private val backupRequestStore: BackupRequestStore,
+    private val requestStore: PackageRequestStore,
     private val directoryRepository: DirectoryRepository,
     private val appBackupRepository: AppBackupRepository,
 ) : ViewModel() {
@@ -135,12 +133,11 @@ class ListViewModel @Inject constructor(
             when (opType) {
                 OpType.BACKUP -> {
                     val hasDirectory = directoryRepository.querySelectedByDirectoryTypeFlow().first() != null
-                    if (!backupRequestStore.prepare(ids)) null
+                    if (!requestStore.prepareBackup(ids)) null
                     else if (hasDirectory) MainRoutes.PackagesBackupProcessingGraph.route else MainRoutes.Directory.route
                 }
                 OpType.RESTORE -> {
-                    appsRepo.replaceSelection(opType, ids)
-                    restoreRoute(cloudName, backupDir)
+                    if (requestStore.prepareRestore(ids, cloudName, backupDir)) restoreRoute(cloudName, backupDir) else null
                 }
             }
         }
@@ -172,8 +169,10 @@ class ListViewModel @Inject constructor(
     }
 
     suspend fun restoreSelectedRoute(): String? = prepareAppRoute {
-        appBackupRepository.selectLatestLocalRevisionsForRestore(listDataRepo.getSelectedAppKeys().value)
-            ?.let { restoreRoute(it.cloudName, it.backupDir) }
+        val packages = appBackupRepository.latestLocalPackagesForRestore(listDataRepo.getSelectedAppKeys().value)
+        val source = packages.firstOrNull()?.indexInfo ?: return@prepareAppRoute null
+        requestStore.prepareRestore(packages)
+        restoreRoute(source.cloud, source.backupDir)
     }
 }
 

@@ -161,8 +161,6 @@ class AppsRepo @Inject constructor(
         else appBackupRepository.observeBackedUpApps().map { AppScanScope(false, it.toSet()) }
     }
 
-    suspend fun replaceSelection(opType: OpType, ids: Collection<Long>) = appsDao.replaceSelection(opType, ids)
-
     suspend fun selectDataItems(id: Long, apk: DataState, user: DataState, userDe: DataState, data: DataState, obb: DataState, media: DataState) {
         appsDao.selectDataItemsById(id, apk.name, user.name, userDe.name, data.name, obb.name, media.name)
     }
