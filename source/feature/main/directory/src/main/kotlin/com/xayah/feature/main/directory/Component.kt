@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import com.xayah.core.model.StorageType
 import com.xayah.core.model.database.DirectoryEntity
 import com.xayah.core.ui.component.BodyMediumText
 import com.xayah.core.ui.component.Card
@@ -187,14 +188,15 @@ fun DirectoryCard(
 fun DirectoryCard(item: DirectoryEntity, performHapticFeedback: Boolean = false, onLongClick: () -> Unit = {}, onClick: () -> Unit) {
     DirectoryCard(
         selected = item.selected,
+        enabled = item.active || item.storageType == StorageType.CUSTOM,
         performHapticFeedback = performHapticFeedback,
         title = stringResource(id = item.titleResId),
         icon = item.icon(),
         path = item.pathDisplay(),
-        error = item.error.ifEmpty { null },
-        used = SegmentProgress(used = item.usedBytes, total = item.totalBytes),
-        backupUsed = if (item.selected) SegmentProgress(used = item.childUsedBytes, total = item.totalBytes) else null,
-        onClick = onClick,
+        error = if (item.active) item.error.ifEmpty { null } else stringResource(com.xayah.core.data.R.string.backup_storage_unavailable, item.path),
+        used = if (item.active) SegmentProgress(used = item.usedBytes, total = item.totalBytes) else null,
+        backupUsed = if (item.active && item.selected) SegmentProgress(used = item.childUsedBytes, total = item.totalBytes) else null,
+        onClick = if (item.active) onClick else onLongClick,
         onLongClick = onLongClick,
     )
 }

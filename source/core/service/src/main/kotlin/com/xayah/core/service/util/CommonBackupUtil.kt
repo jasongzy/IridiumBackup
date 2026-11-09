@@ -6,6 +6,7 @@ import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.LabelsRepo
 import com.xayah.core.data.repository.MediaRepository
 import com.xayah.core.data.repository.PackageRepository
+import com.xayah.core.data.repository.requireMountedBackupVolume
 import com.xayah.core.datastore.readCompressionTest
 import com.xayah.core.datastore.readConfigurationSettings
 import com.xayah.core.model.BlacklistAppItem
@@ -44,6 +45,7 @@ class CommonBackupUtil @Inject constructor(
     fun getItselfDst(dstDir: String) = "${dstDir}/IridiumBackup.zip"
 
     suspend fun backupItself(dstDir: String): ShellResult = run {
+        context.requireMountedBackupVolume(dstDir)
         log { "Backing up itself..." }
 
         val packageName = context.packageName
@@ -77,6 +79,7 @@ class CommonBackupUtil @Inject constructor(
         includeAppNotes: Boolean = true,
         includeSettings: Boolean = true,
     ): ShellResult = run {
+        context.requireMountedBackupVolume(dstDir)
         log { "Backing up configs..." }
 
         val config = Configurations(appNotes = emptyList())

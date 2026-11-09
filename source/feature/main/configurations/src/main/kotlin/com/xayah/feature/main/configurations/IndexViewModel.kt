@@ -5,6 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.room.withTransaction
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.AppBackupRepository
+import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.data.repository.importBlacklist
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.data.repository.LabelsRepo
@@ -32,6 +33,7 @@ import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
+import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.ConfigsConfigurationsName
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.LanguageUtil
@@ -83,9 +85,10 @@ class IndexViewModel @Inject constructor(
         try {
             when (intent) {
                 is IndexUiIntent.Export -> {
-                    rootService.mkdirs(pathUtil.getLocalBackupConfigsDir())
+                    val backupDir = context.localBackupSaveDir()
+                    rootService.requireBackupStorage(context, backupDir, allowNewDirectory = true)
                     val result = commonBackupUtil.backupConfigs(
-                        dstDir = pathUtil.getLocalBackupConfigsDir(),
+                        dstDir = "$backupDir/${PathUtil.getConfigsRelativeDir()}",
                         includeBlacklist = state.blacklistSelected,
                         includeCloud = state.cloudSelected,
                         includeLabels = state.labelSelected,

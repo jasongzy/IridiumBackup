@@ -227,6 +227,7 @@ class TitaniumImportRepository @Inject constructor(
         }
         candidates.forEachIndexed { index, candidate ->
             coroutineContext.ensureActive()
+            rootService.requireBackupStorage(context, backupDir, allowNewDirectory = true)
             val result = try {
                 importBackup(candidate)
             } catch (error: CancellationException) {

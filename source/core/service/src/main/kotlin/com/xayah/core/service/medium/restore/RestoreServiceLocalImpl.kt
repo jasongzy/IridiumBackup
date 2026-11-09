@@ -2,6 +2,7 @@ package com.xayah.core.service.medium.restore
 
 import com.xayah.core.data.repository.MediaRepository
 import com.xayah.core.data.repository.TaskRepository
+import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.database.dao.MediaDao
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.OpType
@@ -71,6 +72,11 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
 
     @Inject
     override lateinit var mMediumRestoreUtil: MediumRestoreUtil
+
+    override suspend fun beforePreprocessing() {
+        super.beforePreprocessing()
+        mRootService.requireBackupStorage(mContext, mRootDir)
+    }
 
     override val mRootDir by lazy { mContext.localBackupSaveDir() }
     override val mFilesDir by lazy { mPathUtil.getLocalBackupFilesDir() }

@@ -31,7 +31,7 @@ class BackupSourceTest {
             val directories = database.directoryDao()
             val packages = database.packageDao()
             val repository = DirectoryRepository(context, directories, RemoteRootService(context))
-            directories.upsert(listOf("first", "second").map { name ->
+            directories.upsert(listOf("backup", "backup ").map { name ->
                 DirectoryUpsertEntity(title = name, parent = context.cacheDir.path, child = name, storageType = StorageType.CUSTOM, active = true)
             })
             val choices = directories.queryActiveDirectories()

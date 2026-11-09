@@ -1,6 +1,7 @@
 package com.xayah.core.service.packages.backup
 
 import com.xayah.core.data.repository.AppBackupRepository
+import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.TaskDao
@@ -71,6 +72,11 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
     @Inject
     override lateinit var mAppBackupRepository: AppBackupRepository
 
+
+    override suspend fun beforePreprocessing() {
+        super.beforePreprocessing()
+        mRootService.requireBackupStorage(mContext, mRootDir, allowNewDirectory = true)
+    }
 
     override val mRootDir by lazy { requestedBackupDir ?: mContext.localBackupSaveDir() }
     override val mAppsDir by lazy { mPathUtil.getLocalBackupAppsDir(mRootDir) }

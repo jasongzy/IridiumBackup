@@ -9,7 +9,6 @@ import com.xayah.core.datastore.ConstantUtil.DEFAULT_PATH_PARENT
 import com.xayah.core.datastore.saveBackupSavePath
 import com.xayah.core.model.StorageType
 import com.xayah.core.model.database.DirectoryEntity
-import com.xayah.core.model.database.DirectoryUpsertEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.rootservice.util.withIOContext
 import com.xayah.core.util.PathUtil
@@ -19,169 +18,117 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class DirectoryRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val directoryDao: DirectoryDao,
     private val rootService: RemoteRootService,
 ) {
     private val updateMutex = Mutex()
-    fun queryActiveDirectoriesFlow(storageType: StorageType) = directoryDao.queryActiveDirectoriesFlow(storageType).distinctUntilChanged()
+    fun visibleDirectories(storageType: StorageType) = directoryDao.visibleDirectories(storageType).distinctUntilChanged()
 
-    private suspend fun resetDir() = selectDir(
-        path = ConstantUtil.DEFAULT_PATH,
-        id = directoryDao.queryDefaultDirectoryId(StorageType.INTERNAL),
-    )
+    private suspend fun resetDir() {
+        directoryDao.queryId(DEFAULT_PATH_PARENT, ConstantUtil.DEFAULT_PATH_CHILD)?.let { select(ConstantUtil.DEFAULT_PATH, it) }
+    }
 
-    suspend fun deleteDir(entity: DirectoryEntity) = run {
-        if (entity.selected) resetDir()
+    suspend fun deleteDir(entity: DirectoryEntity) = updateMutex.withLock {
+        if (directoryDao.querySelectedByDirectoryType()?.id == entity.id) resetDir()
         directoryDao.delete(entity)
     }
 
-    suspend fun addDir(pathList: List<String>) {
-        val customDirList = mutableListOf<DirectoryUpsertEntity>()
-        pathList.forEach { pathString ->
-            if (pathString.isNotEmpty()) {
-                val parent = PathUtil.getParentPath(pathString)
-                val child = PathUtil.getFileName(pathString)
-
-                // Custom storage
-                val dir = DirectoryUpsertEntity(
-                    id = directoryDao.queryId(parent = parent, child = child),
-                    title = "",
-                    parent = parent,
-                    child = child,
-                    storageType = StorageType.CUSTOM,
-                )
-                customDirList.add(dir)
-            }
-        }
-
-        directoryDao.upsert(customDirList)
+    suspend fun addDir(path: String) = updateMutex.withLock {
+        directoryDao.addCustomDirectory(PathUtil.getParentPath(path), PathUtil.getFileName(path))
     }
 
-    suspend fun selectDir(entity: DirectoryEntity) = selectDir(entity.path, entity.id)
-
-    private suspend fun selectDir(path: String, id: Long?) = run {
-        if (id != null) {
-            context.saveBackupSavePath(path)
-            directoryDao.select(id = id)
-        }
+    suspend fun selectDir(entity: DirectoryEntity) = updateMutex.withLock {
+        val previousId = directoryDao.querySelectedByDirectoryType()?.id
+        select(entity.path, entity.id) && previousId != entity.id
     }
 
-    suspend fun update(): String? = updateMutex.withLock {
-        withIOContext {
-            val hadDirectories = directoryDao.count() > 0
-            directoryDao.deleteDuplicates()
-            // Inactivate all directories
-            directoryDao.updateActive(active = false)
+    private suspend fun select(path: String, id: Long): Boolean {
+        if (directoryDao.select(id) == 0) return false
+        context.saveBackupSavePath(path)
+        return true
+    }
 
-            // Internal storage
-            val internalList = rootService.listFilePaths(ConstantUtil.STORAGE_EMULATED_PATH, listFiles = false)
-                .filter { it.substring(it.lastIndexOf("/") + 1).toIntOrNull() != null }.toMutableList() // Just select 0 10 999 etc.
-            if (internalList.contains(DEFAULT_PATH_PARENT).not()) {
-                internalList.add(DEFAULT_PATH_PARENT)
-            }
-            val internalDirs = mutableListOf<DirectoryUpsertEntity>()
-            for (storageItem in internalList) {
-                // e.g. /data/media/0
-                runCatching {
-                    val child = ConstantUtil.DEFAULT_PATH_CHILD
-                    internalDirs.add(
-                        DirectoryUpsertEntity(
-                            id = directoryDao.queryId(parent = storageItem, child = child),
-                            title = "",
-                            parent = storageItem,
-                            child = child,
-                            storageType = StorageType.INTERNAL,
-                        )
-                    )
-                }
-            }
-            directoryDao.upsert(internalDirs)
-
-            // External storage
-            val externalList = PreparationUtil.listExternalStorage().out
-            val externalDirs = mutableListOf<DirectoryUpsertEntity>()
-            for (storageItem in externalList) {
-                // e.g. /mnt/media_rw/E7F9-FA61
-                runCatching {
-                    val child = ConstantUtil.DEFAULT_PATH_CHILD
-                    externalDirs.add(
-                        DirectoryUpsertEntity(
-                            id = directoryDao.queryId(parent = storageItem, child = child),
-                            title = "",
-                            parent = storageItem,
-                            child = child,
-                            storageType = StorageType.EXTERNAL,
-                            active = true,
-                        )
-                    )
-                }
-            }
-            directoryDao.upsert(externalDirs)
-            directoryDao.deleteDuplicates()
-
-            // Activate backup/restore directories except external directories
-            directoryDao.updateActive(excludeType = StorageType.EXTERNAL, active = true)
-
-            // Read statFs of each storage
-            directoryDao.queryActiveDirectories().forEach { entity ->
-                val parent = entity.parent
-                entity.error = ""
-                val statFs = rootService.readStatFs(parent)
-                entity.childUsedBytes = rootService.calculateSize(entity.path)
-                entity.availableBytes = statFs.availableBytes
-                entity.totalBytes = statFs.totalBytes
-                if (entity.storageType == StorageType.EXTERNAL) {
-                    val tags = mutableListOf<String>()
-                    val type = PreparationUtil.getExternalStorageType(parent).out.firstOrNull() ?: ""
-                    tags.add(type)
-                    // Check the format
-                    val supported = type.lowercase() in ConstantUtil.SupportedExternalStorageFormat
-                    if (supported.not()) {
-                        tags.add(context.getString(R.string.limited_4gb))
-                        entity.error = "${context.getString(R.string.outdated_fs_warning)}\n\n" +
-                                "${context.getString(R.string.recommend)}: ${ConstantUtil.SupportedExternalStorageFormat.toSpaceString()}"
-                        entity.enabled = true
-                    } else {
-                        entity.error = ""
-                        entity.enabled = true
-                    }
-                    entity.tags = tags
-                    entity.type = type
-                }
-
-                directoryDao.updateStats(entity.id, entity.childUsedBytes, entity.availableBytes, entity.totalBytes)
-                directoryDao.updateFileSystem(entity.id, entity.type, entity.tags, entity.error, entity.enabled)
-            }
-
-            val selectedDirectory = directoryDao.querySelectedByDirectoryType()
-            var selectedExistingBackupPath: String? = null
-            val existingBackup = if (hadDirectories) null else {
-                directoryDao.queryActiveDirectories().firstOrNull { rootService.exists(it.path) }
-            }
-            if (existingBackup != null) {
-                selectDir(existingBackup.path, existingBackup.id)
-                selectedExistingBackupPath = existingBackup.path
-            } else if (selectedDirectory == null || (selectedDirectory.storageType == StorageType.EXTERNAL && selectedDirectory.enabled.not()) || selectedDirectory.active.not()) {
-                resetDir()
-            }
-            selectedExistingBackupPath
+    suspend fun update(): String? = withIOContext {
+        val (external, detectedPath) = updateMutex.withLock {
+            val internal = rootService.listFilePaths(ConstantUtil.STORAGE_EMULATED_PATH, listFiles = false)
+                .filter { PathUtil.getFileName(it).toIntOrNull() != null }
+            val external = PreparationUtil.externalStorage()
+            val discovered = mapOf(
+                StorageType.INTERNAL to internal + DEFAULT_PATH_PARENT,
+                StorageType.EXTERNAL to external.keys.filter { it.startsWith("/mnt/media_rw/") },
+            )
+            val unavailableCustom = directoryDao.customDirectories().filterNot { directory ->
+                val volume = removableVolume(directory.path)
+                rootService.exists(directory.parent) && (volume == null || external.hasVolume(volume))
+            }.map { it.id }
+            val firstScan = directoryDao.count() == 0
+            directoryDao.refreshVolumes(discovered, ConstantUtil.DEFAULT_PATH_CHILD, unavailableCustom)
+            val existing = if (firstScan) directoryDao.queryActiveDirectories().firstOrNull { rootService.exists(it.path) } else null
+            val selected = directoryDao.querySelectedByDirectoryType()
+            if (existing != null) select(existing.path, existing.id)
+            else if (selected == null) resetDir()
+            external to existing?.path
         }
+
+        directoryDao.queryActiveDirectories().forEach { entity ->
+            updateStats(entity)
+            external[entity.parent]?.takeIf { entity.storageType == StorageType.EXTERNAL }?.let { type ->
+                val limited = type.lowercase() !in ConstantUtil.SupportedExternalStorageFormat
+                val tags = if (limited) listOf(type, context.getString(R.string.limited_4gb)) else listOf(type)
+                val error = if (limited) {
+                    "${context.getString(R.string.outdated_fs_warning)}\n\n" +
+                        "${context.getString(R.string.recommend)}: ${ConstantUtil.SupportedExternalStorageFormat.toSpaceString()}"
+                } else ""
+                directoryDao.updateFileSystem(entity.id, type, tags, error, true)
+            }
+        }
+        detectedPath
+    }
+
+    private suspend fun updateStats(directory: DirectoryEntity) {
+        val path = directory.path
+        val statFs = rootService.readStatFs(path)
+        val backupBytes = if (directory.selected) rootService.calculateSize("$path/.") else null
+        directoryDao.updateStats(directory.id, backupBytes, statFs.availableBytes, statFs.totalBytes)
     }
 
     suspend fun updateSelected() {
         withIOContext {
-            directoryDao.querySelectedByDirectoryType()?.apply {
-                val statFs = rootService.readStatFs(parent)
-                childUsedBytes = rootService.calculateSize(path)
-                availableBytes = statFs.availableBytes
-                totalBytes = statFs.totalBytes
-                directoryDao.updateStats(id, childUsedBytes, availableBytes, totalBytes)
-            }
+            directoryDao.querySelectedByDirectoryType()?.takeIf { it.active }?.let { updateStats(it) }
         }
     }
 
     fun querySelectedByDirectoryTypeFlow() = directoryDao.querySelectedByDirectoryTypeFlow()
+}
+
+private fun removableVolume(path: String): String? {
+    val prefix = when {
+        path.startsWith("/mnt/media_rw/") -> "/mnt/media_rw/"
+        path.startsWith("/storage/") -> "/storage/"
+        else -> return null
+    }
+    val volume = path.removePrefix(prefix).substringBefore('/')
+    return (prefix + volume).takeUnless { volume.isEmpty() || it == "/storage/emulated" || it == "/storage/self" }
+}
+
+private fun Map<String, String>.hasVolume(volume: String): Boolean =
+    volume in this || (volume.startsWith("/storage/") && "/mnt/media_rw/${volume.substringAfterLast('/')}" in this)
+
+internal suspend fun isBackupVolumeMounted(path: String): Boolean =
+    removableVolume(path)?.let { PreparationUtil.externalStorage().hasVolume(it) } ?: true
+
+suspend fun Context.requireMountedBackupVolume(path: String) {
+    check(isBackupVolumeMounted(path)) { getString(R.string.backup_storage_unavailable, path) }
+}
+
+suspend fun RemoteRootService.requireBackupStorage(context: Context, path: String, allowNewDirectory: Boolean = false) {
+    context.requireMountedBackupVolume(path)
+    check(existsChecked(if (allowNewDirectory) PathUtil.getParentPath(path) else path)) {
+        context.getString(R.string.backup_storage_unavailable, path)
+    }
 }

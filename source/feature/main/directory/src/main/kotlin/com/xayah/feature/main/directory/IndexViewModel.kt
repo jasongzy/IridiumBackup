@@ -52,11 +52,11 @@ class IndexViewModel @Inject constructor(
             }
 
             is IndexUiIntent.Select -> {
-                directoryRepo.selectDir(entity = intent.entity)
+                if (directoryRepo.selectDir(intent.entity)) directoryRepo.updateSelected()
             }
 
             is IndexUiIntent.Add -> {
-                directoryRepo.addDir(listOf(intent.path))
+                directoryRepo.addDir(intent.path)
                 emitIntent(IndexUiIntent.Update)
             }
 
@@ -66,12 +66,12 @@ class IndexViewModel @Inject constructor(
         }
     }
 
-    private val _internalDirectories: Flow<List<DirectoryEntity>> = directoryRepo.queryActiveDirectoriesFlow(StorageType.INTERNAL).flowOnIO()
+    private val _internalDirectories: Flow<List<DirectoryEntity>> = directoryRepo.visibleDirectories(StorageType.INTERNAL).flowOnIO()
     val internalDirectoriesState: StateFlow<List<DirectoryEntity>> = _internalDirectories.stateInScope(listOf())
 
-    private val _externalDirectories: Flow<List<DirectoryEntity>> = directoryRepo.queryActiveDirectoriesFlow(StorageType.EXTERNAL).flowOnIO()
+    private val _externalDirectories: Flow<List<DirectoryEntity>> = directoryRepo.visibleDirectories(StorageType.EXTERNAL).flowOnIO()
     val externalDirectoriesState: StateFlow<List<DirectoryEntity>> = _externalDirectories.stateInScope(listOf())
 
-    private val _customDirectories: Flow<List<DirectoryEntity>> = directoryRepo.queryActiveDirectoriesFlow(StorageType.CUSTOM).flowOnIO()
+    private val _customDirectories: Flow<List<DirectoryEntity>> = directoryRepo.visibleDirectories(StorageType.CUSTOM).flowOnIO()
     val customDirectoriesState: StateFlow<List<DirectoryEntity>> = _customDirectories.stateInScope(listOf())
 }

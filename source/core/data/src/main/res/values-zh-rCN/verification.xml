@@ -1,4 +1,5 @@
 <resources>
     <string name="rebuild_source_changed">扫描期间备份列表已更改，请重新重建索引</string>
     <string name="verification_unreadable">无法读取备份，请检查存储及 root 权限后重新校验</string>
+    <string name="backup_storage_unavailable">备份存储不可用：%1$s。请重新连接设备或选择其他备份目录。</string>
 </resources>

@@ -6,6 +6,7 @@ import androidx.room.PrimaryKey
 import com.xayah.core.model.R
 import com.xayah.core.model.StorageType
 import com.xayah.core.model.util.formatSize
+import java.io.File
 
 @Entity
 data class DirectoryEntity(
@@ -25,7 +26,7 @@ data class DirectoryEntity(
     @ColumnInfo(defaultValue = "0") var active: Boolean,
 ) {
     val path: String
-        get() = "${parent}/${child}"
+        get() = File(parent, child).path
 
     val usedBytes: Long
         get() = totalBytes - availableBytes
@@ -51,7 +52,4 @@ data class DirectoryUpsertEntity(
     var child: String,
     var storageType: StorageType,
     var active: Boolean = false,
-) {
-    val path: String
-        get() = "${parent}/${child}"
-}
+)

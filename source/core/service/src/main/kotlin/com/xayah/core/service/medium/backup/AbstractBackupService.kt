@@ -2,6 +2,7 @@ package com.xayah.core.service.medium.backup
 
 import android.annotation.SuppressLint
 import com.xayah.core.common.util.toLineString
+import com.xayah.core.data.repository.requireMountedBackupVolume
 import com.xayah.core.datastore.readBackupConfigs
 import com.xayah.core.datastore.readBackupItself
 import com.xayah.core.model.DataType
@@ -121,6 +122,7 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
 
             media.update(state = OperationState.PROCESSING)
             val m = media.mediaEntity
+            mContext.requireMountedBackupVolume(mRootDir)
             val dstDir = "${mFilesDir}/${m.archivesRelativeDir}"
             var restoreEntity = mMediaDao.query(OpType.RESTORE, m.preserveId, m.name, m.indexInfo.compressionType, mTaskEntity.cloud, mTaskEntity.backupDir)
             if (createDirectory(dstDir) && onFileDirCreated(archivesRelativeDir = m.archivesRelativeDir)) {

@@ -64,6 +64,7 @@ class VerificationRefreshTest {
             File(revisionDir, "unrelated.txt").writeText("not backup content")
             File(revisionDir.parentFile, "icon.bin").createNewFile()
             val binder = Binder()
+            var storageAvailable = true
             var canList = true
             var unreadableFile: String? = null
             val remote = Proxy.newProxyInstance(
@@ -71,7 +72,7 @@ class VerificationRefreshTest {
             ) { _, method, args ->
                 when (method.name) {
                     "asBinder" -> binder
-                    "exists" -> File(args!![0] as String).exists()
+                    "exists" -> storageAvailable && File(args!![0] as String).exists()
                     "deleteRecursively" -> FileUtil.deleteRecursively(args!![0] as String)
                     "removeEntry" -> FileUtil.removeEntry(args!![0] as String, args[1] as Boolean)
                     "mkdirs" -> File(args!![0] as String).let { it.mkdirs() || it.isDirectory }
@@ -197,6 +198,13 @@ class VerificationRefreshTest {
             assertEquals(BackupVerificationStatus.VALID, repaired.results.single().status)
             canList = false
             assertEquals(BackupVerificationStatus.VALID, repository.inspectRevision(revision).status)
+            val verificationBeforeDisconnect = repository.verificationResults.value
+            storageAvailable = false
+            val expectedError = context.getString(com.xayah.core.data.R.string.backup_storage_unavailable, directory.path)
+            assertEquals(expectedError, runCatching { repository.verifyAllLocal { _, _ -> } }.exceptionOrNull()?.message)
+            assertEquals(expectedError, runCatching { repository.inspectRevision(revision) }.exceptionOrNull()?.message)
+            assertEquals(verificationBeforeDisconnect, repository.verificationResults.value)
+            storageAvailable = true
             val unreadable = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }
             assertEquals(false, unreadable.results.single().canClean)
             assertEquals(0, unreadable.deletedCount)

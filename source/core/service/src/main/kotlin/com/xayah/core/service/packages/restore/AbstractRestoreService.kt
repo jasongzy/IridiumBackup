@@ -1,6 +1,7 @@
 package com.xayah.core.service.packages.restore
 
 import android.annotation.SuppressLint
+import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.datastore.readRestorePermissions
 import com.xayah.core.datastore.readRestoreSsaid
@@ -105,6 +106,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
 
             val p = pkg.packageEntity
             val userId = restoreRequest.targetUser(p)
+            if (p.indexInfo.cloud.isEmpty()) mRootService.requireBackupStorage(mContext, mRootDir)
             if (!preparePackage(killAppOption, pkg, userId)) return@forEach
 
             pkg.update(state = OperationState.PROCESSING)

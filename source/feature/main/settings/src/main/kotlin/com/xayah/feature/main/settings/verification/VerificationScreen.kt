@@ -84,6 +84,7 @@ fun PageBackupVerification(
             LazyColumn(modifier = Modifier.weight(1f)) {
                 item {
                     VerificationSummary(uiState, validCount)
+                    uiState.error?.let { Text(it, modifier = Modifier.padding(horizontal = SizeTokens.Level16), color = MaterialTheme.colorScheme.error) }
                 }
 
                 if (uiState.isComplete && uiState.results.isEmpty()) {

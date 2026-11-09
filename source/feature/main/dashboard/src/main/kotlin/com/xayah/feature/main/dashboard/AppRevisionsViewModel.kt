@@ -16,6 +16,7 @@ import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.util.ifEmptyEncodeURLWithSpace
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -74,12 +75,21 @@ class AppRevisionsViewModel @Inject constructor(
         }
     }
 
+    private suspend fun inspect(revision: BackupRevisionEntity) = try {
+        repository.inspectRevision(revision)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Toast.makeText(context, e.localizedMessage ?: context.getString(com.xayah.core.data.R.string.verification_unreadable), Toast.LENGTH_LONG).show()
+        null
+    }
+
     fun verifyRevision(revision: BackupRevisionEntity) {
         if (revision.id in _verifyingRevisionIds.value) return
         viewModelScope.launch {
             _verifyingRevisionIds.value += revision.id
             try {
-                val result = repository.inspectRevision(revision)
+                val result = inspect(revision) ?: return@launch
                 Toast.makeText(
                     context,
                     when (result.status) {
@@ -103,7 +113,7 @@ class AppRevisionsViewModel @Inject constructor(
     }
 
     suspend fun prepareRestore(revision: BackupRevisionEntity, dataStates: PackageDataStates): String? {
-        if (revision.repositoryId.startsWith(':')) repository.inspectRevision(revision)
+        if (revision.repositoryId.startsWith(':') && inspect(revision) == null) return null
         val selection = repository.selectRevisionForRestore(revision, dataStates) ?: run {
             Toast.makeText(context, R.string.restore_revision_unavailable, Toast.LENGTH_SHORT).show()
             return null

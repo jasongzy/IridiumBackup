@@ -1,30 +1,14 @@
 package com.xayah.core.util.command
 
-import com.xayah.core.util.SymbolUtil.QUOTE
 import com.xayah.core.util.SymbolUtil.USD
 import com.xayah.core.util.shellQuote
 import com.xayah.core.util.command.BaseUtil.execute
-import com.xayah.core.util.model.ShellResult
 
 object PreparationUtil {
-    suspend fun listExternalStorage(): ShellResult = run {
-        // mount | awk '$3 ~ "/mnt/media_rw/[^/]+$" {print $3}'
-        execute(
-            "mount",
-            "|",
-            "awk",
-            "'${USD}3 ~ ${QUOTE}/mnt/media_rw/[^/]+${USD}${QUOTE} {print ${USD}3}'",
-        )
-    }
-
-    suspend fun getExternalStorageType(path: String): ShellResult = run {
-        // mount | awk '$3 == "/mnt/media_rw/6EBF-FE14" {print $5}'
-        execute(
-            "mount",
-            "|",
-            "awk",
-            "-v", "mountpoint=${shellQuote(path)}", "'${USD}3 == mountpoint {print ${USD}5}'",
-        )
+    suspend fun externalStorage(): Map<String, String> {
+        val mounts = execute("awk", "'${USD}2 ~ \"^/(mnt/media_rw|storage)/[^/]+${USD}\" {print ${USD}2, ${USD}3}'", "/proc/mounts")
+        if (!mounts.isSuccess) return emptyMap()
+        return mounts.out.filter(String::isNotBlank).associate { it.substringBefore(' ') to it.substringAfter(' ') }
     }
 }
 

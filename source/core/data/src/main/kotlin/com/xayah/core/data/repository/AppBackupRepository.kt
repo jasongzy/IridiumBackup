@@ -247,6 +247,11 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun inspectRevision(revision: BackupRevisionEntity): VerificationResult = withContext(Dispatchers.IO) {
+        if (getLocalRevisionDir(revision) != null) rootService.requireBackupStorage(context, revision.repositoryId.substringAfter(':'))
+        verifyRevision(revision)
+    }
+
+    private suspend fun verifyRevision(revision: BackupRevisionEntity): VerificationResult {
         val result = inspectRevisionFiles(revision) { manifest ->
             val files = manifest.files.orEmpty()
             val size = files.sumOf(BackupManifestFile::sizeBytes)
@@ -255,6 +260,9 @@ class AppBackupRepository @Inject constructor(
                 val stats = manifest.displayStats(restore.indexInfo.compressionType)
                 if (restore.displayStats != stats) packageRepository.updateDisplayStats(restore.id, stats)
             }
+        }
+        if (result.issues.any { it.type == VerificationIssueType.UNREADABLE }) {
+            rootService.requireBackupStorage(context, revision.repositoryId.substringAfter(':'))
         }
         val revisionDir = getLocalRevisionDir(revision)
         revisionDir?.let { refreshXposedModule(revision, it) }
@@ -265,7 +273,7 @@ class AppBackupRepository @Inject constructor(
                 packageName = revision.packageName,
             )
         } else false
-        result.copy(iconRepaired = iconRepaired).also { rememberVerification(it) }
+        return result.copy(iconRepaired = iconRepaired).also { rememberVerification(it) }
     }
 
     internal suspend fun calculateDisplayStats(
@@ -393,10 +401,12 @@ class AppBackupRepository @Inject constructor(
     }
 
     suspend fun verifyAllLocal(onProgress: suspend (Int, Int) -> Unit): List<VerificationResult> {
-        val revisions = dao.getRevisions(":${context.localBackupSaveDir()}")
+        val backupDir = context.localBackupSaveDir()
+        val revisions = dao.getRevisions(":$backupDir")
+        if (revisions.isNotEmpty()) rootService.requireBackupStorage(context, backupDir)
         onProgress(0, revisions.size)
         return revisions.mapIndexed { index, revision ->
-            inspectRevision(revision).also { onProgress(index + 1, revisions.size) }
+            verifyRevision(revision).also { onProgress(index + 1, revisions.size) }
         }
     }
 
@@ -404,7 +414,9 @@ class AppBackupRepository @Inject constructor(
         results: List<VerificationResult>,
         onProgress: suspend (Int, Int) -> Unit,
     ): CleanupReport {
-        val current = dao.getRevisions(":${context.localBackupSaveDir()}").associateBy { it.id }
+        val backupDir = context.localBackupSaveDir()
+        rootService.requireBackupStorage(context, backupDir)
+        val current = dao.getRevisions(":$backupDir").associateBy { it.id }
         val remaining = results.filter { it.revision.id in current }.associateByTo(linkedMapOf()) { it.revision.id }
         val failed = remaining.values.filter { it.canClean }
         var deletedCount = 0
@@ -435,7 +447,7 @@ class AppBackupRepository @Inject constructor(
     suspend fun rebuildLocalIndex(backupDir: String = context.localBackupSaveDir(), onProgress: suspend (Int, Int, Int) -> Unit): List<RebuildResult> {
         val repositoryId = ":$backupDir"
         val original = dao.getRevisions(repositoryId)
-        check(rootService.existsChecked(backupDir)) { "Cannot read directory: $backupDir" }
+        rootService.requireBackupStorage(context, backupDir)
         val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
         val rebuilt = mutableListOf<Pair<PackageEntity, BackupManifest>>()
         val revisionDirs = buildList {
@@ -456,6 +468,7 @@ class AppBackupRepository @Inject constructor(
             originalByArtifact[revision.artifactId]?.takeIf(manifest::matchesRevision)?.let { revision.copy(id = it.id) } ?: revision
         }
         revisionMutex.withLock {
+            rootService.requireBackupStorage(context, backupDir)
             database.withTransaction {
                 check(dao.getRevisions(repositoryId) == original) { context.getString(R.string.rebuild_source_changed) }
                 database.packageDao().replaceLocalRestoreIndex(backupDir, rebuilt.map { it.first })
@@ -564,6 +577,7 @@ class AppBackupRepository @Inject constructor(
             packageRepository.delete(packageEntity)
         } else {
             val revisionDir = getLocalRevisionDir(revision) ?: return false
+            if (!isBackupVolumeMounted(revisionDir)) return false
             rootService.deleteRecursively(revisionDir)
         }
         if (!deleted) return false

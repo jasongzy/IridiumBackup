@@ -9,6 +9,7 @@ import com.xayah.core.model.BackupVerificationStatus
 import com.xayah.feature.main.settings.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,6 +27,7 @@ data class VerificationUiState(
     val cleanupCompleted: Int = 0,
     val cleanupTotal: Int = 0,
     val cleanupFailedCount: Int = 0,
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -69,6 +71,8 @@ class VerificationViewModel @Inject constructor(
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
+            } catch (e: Exception) {
+                reportError(e)
             } finally {
                 _uiState.value = _uiState.value.copy(isRunning = false)
             }
@@ -83,6 +87,7 @@ class VerificationViewModel @Inject constructor(
             cleanupCompleted = 0,
             cleanupTotal = current.results.count { it.canClean },
             cleanupFailedCount = 0,
+            error = null,
         )
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -105,9 +110,16 @@ class VerificationViewModel @Inject constructor(
                         Toast.LENGTH_SHORT,
                     ).show()
                 }
+            } catch (e: Exception) {
+                reportError(e)
             } finally {
                 _uiState.value = _uiState.value.copy(isCleaning = false)
             }
         }
+    }
+
+    private fun reportError(error: Exception) {
+        if (error is CancellationException) throw error
+        _uiState.value = _uiState.value.copy(error = error.localizedMessage ?: context.getString(com.xayah.core.data.R.string.verification_unreadable))
     }
 }

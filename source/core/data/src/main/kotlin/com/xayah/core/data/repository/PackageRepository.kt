@@ -202,6 +202,7 @@ class PackageRepository @Inject constructor(
         val relativeDir = PathUtil.getPackageArchiveRelativeDir(p.packageName, p.userId, p.preserveId) ?: return false
         val isSuccess = if (p.indexInfo.cloud.isEmpty()) {
             val backupDir = FileUtil.normalizeAbsolutePath(p.indexInfo.backupDir) ?: return false
+            if (!isBackupVolumeMounted(backupDir)) return false
             val appsDir = "$backupDir/${PathUtil.getAppsRelativeDir()}"
             val src = "$appsDir/$relativeDir"
             rootService.deleteRecursively(src).also { deleted ->

@@ -109,7 +109,8 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
     }
 
     override fun readStatFs(path: String): StatFsParcelable = synchronized(lock) {
-        val statFs = StatFs(path)
+        val volumePath = if (FileUtil.statIfPresent(path) == null) File(path).parent ?: path else path
+        val statFs = StatFs(volumePath)
         StatFsParcelable(statFs.availableBytes, statFs.totalBytes)
     }
 

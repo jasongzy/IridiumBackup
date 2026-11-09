@@ -2,6 +2,7 @@ package com.xayah.core.service.packages.backup
 
 import android.annotation.SuppressLint
 import com.xayah.core.common.util.toLineString
+import com.xayah.core.data.repository.requireMountedBackupVolume
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.model.PackageTaskRequest
@@ -118,6 +119,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     private suspend fun reserveRevisionDirectory(app: PackageEntity): String? {
         val relativeDir = PathUtil.getPackageArchiveRelativeDir(app.packageName, app.userId, app.preserveId) ?: return null
         val directory = "$mAppsDir/$relativeDir"
+        mContext.requireMountedBackupVolume(mRootDir)
         if (!mRootService.mkdirs(PathUtil.getParentPath(directory)) || !mRootService.createDirectory(directory)) return null
         var reserved = false
         try {
