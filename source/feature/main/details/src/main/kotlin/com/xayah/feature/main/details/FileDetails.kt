@@ -2,8 +2,6 @@ package com.xayah.feature.main.details
 
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,6 +50,7 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.database.LabelFileCrossRefEntity
 import com.xayah.core.model.database.MediaEntity
+import com.xayah.core.ui.component.onChipLongClick
 import com.xayah.core.ui.component.ActionSegmentedButton
 import com.xayah.core.ui.component.AnimatedModalDropdownMenu
 import com.xayah.core.ui.component.BodyLargeText
@@ -172,7 +171,7 @@ private fun LabelsFlow(opType: OpType, file: MediaEntity, refs: List<LabelFileCr
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 private fun LabelsBottomSheet(
     isShow: Boolean,
     sheetState: SheetState,
@@ -188,7 +187,7 @@ private fun LabelsBottomSheet(
     val dialogState = LocalSlotScope.current!!.dialogSlot
     if (isShow) {
         ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState) {
-            val selectedLabels by remember(refs) { mutableStateOf(refs.map { it.label }) }
+            val selectedLabels = remember(refs) { refs.mapTo(mutableSetOf()) { it.label } }
 
             Title(text = stringResource(id = R.string.labels))
 
@@ -209,39 +208,26 @@ private fun LabelsBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(-SizeTokens.Level8)
                 ) {
                     labels.forEach { item ->
-                        var expanded by remember { mutableStateOf(false) }
+                        var expanded by remember(item.label) { mutableStateOf(false) }
                         Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val selected by remember(item.label, selectedLabels) { mutableStateOf(item.label in selectedLabels) }
-                            Box {
-                                FilterChip(
-                                    onClick = {},
-                                    label = { Text(item.label) },
-                                    selected = selected,
-                                    leadingIcon = if (selected) {
-                                        {
-                                            Icon(
-                                                imageVector = Icons.Filled.Done,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(FilterChipDefaults.IconSize)
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    },
-                                    interactionSource = interactionSource,
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .combinedClickable(
-                                            onLongClick = { expanded = true },
-                                            onClick = { onSelectLabel(selected, LabelFileCrossRefEntity(item.label, file.path, file.preserveId)) },
-                                            interactionSource = interactionSource,
-                                            indication = null,
+                            val selected = item.label in selectedLabels
+                            FilterChip(
+                                modifier = Modifier.onChipLongClick(item.label) { expanded = true },
+                                onClick = { onSelectLabel(selected, LabelFileCrossRefEntity(item.label, file.path, file.preserveId)) },
+                                label = { Text(item.label) },
+                                selected = selected,
+                                leadingIcon = if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Done,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize)
                                         )
-                                )
-                            }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
 
                             AnimatedModalDropdownMenu(
                                 targetState = null,

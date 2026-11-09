@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.DeleteSweep
@@ -148,7 +150,10 @@ fun PageBackupVerification(
             onDismissRequest = { selectedResult = null },
             title = { Text(result.appLabel) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(SizeTokens.Level8)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(SizeTokens.Level8),
+                ) {
                     Text(revision.packageName)
                     Text(
                         stringResource(

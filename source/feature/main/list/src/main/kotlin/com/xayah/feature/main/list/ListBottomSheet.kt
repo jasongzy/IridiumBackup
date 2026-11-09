@@ -1,9 +1,6 @@
 package com.xayah.feature.main.list
 
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,10 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -61,6 +54,7 @@ import com.xayah.core.ui.component.IconButton
 import com.xayah.core.ui.component.ModalBottomSheet
 import com.xayah.core.ui.component.Title
 import com.xayah.core.ui.component.TitleLargeText
+import com.xayah.core.ui.component.onChipLongClick
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.token.SizeTokens
 import kotlinx.coroutines.CoroutineScope
@@ -154,7 +148,6 @@ private fun LabelsFlow(
     onClick: (String) -> Unit,
     onLongClick: (String) -> Unit,
 ) {
-    val hapticFeedback = LocalHapticFeedback.current
     FlowRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -166,20 +159,7 @@ private fun LabelsFlow(
             val mode = labelFilters[item.label]
             val color = Color(item.colorArgb)
             FilterChip(
-                modifier = Modifier.pointerInput(item.label) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        awaitLongPressOrCancellation(down.id)?.let { change ->
-                            change.consume()
-                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onLongClick(item.label)
-                            do {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                event.changes.forEach { it.consume() }
-                            } while (event.changes.any { it.pressed })
-                        }
-                    }
-                },
+                modifier = Modifier.onChipLongClick(item.label) { onLongClick(item.label) },
                 onClick = { onClick(item.label) },
                 label = {
                     Text(

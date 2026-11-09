@@ -4,6 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,13 +41,20 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
@@ -69,6 +79,31 @@ val PackageDataStatesSaver = listSaver<PackageDataStates, DataState>(
     save = { listOf(it.apkState, it.userState, it.userDeState, it.dataState, it.obbState, it.mediaState, it.permissionState, it.ssaidState) },
     restore = { PackageDataStates(it[0], it[1], it[2], it[3], it[4], it[5], it[6], it[7]) },
 )
+
+@Composable
+fun Modifier.onChipLongClick(label: String, action: () -> Unit): Modifier {
+    val onLongPress by rememberUpdatedState(action)
+    val haptics = LocalHapticFeedback.current
+    return semantics {
+        onLongClick {
+            onLongPress()
+            true
+        }
+    }.pointerInput(label, haptics) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            awaitLongPressOrCancellation(down.id)?.let { change ->
+                change.consume()
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onLongPress()
+                do {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    event.changes.forEach { it.consume() }
+                } while (event.changes.any { it.pressed })
+            }
+        }
+    }
+}
 
 @Composable
 fun AssistChip(
@@ -468,6 +503,7 @@ fun RoundChip(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, labe
 @Composable
 fun DataChips(
     selections: PackageDataStates,
+    modifier: Modifier = Modifier,
     displayStats: PackageDataStats? = null,
     isCalculating: Boolean = false,
     maxItemsInEachRow: Int = 2,
@@ -476,7 +512,7 @@ fun DataChips(
     onItemClick: (DataType, Boolean) -> Unit,
 ) {
     FlowRow(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .paddingHorizontal(SizeTokens.Level24),
         horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level8),

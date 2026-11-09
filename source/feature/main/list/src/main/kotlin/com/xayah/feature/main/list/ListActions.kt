@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Rule
 import androidx.compose.material.icons.outlined.FilterList
@@ -425,7 +427,7 @@ private fun BatchLabelsDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.edit_labels)) },
         text = {
-            androidx.compose.foundation.layout.Column {
+            androidx.compose.foundation.layout.Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = newLabel,
                     onValueChange = { newLabel = it },

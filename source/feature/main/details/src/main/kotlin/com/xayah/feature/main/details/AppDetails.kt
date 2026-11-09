@@ -5,7 +5,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Notes
 import androidx.compose.material.icons.filled.Done
@@ -69,6 +70,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -102,6 +106,7 @@ import com.xayah.core.ui.component.TitleLargeText
 import com.xayah.core.ui.component.TooltipIconButton
 import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.component.edit
+import com.xayah.core.ui.component.onChipLongClick
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.component.paddingVertical
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
@@ -559,31 +564,18 @@ private fun LabelsFlow(
                 val color = Color(label.colorArgb)
                 var expanded by remember(label.label) { mutableStateOf(false) }
                 Box {
-                    val interactionSource = remember { MutableInteractionSource() }
-                    Box {
-                        FilterChip(
-                            onClick = {},
+                    FilterChip(
+                        modifier = Modifier.onChipLongClick(label.label) { expanded = true },
+                        onClick = { onEditColor(label) },
+                        selected = false,
+                        label = { Text(label.label) },
+                        colors = FilterChipDefaults.filterChipColors(labelColor = color),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
                             selected = false,
-                            label = { Text(label.label) },
-                            colors = FilterChipDefaults.filterChipColors(labelColor = color),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = false,
-                                borderColor = color,
-                            ),
-                            interactionSource = interactionSource,
-                        )
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .combinedClickable(
-                                    interactionSource = interactionSource,
-                                    indication = null,
-                                    onClick = { onEditColor(label) },
-                                    onLongClick = { expanded = true },
-                                ),
-                        )
-                    }
+                            borderColor = color,
+                        ),
+                    )
                     AnimatedModalDropdownMenu(
                         targetState = null,
                         expanded = expanded,
@@ -608,7 +600,7 @@ private fun LabelsFlow(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 private fun LabelsBottomSheet(
     isShow: Boolean,
     sheetState: SheetState,
@@ -626,7 +618,7 @@ private fun LabelsBottomSheet(
     if (isShow) {
         var deleteCandidate by rememberSaveable { mutableStateOf<String?>(null) }
         ModalBottomSheet(onDismissRequest = onDismissRequest, sheetState = sheetState) {
-            val selectedLabels by remember(refs) { mutableStateOf(refs.map { it.label }) }
+            val selectedLabels = remember(refs) { refs.mapTo(mutableSetOf()) { it.label } }
 
             Title(text = stringResource(id = R.string.labels))
 
@@ -647,39 +639,26 @@ private fun LabelsBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(-SizeTokens.Level8)
                 ) {
                     labels.forEach { item ->
-                        var expanded by remember { mutableStateOf(false) }
+                        var expanded by remember(item.label) { mutableStateOf(false) }
                         Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
-                            val interactionSource = remember { MutableInteractionSource() }
-                            val selected by remember(item.label, selectedLabels) { mutableStateOf(item.label in selectedLabels) }
-                            Box {
-                                FilterChip(
-                                    onClick = {},
-                                    label = { Text(item.label) },
-                                    selected = selected,
-                                    leadingIcon = if (selected) {
-                                        {
-                                            Icon(
-                                                imageVector = Icons.Filled.Done,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(FilterChipDefaults.IconSize)
-                                            )
-                                        }
-                                    } else {
-                                        null
-                                    },
-                                    interactionSource = interactionSource,
-                                )
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .combinedClickable(
-                                            onLongClick = { expanded = true },
-                                            onClick = { onSelectLabel(selected, LabelAppCrossRefEntity(item.label, app.packageName, app.userId)) },
-                                            interactionSource = interactionSource,
-                                            indication = null,
+                            val selected = item.label in selectedLabels
+                            FilterChip(
+                                modifier = Modifier.onChipLongClick(item.label) { expanded = true },
+                                onClick = { onSelectLabel(selected, LabelAppCrossRefEntity(item.label, app.packageName, app.userId)) },
+                                label = { Text(item.label) },
+                                selected = selected,
+                                leadingIcon = if (selected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Done,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize)
                                         )
-                                )
-                            }
+                                    }
+                                } else {
+                                    null
+                                },
+                            )
 
                             AnimatedModalDropdownMenu(
                                 targetState = null,
@@ -1021,7 +1000,10 @@ private fun LabelColorDialog(
         onDismissRequest = onDismiss,
         title = { Text(label.label) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(SizeTokens.Level12)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(SizeTokens.Level12),
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -1033,12 +1015,14 @@ private fun LabelColorDialog(
                     verticalArrangement = Arrangement.spacedBy(SizeTokens.Level12),
                 ) {
                     LabelPalette.colors.forEach { colorArgb ->
+                        val code = "%08X".format(colorArgb)
                         val color = Color(colorArgb)
                         androidx.compose.material3.Surface(
-                            modifier = Modifier.size(40.dp),
-                            onClick = {
-                                hex = "%08X".format(colorArgb)
+                            modifier = Modifier.size(40.dp).semantics {
+                                contentDescription = "#$code"
+                                selected = colorArgb == parsedColor
                             },
+                            onClick = { hex = code },
                             color = color,
                             shape = androidx.compose.foundation.shape.CircleShape,
                             border = if (colorArgb == parsedColor) BorderStroke(SizeTokens.Level2, LocalContentColor.current) else null,

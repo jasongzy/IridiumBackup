@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.Lock
@@ -419,6 +421,7 @@ private fun PackageScopeDialog(
         text = {
             DataChips(
                 selections = selections,
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 displayStats = displayStats,
                 maxItemsInEachRow = 1,
                 isEnabled = { type -> !busy && (available == null || type.getSelected(available)) },
@@ -540,7 +543,10 @@ private fun RevisionDetailsDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.revision_info)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(DashboardDimens.ItemSpacing)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(DashboardDimens.ItemSpacing),
+            ) {
                 Text(revision.appVersionName.ifEmpty { revision.appVersionCode.toString() })
                 Text(stringResource(R.string.created_at, DateUtil.formatTimestamp(revision.createdAt, DateUtil.PATTERN_YMD_HMS)))
                 Text(contents)
