@@ -837,7 +837,7 @@ private fun SingleChoiceSegmentedButtonRowScope.BackupActions(
             title = context.getString(R.string.prompt),
             text = context.getString(if (frozen) R.string.confirm_unfreeze else R.string.confirm_freeze),
             onConfirm = {
-                onFreeze(frozen)
+                onFreeze(!frozen)
             }
         )
     }

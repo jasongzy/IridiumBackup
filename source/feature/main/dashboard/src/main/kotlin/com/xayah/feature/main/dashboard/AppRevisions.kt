@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Share
+import androidx.compose.material.icons.rounded.StopCircle
 import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -117,6 +118,14 @@ fun AppRevisionsRoute(
                                 Icon(Icons.Rounded.MoreVert, contentDescription = stringResource(R.string.more_options))
                             }
                             DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.force_stop)) },
+                                    leadingIcon = { Icon(Icons.Rounded.StopCircle, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        detailsViewModel.forceStopApp()
+                                    },
+                                )
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.clear_cache)) },
                                     leadingIcon = { Icon(Icons.Rounded.CleaningServices, contentDescription = null) },
@@ -235,7 +244,7 @@ fun AppRevisionsRoute(
                         furtherOperations = furtherOperations,
                         onLoadFurtherOperations = detailsViewModel::loadFurtherOperations,
                         onOpenFurtherOperation = detailsViewModel::openFurtherOperation,
-                        onFreeze = detailsViewModel::freezeApp,
+                        onFreeze = detailsViewModel::setFrozen,
                         onLaunch = detailsViewModel::launchApp,
                         onProtect = detailsViewModel::protect,
                         onDelete = detailsViewModel::delete,

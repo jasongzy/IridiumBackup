@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_force_stopped">已结束应用</string>
+    <string name="app_not_running">应用未运行</string>
+    <string name="force_stop_failed">无法结束应用运行</string>
+</resources>

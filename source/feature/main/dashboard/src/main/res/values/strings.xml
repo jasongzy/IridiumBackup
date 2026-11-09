@@ -22,6 +22,7 @@
     <string name="confirm_remove_from_blacklist">Remove this app from the blacklist?</string>
     <string name="confirm">Confirm</string>
     <string name="clear_cache">Clear cache</string>
+    <string name="force_stop">Force stop</string>
     <string name="open_settings">Open settings</string>
     <string name="backup_deleted">Backup deleted</string>
 </resources>

@@ -671,6 +671,14 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         error("Cannot attribute a running process to $packageName for user $userId")
     }
 
+    override fun forceStopPackageIfRunning(packageName: String, userId: Int): Boolean = synchronized(lock) {
+        require(userId >= 0 && packageName != context.packageName)
+        if (!isPackageRunning(packageName, userId)) return@synchronized false
+        forceStopPackageAsUser(packageName, userId)
+        check(!isPackageRunning(packageName, userId)) { "Package is still running" }
+        true
+    }
+
     override fun pausePackage(packageName: String, userId: Int, owner: IBinder) {
         require(userId >= 0)
         if (packageName == context.packageName) return

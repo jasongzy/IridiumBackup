@@ -21,6 +21,7 @@
     <string name="confirm_remove_from_blacklist">要将此应用移出黑名单吗？</string>
     <string name="confirm">确定</string>
     <string name="clear_cache">清除缓存</string>
+    <string name="force_stop">结束运行</string>
     <string name="open_settings">打开设置</string>
     <string name="backup_deleted">备份已删除</string>
 </resources>

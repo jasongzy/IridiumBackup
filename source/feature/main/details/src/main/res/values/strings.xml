@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_force_stopped">App stopped</string>
+    <string name="app_not_running">App wasn’t running</string>
+    <string name="force_stop_failed">Couldn’t stop this app</string>
+</resources>

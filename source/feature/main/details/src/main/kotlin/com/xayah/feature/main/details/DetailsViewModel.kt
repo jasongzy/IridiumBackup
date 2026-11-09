@@ -329,24 +329,17 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun freezeApp(frozen: Boolean) {
+    fun setFrozen(frozen: Boolean) {
         viewModelScope.launchOnDefault {
-            when (uiState.value) {
-                is Success.App -> {
-                    val state = uiState.value.castTo<Success.App>()
-                    val app = state.app
-                    if (frozen) {
-                        rootService.setApplicationEnabledSetting(app.packageName, PackageManager.COMPONENT_ENABLED_STATE_ENABLED, 0, app.userId, null)
-                    } else {
-                        rootService.setApplicationEnabledSetting(app.packageName, PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER, 0, app.userId, null)
-                    }
-                    val enabled = rootService.getApplicationEnabledSetting(app.packageName, app.userId) == PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-                    appsRepo.setEnabled(app.id, enabled)
-                    if (enabled == frozen) showToast(if (frozen) R.string.app_unfrozen else R.string.app_frozen)
-                }
-
-                else -> {}
+            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
+            val state = if (frozen) PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER else PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            val changed = rootService.setApplicationEnabledSetting(app.packageName, state, 0, app.userId, null)
+            if (changed.isFailure || rootService.getApplicationEnabledSetting(app.packageName, app.userId) != state) {
+                showToast(R.string.failed)
+                return@launchOnDefault
             }
+            appsRepo.setEnabled(app.id, !frozen)
+            showToast(if (frozen) R.string.app_frozen else R.string.app_unfrozen)
         }
     }
 
@@ -361,6 +354,18 @@ class DetailsViewModel @Inject constructor(
 
                 else -> {}
             }
+        }
+    }
+
+    fun forceStopApp() {
+        viewModelScope.launchOnDefault {
+            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
+            val message = when (rootService.forceStopPackageIfRunning(app.packageName, app.userId)) {
+                true -> R.string.app_force_stopped
+                false -> R.string.app_not_running
+                null -> R.string.force_stop_failed
+            }
+            showToast(message)
         }
     }
 

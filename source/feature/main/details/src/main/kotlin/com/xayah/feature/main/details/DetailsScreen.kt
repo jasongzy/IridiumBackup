@@ -89,7 +89,7 @@ internal fun AppDetailsScreen(uiState: DetailsUiState, viewModel: DetailsViewMod
                                 furtherOperations = furtherOperations,
                                 onLoadFurtherOperations = viewModel::loadFurtherOperations,
                                 onOpenFurtherOperation = viewModel::openFurtherOperation,
-                                onFreeze = viewModel::freezeApp,
+                                onFreeze = viewModel::setFrozen,
                                 onLaunch = viewModel::launchApp,
                                 onProtect = viewModel::protect,
                                 onDelete = viewModel::delete,
