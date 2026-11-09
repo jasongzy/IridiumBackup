@@ -80,6 +80,7 @@ abstract class AbstractPackagesProcessingViewModel(
                             title = it.packageEntity.packageInfo.label,
                             state = it.state,
                             key = it.packageEntity.packageName,
+                            userId = it.packageEntity.userId,
                             processingIndex = it.processingIndex,
                             progress = (it.apkInfo.progress + it.userInfo.progress + it.userDeInfo.progress + it.dataInfo.progress + it.obbInfo.progress + it.mediaInfo.progress) / 6,
                             items = listOf(

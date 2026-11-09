@@ -253,6 +253,7 @@ private fun AppHeader(
         leadingContent = {
             PackageIconImage(
                 packageName = candidate.revision.packageName,
+                userId = candidate.revision.userId,
                 size = SizeTokens.Level48,
                 refreshKey = candidate.revision.id,
             )

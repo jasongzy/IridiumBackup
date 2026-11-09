@@ -51,6 +51,7 @@ import kotlin.math.sqrt
 fun PackageIconImage(
     icon: ImageVector? = null,
     packageName: String,
+    userId: Int? = null,
     shape: Shape? = null,
     inCircleShape: Boolean = false,
     size: Dp = SizeTokens.Level32,
@@ -58,13 +59,13 @@ fun PackageIconImage(
     viewModel: PackageIconViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
-    var iconForeground by remember(packageName, icon) { mutableStateOf<Drawable?>(null) }
-    var iconBackground by remember(packageName, icon) { mutableStateOf<Drawable?>(null) }
+    var iconForeground by remember(packageName, userId, icon) { mutableStateOf<Drawable?>(null) }
+    var iconBackground by remember(packageName, userId, icon) { mutableStateOf<Drawable?>(null) }
     val sizeForeground by remember(size, inCircleShape) { mutableStateOf(if (inCircleShape) size.div(sqrt(2.2F)) else size) }
-    LaunchedEffect(packageName, icon, refreshKey) {
+    LaunchedEffect(packageName, userId, icon, inCircleShape, refreshKey) {
         if (icon == null) {
             val (foreground, background) = withContext(Dispatchers.IO) {
-                val iconDrawable = viewModel.load(packageName, refreshKey != null)
+                val iconDrawable = viewModel.load(packageName, userId, refreshKey != null)
                 if (iconDrawable != null) {
                     if (inCircleShape) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && iconDrawable is AdaptiveIconDrawable) {

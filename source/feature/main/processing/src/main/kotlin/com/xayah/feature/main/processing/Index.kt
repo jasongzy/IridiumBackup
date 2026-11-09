@@ -275,6 +275,7 @@ fun PageProcessing(
                                         PackageIconImage(
                                             icon = if (it > 0 && it < dataItems.size + 1) null else ImageVector.vectorResource(id = com.xayah.core.ui.R.drawable.ic_rounded_hourglass_empty),
                                             packageName = dataItems.getOrNull(it - 1)?.key ?: "",
+                                            userId = dataItems.getOrNull(it - 1)?.userId,
                                             inCircleShape = true,
                                             size = SizeTokens.Level128
                                         )
@@ -329,6 +330,7 @@ fun PageProcessing(
                                 title = item.title,
                                 state = item.state,
                                 packageName = item.key,
+                                userId = item.userId,
                                 expanded = expanded,
                                 items = item.items,
                                 processingIndex = item.processingIndex,

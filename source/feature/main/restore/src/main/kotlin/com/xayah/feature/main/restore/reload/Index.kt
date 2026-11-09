@@ -116,7 +116,7 @@ fun PageReload() {
             items(uiState.results, key = { it.revision.id }) { result ->
                 val revision = result.revision
                 ListItem(
-                    leadingContent = { PackageIconImage(packageName = revision.packageName, size = SizeTokens.Level48) },
+                    leadingContent = { PackageIconImage(packageName = revision.packageName, userId = revision.userId, size = SizeTokens.Level48) },
                     headlineContent = { Text(result.appLabel) },
                     supportingContent = {
                         Text(

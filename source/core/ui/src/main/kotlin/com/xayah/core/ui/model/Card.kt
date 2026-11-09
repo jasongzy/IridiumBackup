@@ -16,6 +16,7 @@ data class ProcessingDataCardItem(
     val processingIndex: Int = 0,
     val title: String = "",
     val key: String = "",
+    val userId: Int? = null,
     val items: List<ProcessingCardItem> = listOf(),
 )
 

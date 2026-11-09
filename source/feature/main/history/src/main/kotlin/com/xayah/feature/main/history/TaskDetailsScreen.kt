@@ -133,7 +133,7 @@ fun TaskDetailPackageEntity.AppDataItem(dataType: DataType) {
         title = dataType.type.uppercase(),
         value = info.log.ifEmpty { null },
         leadingIcon = {
-            PackageIconImage(packageName = packageEntity.packageName, size = SizeTokens.Level32)
+            PackageIconImage(packageName = packageEntity.packageName, userId = packageEntity.userId, size = SizeTokens.Level32)
         },
         trailingIcon = {
             info.state.StateView()

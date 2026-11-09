@@ -55,7 +55,6 @@ import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.sharedFileUri
-import com.xayah.core.util.command.BaseUtil
 import com.xayah.feature.main.details.DetailsUiState.Error
 import com.xayah.feature.main.details.DetailsUiState.Loading
 import com.xayah.feature.main.details.DetailsUiState.Success
@@ -514,8 +513,8 @@ class DetailsViewModel @Inject constructor(
     fun saveAppIcon() {
         viewModelScope.launchOnDefault {
             val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
-            val icon = runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
-                ?: BaseUtil.readIcon(context, appIconRepository.getLocalIconPath(app.packageName))
+            val icon = rootService.getInstalledIcon(app.packageName, app.userId)
+                ?: rootService.readIcon(appIconRepository.getLocalIconPath(app.packageName))
             val saved = icon != null && saveIcon(icon.toBitmap(512, 512, Bitmap.Config.ARGB_8888), app.packageName)
             showToast(if (saved) R.string.app_icon_saved else R.string.app_icon_save_failed)
         }

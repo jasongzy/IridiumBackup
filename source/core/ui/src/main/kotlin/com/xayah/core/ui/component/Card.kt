@@ -132,6 +132,7 @@ fun ProcessingCard(
     state: OperationState = OperationState.IDLE,
     title: String,
     packageName: String? = null,
+    userId: Int? = null,
     expanded: Boolean = false,
     items: List<ProcessingCardItem>,
     processingIndex: Int,
@@ -158,7 +159,7 @@ fun ProcessingCard(
                 ) {
                     Row(modifier = Modifier.padding(SizeTokens.Level16), horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level16), verticalAlignment = Alignment.CenterVertically) {
                         if (packageName != null)
-                            PackageIconImage(packageName = packageName, size = SizeTokens.Level24)
+                            PackageIconImage(packageName = packageName, userId = userId, size = SizeTokens.Level24)
 
                         TitleMediumText(
                             modifier = Modifier.weight(1f),

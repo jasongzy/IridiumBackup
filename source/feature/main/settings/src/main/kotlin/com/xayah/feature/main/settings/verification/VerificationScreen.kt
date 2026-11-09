@@ -275,6 +275,7 @@ private fun VerificationItem(
         leadingContent = {
             PackageIconImage(
                 packageName = revision.packageName,
+                userId = revision.userId,
                 size = SizeTokens.Level48,
                 refreshKey = result,
             )

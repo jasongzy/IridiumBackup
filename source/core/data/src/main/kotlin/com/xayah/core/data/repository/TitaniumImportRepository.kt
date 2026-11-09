@@ -340,10 +340,18 @@ class TitaniumImportRepository @Inject constructor(
         }
     }
 
+    private fun Properties.icon(): ByteArray? = sequenceOf("app_gui_icon", "app_icon").mapNotNull { key ->
+        val encoded = getProperty(key) ?: return@mapNotNull null
+        val bytes = try {
+            Base64.decode(encoded, Base64.DEFAULT)
+        } catch (_: IllegalArgumentException) {
+            return@mapNotNull null
+        }
+        appIconRepository.normalize(bytes)
+    }.firstOrNull()
+
     private fun cachePreviewIcon(properties: Properties, packageName: String, dir: File): String? {
-        val encoded = properties.getProperty("app_gui_icon") ?: properties.getProperty("app_icon") ?: return null
-        val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return null
-        val normalized = appIconRepository.normalize(bytes) ?: return null
+        val normalized = properties.icon() ?: return null
         val key = properties.getProperty("app_version_code")?.toLongOrNull() ?: 0
         return runCatching {
             dir.mkdirs()
@@ -393,8 +401,8 @@ class TitaniumImportRepository @Inject constructor(
         }
         if (existing != null && verifiedFiles.size == existing.files.orEmpty().size) {
             val indexed = appBackupRepository.indexImportedRevision(backupRoot, destination)
-            if (!importIcon(properties, packageName, appsDir)) {
-                appIconRepository.repairFromBackup(destination, appsDir, packageName, overwrite = true)
+            if (!rootService.exists(PathUtil.getAppIconPath(appsDir, packageName)) && !importIcon(properties, packageName, appsDir)) {
+                appIconRepository.repairFromBackup(destination, appsDir, packageName, existing.apkCompression)
             }
             return BackupResult(packageName, label, versionName, createdAt, if (indexed) Status.IMPORTED else Status.SKIPPED)
         }
@@ -609,9 +617,8 @@ class TitaniumImportRepository @Inject constructor(
     }
 
     private suspend fun importIcon(properties: Properties, packageName: String, appsDir: String): Boolean {
-        val encoded = properties.getProperty("app_gui_icon") ?: properties.getProperty("app_icon") ?: return false
-        val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull() ?: return false
-        return appIconRepository.saveEncodedIcon(bytes, appsDir, packageName)
+        val icon = properties.icon() ?: return false
+        return rootService.writeBytes(icon, PathUtil.getAppIconPath(appsDir, packageName))
     }
 
     private fun buildImportNote(personalNote: String, isProtected: Boolean): String = buildList {

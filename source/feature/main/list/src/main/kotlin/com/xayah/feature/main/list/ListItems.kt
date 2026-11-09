@@ -195,7 +195,7 @@ fun AppItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level16)
         ) {
-            PackageIconImage(packageName = app.packageName, size = 36.dp)
+            PackageIconImage(packageName = app.packageName, userId = app.userId, size = 36.dp)
 
             Column(modifier = Modifier.weight(1f)) {
                 TitleMediumText(text = title.ifEmpty { app.packageName }, color = systemColor, maxLines = 1)

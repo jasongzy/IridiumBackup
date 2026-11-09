@@ -236,6 +236,7 @@ fun AppDetails(
         ) {
             PackageIconImage(
                 packageName = app.packageName,
+                userId = app.userId,
                 size = SizeTokens.Level100,
                 refreshKey = iconRefreshKey,
             )

@@ -7,6 +7,8 @@ import android.content.ServiceConnection
 import android.content.pm.LauncherApps
 import android.content.pm.PackageInfo
 import android.content.pm.UserInfo
+import android.graphics.BitmapFactory
+import android.graphics.drawable.Drawable
 import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
@@ -15,6 +17,7 @@ import android.os.Process
 import android.os.RemoteException
 import android.os.UserHandle
 import android.provider.Settings
+import androidx.core.graphics.drawable.toDrawable
 import com.google.gson.reflect.TypeToken
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
@@ -168,6 +171,22 @@ class RemoteRootService(private val context: Context) {
                     }
                 }
             }.isSuccess
+        }
+    }
+
+    suspend fun readIcon(path: String): Drawable? = withIOContext {
+        val bytes = readBytes(path)
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.toDrawable(context.resources)
+    }
+
+    suspend fun getInstalledIcon(packageName: String, userId: Int?): Drawable? = withIOContext {
+        val manager = context.packageManager
+        if (userId == null || userId == Process.myUid() / 100_000) {
+            runCatching { manager.getApplicationIcon(packageName) }.getOrNull()
+        } else {
+            getPackageInfoAsUser(packageName, 0, userId)?.applicationInfo?.let { info ->
+                runCatching { manager.getApplicationIcon(info) }.getOrNull()
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import android.content.pm.ApplicationInfo
 import androidx.room.withTransaction
 import com.google.gson.JsonParseException
 import com.xayah.core.data.R
@@ -234,9 +235,10 @@ class AppBackupRepository @Inject constructor(
         return packages.filter { ("${it.indexInfo.cloud}:${it.indexInfo.backupDir}" to it.archivesRelativeDir) in damaged }
     }
 
-    suspend fun saveBackupIcon(packageName: String, appsDir: String, revisionDir: String): String? {
-        appIconRepository.saveInstalledIcon(packageName, appsDir)?.let { return it }
-        appIconRepository.repairFromBackup(revisionDir, appsDir, packageName, overwrite = true)
+    suspend fun saveBackupIcon(info: ApplicationInfo, appsDir: String, revisionDir: String, manifest: BackupManifest): String? {
+        val packageName = info.packageName
+        appIconRepository.saveInstalledIcon(info, appsDir)?.let { return it }
+        appIconRepository.repairFromBackup(revisionDir, appsDir, packageName, manifest.apkCompression, overwrite = true)
         return PathUtil.getAppIconPath(appsDir, packageName).takeIf { rootService.exists(it) }
     }
 
@@ -246,27 +248,24 @@ class AppBackupRepository @Inject constructor(
     }
 
     private suspend fun verifyRevision(revision: BackupRevisionEntity): VerificationResult {
-        val result = inspectRevisionFiles(revision) { manifest ->
-            val files = manifest.files.orEmpty()
-            val size = files.sumOf(BackupManifestFile::sizeBytes)
-            if (revision.sizeBytes != size) dao.updateRevisionSize(revision.id, size)
-            findLegacyRevision(revision)?.let { restore ->
-                val stats = manifest.displayStats(restore.indexInfo.compressionType)
-                if (restore.displayStats != stats) packageRepository.updateDisplayStats(restore.id, stats)
+        var verifiedApk: CompressionType? = null
+        val result = inspectRevisionFiles(revision) { manifest, issues ->
+            verifiedApk = manifest.apkCompression?.takeIf { type ->
+                issues.none { it.type == VerificationIssueType.METADATA_MISMATCH || it.fileName == "apk.${type.suffix}" }
+            }
+            if (issues.isEmpty()) {
+                val size = manifest.files.orEmpty().sumOf(BackupManifestFile::sizeBytes)
+                if (revision.sizeBytes != size) dao.updateRevisionSize(revision.id, size)
+                findLegacyRevision(revision)?.let { restore ->
+                    val stats = manifest.displayStats(restore.indexInfo.compressionType)
+                    if (restore.displayStats != stats) packageRepository.updateDisplayStats(restore.id, stats)
+                }
             }
         }
         if (result.issues.any { it.type == VerificationIssueType.UNREADABLE }) {
             rootService.requireBackupStorage(context, revision.repositoryId.substringAfter(':'))
         }
-        val revisionDir = getLocalRevisionDir(revision)
-        revisionDir?.let { refreshXposedModule(revision, it) }
-        val iconRepaired = if (revisionDir != null) {
-            appIconRepository.repairFromBackup(
-                revisionDir = revisionDir,
-                appsDir = PathUtil.getParentPath(PathUtil.getParentPath(revisionDir)),
-                packageName = revision.packageName,
-            )
-        } else false
+        val iconRepaired = getLocalRevisionDir(revision)?.let { refreshApkMetadata(revision, it, verifiedApk) } == true
         return result.copy(iconRepaired = iconRepaired).also { rememberVerification(it) }
     }
 
@@ -292,9 +291,22 @@ class AppBackupRepository @Inject constructor(
         obbBytes = size(DataType.PACKAGE_OBB), mediaBytes = size(DataType.PACKAGE_MEDIA),
     )
 
-    private suspend fun refreshXposedModule(revision: BackupRevisionEntity, revisionDir: String) {
-        val isXposedModule = detectXposedModule(revision.packageName, revision.userId, revisionDir)
-            ?: return
+    private suspend fun refreshApkMetadata(revision: BackupRevisionEntity, revisionDir: String, compression: CompressionType?): Boolean {
+        val appsDir = PathUtil.getParentPath(PathUtil.getParentPath(revisionDir))
+        val missingIcon = !rootService.exists(PathUtil.getAppIconPath(appsDir, revision.packageName))
+        var module = xposedModuleDetector.isInstalledModule(revision.packageName, revision.userId)
+        var repaired = false
+        if (module == null || missingIcon) {
+            rootService.withBackupApks(context.cacheDir, revisionDir, compression) { apks ->
+                if (module == null) module = xposedModuleDetector.isModule(apks, revision.packageName)
+                if (missingIcon) repaired = appIconRepository.saveIconFromApks(apks, appsDir, revision.packageName, overwrite = false)
+            }
+        }
+        module?.let { updateXposedModule(revision, it) }
+        return repaired
+    }
+
+    private suspend fun updateXposedModule(revision: BackupRevisionEntity, isXposedModule: Boolean) {
         packageRepository.getPackage(revision.packageName, OpType.BACKUP, revision.userId)?.let { app ->
             if (app.packageInfo.isXposedModule != isXposedModule) {
                 packageRepository.updateXposedModule(app.id, isXposedModule)
@@ -311,14 +323,10 @@ class AppBackupRepository @Inject constructor(
         )
     }
 
-    private suspend fun detectXposedModule(packageName: String, userId: Int, revisionDir: String, apk: String? = null): Boolean? =
-        xposedModuleDetector.isInstalledModule(packageName, userId)
-            ?: if (apk == null) xposedModuleDetector.isModuleInBackup(revisionDir) else xposedModuleDetector.isModule(apk)
-
     private suspend fun inspectRevisionFiles(
         revision: BackupRevisionEntity,
         forCleanup: Boolean = false,
-        onValid: suspend (BackupManifest) -> Unit = {},
+        onInspected: suspend (BackupManifest, List<VerificationIssue>) -> Unit = { _, _ -> },
     ): VerificationResult {
         val appLabel = dao.getApp(revision.packageName, revision.userId)?.label ?: revision.packageName
         val revisionDir = getLocalRevisionDir(revision) ?: return VerificationResult(
@@ -384,8 +392,9 @@ class AppBackupRepository @Inject constructor(
             }
             if (manifest.restorePackage(config, revision.repositoryId.substringAfter(':')) == null) {
                 issues += VerificationIssue(VerificationIssueType.METADATA_MISMATCH, ConfigsPackageRestoreName)
-            } else onValid(manifest)
+            }
         }
+        onInspected(manifest, issues)
         return VerificationResult(
             revision = revision,
             appLabel = appLabel,
@@ -511,7 +520,12 @@ class AppBackupRepository @Inject constructor(
         val relative = PathUtil.getPackageArchiveRelativeDir(app.packageName, app.userId, app.preserveId) ?: return null
         if (FileUtil.normalizeAbsolutePath("$backupDir/${PathUtil.getAppsRelativeDir()}/$relative") != FileUtil.normalizeAbsolutePath(dir)) return null
         app.displayStats = manifest.displayStats(app.indexInfo.compressionType)
-        detectXposedModule(app.packageName, app.userId, dir, apk)?.let { app.packageInfo.isXposedModule = it }
+        val module = xposedModuleDetector.isInstalledModule(app.packageName, app.userId) ?: if (apk != null) {
+            xposedModuleDetector.isModule(apk, app.packageName)
+        } else {
+            xposedModuleDetector.isModuleInBackup(dir, app.packageName, manifest.apkCompression)
+        }
+        module?.let { app.packageInfo.isXposedModule = it }
         return app to manifest
     }
 

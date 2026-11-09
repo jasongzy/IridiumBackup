@@ -257,16 +257,18 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                                 archivesRelativeDir = revisionApp.archivesRelativeDir,
                             )
                         ) {
-                            mAppBackupRepository.saveBackupIcon(revisionApp.packageName, mAppsDir, dstDir)?.let { iconPath ->
-                                onAppIconSaved(iconPath, revisionApp.packageName)
-                            }
+                            pendingArchiveDir = null
                             withContext(NonCancellable) {
                                 mAppBackupRepository.recordLegacyRevision(
                                     restore = restoreEntity,
                                     contentMask = manifest.contentMask,
                                     sizeBytes = manifest.files.orEmpty().sumOf { it.sizeBytes },
                                 )
-                                pendingArchiveDir = null
+                            }
+                            runCatchingOnService {
+                                mAppBackupRepository.saveBackupIcon(info, mAppsDir, dstDir, manifest)?.let { iconPath ->
+                                    onAppIconSaved(iconPath, revisionApp.packageName)
+                                }
                             }
                             installedApp.extraInfo.lastBackupTime = revisionCreatedAt
                             pkg.update(packageEntity = installedApp)

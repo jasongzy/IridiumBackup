@@ -3,11 +3,9 @@ package com.xayah.core.util.command
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.core.graphics.drawable.toBitmap
-import androidx.core.graphics.drawable.toDrawable
 import com.topjohnwu.superuser.Shell
 import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.common.util.trim
@@ -116,13 +114,6 @@ object BaseUtil {
     }
 
     fun readIconFromPackageName(context: Context, pkgName: String): Drawable? = runCatching { context.packageManager.getApplicationIcon(pkgName) }.getOrNull()
-
-    suspend fun readIcon(context: Context, src: String): Drawable? = withIOContext {
-        runCatching {
-            val bytes = File(src).readBytes()
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size).toDrawable(context.resources)
-        }.getOrNull()
-    }
 
     @SuppressLint("SetWorldWritable", "SetWorldReadable")
     fun File.setAllPermissions(): Boolean = run {

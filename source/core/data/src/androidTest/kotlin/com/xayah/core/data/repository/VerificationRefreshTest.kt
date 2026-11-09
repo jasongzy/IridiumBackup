@@ -27,6 +27,7 @@ import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.model.toBackupApp
 import com.xayah.core.rootservice.IRemoteRootService
+import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
@@ -62,16 +63,21 @@ class VerificationRefreshTest {
             val installed = restore.copy(id = 1, indexInfo = restore.indexInfo.copy(opType = OpType.BACKUP, preserveId = 0))
             val revisionDir = File(directory, "apps/${restore.archivesRelativeDir}").apply { mkdirs() }
             File(revisionDir, "unrelated.txt").writeText("not backup content")
-            File(revisionDir.parentFile, "icon.bin").createNewFile()
+            val icon = File(revisionDir.parentFile, "icon.bin").apply { createNewFile() }
             val binder = Binder()
             var storageAvailable = true
             var canList = true
             var unreadableFile: String? = null
+            val inspectedApks = mutableListOf<String>()
             val remote = Proxy.newProxyInstance(
                 IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java),
             ) { _, method, args ->
                 when (method.name) {
                     "asBinder" -> binder
+                    "extractArchive" -> {
+                        inspectedApks += args!![0] as String
+                        ArchiveExtractionParcelable(-1, emptyList(), 0, 0)
+                    }
                     "exists" -> storageAvailable && File(args!![0] as String).exists()
                     "deleteRecursively" -> FileUtil.deleteRecursively(args!![0] as String)
                     "removeEntry" -> FileUtil.removeEntry(args!![0] as String, args[1] as Boolean)
@@ -195,12 +201,21 @@ class VerificationRefreshTest {
             }
             root.writeJson(original, manifestPath)
             val apk = File(revisionDir, "apk.tar")
+            check(icon.delete())
             apk.writeText("damaged")
             val damaged = repository.inspectRevision(revision)
             check(damaged.canClean)
+            assertEquals(emptyList<String>(), inspectedApks)
             val other = restore.copy(indexInfo = restore.indexInfo.copy(backupDir = "/other"))
             assertEquals(listOf(restore), repository.knownDamagedBackups(listOf(other, restore)))
             apk.writeBytes(byteArrayOf(1, 2, 3))
+            val configFile = File(configPath)
+            val configBytes = configFile.readBytes()
+            configFile.appendText(" ")
+            assertEquals(ConfigsPackageRestoreName, repository.inspectRevision(revision).issues.single().fileName)
+            assertEquals(listOf(apk.path), inspectedApks)
+            configFile.writeBytes(configBytes)
+            icon.createNewFile()
             val repaired = repository.deleteFailedLocalBackups(listOf(damaged)) { _, _ -> }
             assertEquals(0, repaired.deletedCount)
             assertEquals(emptyList<PackageEntity>(), repository.knownDamagedBackups(listOf(restore)))

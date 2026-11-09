@@ -140,6 +140,7 @@ fun PackageIcons(
             if (index == packages.size - 1) break
             PackageIconImage(
                 packageName = packages[index].packageName,
+                userId = packages[index].userId,
                 shape = ClippedCircleShape,
                 inCircleShape = true,
                 size = size,
@@ -150,6 +151,7 @@ fun PackageIcons(
         if (packages.size <= maxDisplayNum && packages.isNotEmpty()) {
             PackageIconImage(
                 packageName = packages.last().packageName,
+                userId = packages.last().userId,
                 inCircleShape = true,
                 size = size,
             )
@@ -186,7 +188,7 @@ fun PackageItem(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level16)
             ) {
-                PackageIconImage(packageName = item.packageName, size = SizeTokens.Level32)
+                PackageIconImage(packageName = item.packageName, userId = item.userId, size = SizeTokens.Level32)
                 Column(modifier = Modifier.weight(1f)) {
                     TitleLargeText(
                         text = item.packageInfo.label.ifEmpty { stringResource(id = R.string.unknown) },
