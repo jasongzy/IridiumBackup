@@ -10,7 +10,7 @@ import com.xayah.core.data.repository.FilesRepo
 import com.xayah.core.data.repository.LabelsRepo
 import com.xayah.core.data.repository.ListData
 import com.xayah.core.data.repository.ListDataRepo
-import com.xayah.core.data.repository.LabelFilterMode
+import com.xayah.core.datastore.LabelFilterMode
 import com.xayah.core.datastore.di.DbDispatchers.Default
 import com.xayah.core.datastore.di.Dispatcher
 import com.xayah.core.model.App

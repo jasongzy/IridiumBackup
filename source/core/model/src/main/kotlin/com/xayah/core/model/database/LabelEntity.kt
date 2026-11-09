@@ -1,5 +1,6 @@
 package com.xayah.core.model.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -17,8 +18,11 @@ data class LabelAppCrossRefEntity(
     var label: String,
     var packageName: String,
     var userId: Int,
-    var preserveId: Long,
-)
+) {
+    @field:ColumnInfo
+    @Transient
+    var preserveId: Long = 0
+}
 
 @Entity(
     indices = [Index(value = ["label", "path", "preserveId"], unique = true)],

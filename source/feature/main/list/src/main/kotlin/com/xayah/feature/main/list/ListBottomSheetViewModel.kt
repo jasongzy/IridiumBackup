@@ -9,7 +9,7 @@ import com.xayah.core.data.repository.Filters
 import com.xayah.core.data.repository.LabelsRepo
 import com.xayah.core.data.repository.ListData
 import com.xayah.core.data.repository.ListDataRepo
-import com.xayah.core.data.repository.LabelFilterMode
+import com.xayah.core.datastore.LabelFilterMode
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.App
 import com.xayah.core.model.File

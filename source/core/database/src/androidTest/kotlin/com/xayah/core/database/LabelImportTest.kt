@@ -24,12 +24,18 @@ class LabelImportTest {
                 .copy(label = "Installed app", isInstalled = true, note = "Personal note")
             database.appBackupDao().upsertApps(listOf(existing))
             val refs = listOf(
-                LabelAppCrossRefEntity("tag", existing.packageName, 0, 0),
-                LabelAppCrossRefEntity("tag", "com.example.uninstalled", 10, 0),
+                LabelAppCrossRefEntity("tag", existing.packageName, 0),
+                LabelAppCrossRefEntity("tag", "com.example.uninstalled", 10),
             )
             val labels = database.labelDao()
             labels.upsertLabels(listOf(LabelEntity("tag")))
             labels.upsertAppRefs(refs)
+            database.openHelper.writableDatabase.execSQL(
+                "UPDATE LabelAppCrossRefEntity SET preserveId = 1234 WHERE packageName = ?", arrayOf(refs.last().packageName),
+            )
+            labels.upsertAppRefs(refs)
+            database.appBackupDao().deleteUninstalledAppsWithoutRevisions(10)
+            database.appBackupDao().deleteUninstalledAppsWithoutRevisions()
             labels.deleteOrphanedAppRefs()
 
             assertEquals(refs.toSet(), labels.queryAppRefs().toSet())
@@ -37,6 +43,14 @@ class LabelImportTest {
             val imported = checkNotNull(database.appBackupDao().getApp("com.example.uninstalled", 10))
             assertFalse(imported.isInstalled)
             assertEquals("com.example.uninstalled", imported.label)
+            labels.deleteAppRef("tag", imported.packageName, imported.userId)
+            assertEquals(listOf(refs.first()), labels.queryAppRefs())
+
+            labels.upsertLabels(listOf(LabelEntity("work")))
+            labels.upsertAppRefs(listOf(refs.last().copy(label = "work")))
+            assertFalse(labels.rename("tag", "work", allowMerge = false))
+            assertEquals(true, labels.rename("tag", "work", allowMerge = true))
+            assertEquals(refs.map { it.copy(label = "work") }.toSet(), labels.queryAppRefs().toSet())
         } finally {
             database.close()
         }

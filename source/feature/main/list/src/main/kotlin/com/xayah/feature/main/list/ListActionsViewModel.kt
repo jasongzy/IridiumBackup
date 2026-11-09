@@ -273,32 +273,30 @@ class ListActionsViewModel @Inject constructor(
     fun createLabel(label: String) {
         viewModelScope.launchOnDefault {
             val normalized = label.trim()
-            if (normalized.isNotEmpty()) labelsRepo.addLabel(normalized)
-            if (normalized.isNotEmpty()) showToast(R.string.label_created)
+            if (normalized.isEmpty()) return@launchOnDefault
+            showToast(if (labelsRepo.addLabel(normalized)) R.string.label_created else R.string.label_already_exists)
         }
     }
 
     fun addLabelsToSelected(labels: Set<String>) {
         viewModelScope.launchOnDefault {
-            val state = uiState.value as? Success.Apps ?: return@launchOnDefault
-            labelsRepo.addLabelAppCrossRefs(labels.flatMap { state.selectedLabelRefs(it) })
+            if (uiState.value !is Success.Apps) return@launchOnDefault
+            labelsRepo.addLabelAppCrossRefs(selectedLabelRefs(labels))
             showToast(R.string.labels_updated)
         }
     }
 
     fun removeLabelsFromSelected(labels: Set<String>) {
         viewModelScope.launchOnDefault {
-            val state = uiState.value as? Success.Apps ?: return@launchOnDefault
-            labelsRepo.deleteLabelAppCrossRefs(labels.flatMap { state.selectedLabelRefs(it) })
+            if (uiState.value !is Success.Apps) return@launchOnDefault
+            labelsRepo.deleteLabelAppCrossRefs(selectedLabelRefs(labels))
             showToast(R.string.labels_updated)
         }
     }
 
-    private fun Success.Apps.selectedLabelRefs(label: String): List<LabelAppCrossRefEntity> {
-        val installedByKey = appList.associateBy(App::key)
-        return listDataRepo.getSelectedAppKeys().value.map { key ->
-            LabelAppCrossRefEntity(label, key.packageName, key.userId, installedByKey[key]?.preserveId ?: 0)
-        }
+    private fun selectedLabelRefs(labels: Set<String>): List<LabelAppCrossRefEntity> {
+        val keys = listDataRepo.getSelectedAppKeys().value
+        return labels.flatMap { label -> keys.map { LabelAppCrossRefEntity(label, it.packageName, it.userId) } }
     }
 
     private suspend fun showDeleted(count: Int, total: Int) = withContext(Dispatchers.Main.immediate) {

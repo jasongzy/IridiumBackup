@@ -3,7 +3,10 @@ package com.xayah.core.data.repository
 import android.content.Context
 import com.xayah.core.datastore.DashboardSortField
 import com.xayah.core.datastore.DashboardFilterPreference
-import com.xayah.core.datastore.DashboardLabelFilterMode
+import com.xayah.core.datastore.LabelFilterMode
+import com.xayah.core.datastore.editDashboardLabelFilters
+import com.xayah.core.datastore.readDashboardLabelFilters
+import com.xayah.core.datastore.renameLabelFilter
 import com.xayah.core.datastore.readDashboardFilterPreference
 import com.xayah.core.datastore.readDashboardSortPreference
 import com.xayah.core.datastore.saveDashboardFilterPreference
@@ -15,8 +18,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.SortType
 import com.xayah.core.model.Target
 import com.xayah.core.model.UserInfo
-import com.xayah.core.model.database.LabelAppCrossRefEntity
-import com.xayah.core.model.database.LabelFileCrossRefEntity
 import com.xayah.core.util.module.combine
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,7 +52,8 @@ class ListDataRepo @Inject constructor(
     private lateinit var sortIndex: MutableStateFlow<Int>
     private lateinit var sortType: MutableStateFlow<SortType>
     private lateinit var isUpdating: Flow<Boolean>
-    private lateinit var labelFilters: MutableStateFlow<Map<String, LabelFilterMode>>
+    private var sessionLabelFilters = MutableStateFlow(emptyMap<String, LabelFilterMode>())
+    private lateinit var labelFilters: Flow<Map<String, LabelFilterMode>>
 
     // Apps
     private lateinit var showDataItemsSheet: MutableStateFlow<Boolean>
@@ -62,15 +64,15 @@ class ListDataRepo @Inject constructor(
     private lateinit var appList: Flow<List<App>>
     private lateinit var selectedAppKeys: MutableStateFlow<Set<AppKey>>
     private lateinit var pkgUserSet: Flow<Set<String>> // "${pkgName}-${userId}"
-    private lateinit var labelAppRefs: Flow<List<LabelAppCrossRefEntity>> // Labels filtered app refs
 
     // Files
     private lateinit var fileList: Flow<List<File>>
-    private lateinit var labelFileRefs: Flow<List<LabelFileCrossRefEntity>> // Labels filtered file refs
 
     fun initialize(target: Target, opType: OpType, cloudName: String, backupDir: String) {
         this.target = target
         persistDashboardState = target == Target.Apps && opType == OpType.BACKUP
+        sessionLabelFilters = MutableStateFlow(emptyMap())
+        labelFilters = if (persistDashboardState) context.readDashboardLabelFilters() else sessionLabelFilters
         when (target) {
             Target.Apps -> {
                 val savedFilters = if (persistDashboardState) {
@@ -88,12 +90,6 @@ class ListDataRepo @Inject constructor(
                 isUpdating = when (opType) {
                     OpType.BACKUP -> workRepo.isAppRefreshRunning()
                     OpType.RESTORE -> combine(workRepo.isAppRefreshRunning(), workRepo.isLoadAppBackupsRunning()) { refresh, loadBackups -> refresh || loadBackups }
-                }
-                labelFilters = MutableStateFlow(
-                    savedFilters.labelFilters.mapValues { (_, mode) -> mode.toLabelFilterMode() }
-                )
-                labelAppRefs = combine(labelFilters, labelsRepo.getAppRefsFlow()) { filters, refs ->
-                    refs.filter { it.label in filters }
                 }
 
                 showDataItemsSheet = MutableStateFlow(false)
@@ -115,7 +111,7 @@ class ListDataRepo @Inject constructor(
                     }
                 }
                 appList = combine(
-                    appsRepo.getApps(opType = opType, listData = listData, pkgUserSet = pkgUserSet, refs = labelAppRefs, labelFilters = labelFilters, cloudName = cloudName, backupDir = backupDir),
+                    appsRepo.getApps(opType = opType, listData = listData, pkgUserSet = pkgUserSet, refs = labelsRepo.getAppRefsFlow(), cloudName = cloudName, backupDir = backupDir),
                     selectedAppKeys,
                 ) { apps, keys ->
                     apps.map { it.copy(selected = it.key in keys) }
@@ -133,13 +129,9 @@ class ListDataRepo @Inject constructor(
                     OpType.BACKUP -> combine(workRepo.isAppRefreshRunning(), workRepo.isFastInitAndUpdateFilesRunning()) { refresh, fast -> refresh || fast }
                     OpType.RESTORE -> combine(workRepo.isAppRefreshRunning(), workRepo.isLoadFileBackupsRunning()) { refresh, loadBackups -> refresh || loadBackups }
                 }
-                labelFilters = MutableStateFlow(emptyMap())
-                labelFileRefs = combine(labelFilters, labelsRepo.getFileRefsFlow()) { filters, refs ->
-                    refs.filter { it.label in filters }
-                }
 
                 listData = getFileListData()
-                fileList = filesRepo.getFiles(opType = opType, listData = listData, refs = labelFileRefs, labelFilters = labelFilters, cloudName = cloudName, backupDir = backupDir)
+                fileList = filesRepo.getFiles(opType = opType, listData = listData, refs = labelsRepo.getFileRefsFlow(), cloudName = cloudName, backupDir = backupDir)
             }
         }
     }
@@ -196,8 +188,8 @@ class ListDataRepo @Inject constructor(
 
     suspend fun resetFilters() {
         filters.emit(DashboardFilterPreference().toFilters(filters.value.cloud, filters.value.backupDir))
-        labelFilters.emit(emptyMap())
-        saveDashboardFilters()
+        if (!persistDashboardState) sessionLabelFilters.value = emptyMap()
+        saveDashboardFilters(resetLabels = true)
     }
 
     suspend fun setAppSelected(key: AppKey, selected: Boolean) {
@@ -266,29 +258,22 @@ class ListDataRepo @Inject constructor(
         showDataItemsSheet.emit(value)
     }
 
-    suspend fun cycleLabelFilter(label: String) {
-        val filters = labelFilters.value.toMutableMap()
+    private suspend fun editLabelFilters(edit: (Map<String, LabelFilterMode>) -> Map<String, LabelFilterMode>) {
+        if (persistDashboardState) context.editDashboardLabelFilters(edit) else sessionLabelFilters.update(edit)
+    }
+
+    suspend fun cycleLabelFilter(label: String) = editLabelFilters { filters ->
         when (filters[label]) {
-            null -> filters[label] = LabelFilterMode.INCLUDE
-            LabelFilterMode.INCLUDE -> filters[label] = LabelFilterMode.EXCLUDE
-            LabelFilterMode.EXCLUDE -> filters.remove(label)
+            null -> filters + (label to LabelFilterMode.INCLUDE)
+            LabelFilterMode.INCLUDE -> filters + (label to LabelFilterMode.EXCLUDE)
+            LabelFilterMode.EXCLUDE -> filters - label
         }
-        labelFilters.emit(filters)
-        saveDashboardFilters()
     }
 
-    suspend fun removeLabelFilter(label: String) {
-        if (!::labelFilters.isInitialized) return
-        labelFilters.emit(labelFilters.value - label)
-        saveDashboardFilters()
-    }
+    suspend fun removeLabelFilter(label: String) = editLabelFilters { it - label }
 
-    suspend fun renameLabelFilter(oldLabel: String, newLabel: String) {
-        if (!::labelFilters.isInitialized || oldLabel == newLabel) return
-        val mode = labelFilters.value[oldLabel]
-        val filters = labelFilters.value - oldLabel
-        labelFilters.emit(if (mode == null) filters else filters + (newLabel to mode))
-        saveDashboardFilters()
+    fun onLabelChanged(oldLabel: String, newLabel: String?) {
+        if (!persistDashboardState) sessionLabelFilters.update { it.renameLabelFilter(oldLabel, newLabel) }
     }
 
     private suspend fun saveAppSortPreference() {
@@ -299,7 +284,7 @@ class ListDataRepo @Inject constructor(
         )
     }
 
-    private suspend fun saveDashboardFilters() {
+    private suspend fun saveDashboardFilters(resetLabels: Boolean = false) {
         if (!persistDashboardState) return
         val current = filters.value
         context.saveDashboardFilterPreference(
@@ -322,8 +307,8 @@ class ListDataRepo @Inject constructor(
                 hasNoDataBackup = current.hasNoDataBackup,
                 hasNonMatchingApkBackup = current.hasNonMatchingApkBackup,
                 matchAllLabels = current.matchAllLabels,
-                labelFilters = labelFilters.value.mapValues { (_, mode) -> mode.toDashboardLabelFilterMode() },
-            )
+            ),
+            resetLabels = resetLabels,
         )
     }
 
@@ -342,16 +327,6 @@ class ListDataRepo @Inject constructor(
         4 -> DashboardSortField.BACKED_UP
         else -> DashboardSortField.NAME
     }
-}
-
-private fun DashboardLabelFilterMode.toLabelFilterMode() = when (this) {
-    DashboardLabelFilterMode.INCLUDE -> LabelFilterMode.INCLUDE
-    DashboardLabelFilterMode.EXCLUDE -> LabelFilterMode.EXCLUDE
-}
-
-private fun LabelFilterMode.toDashboardLabelFilterMode() = when (this) {
-    LabelFilterMode.INCLUDE -> DashboardLabelFilterMode.INCLUDE
-    LabelFilterMode.EXCLUDE -> DashboardLabelFilterMode.EXCLUDE
 }
 
 internal fun DashboardFilterPreference.toFilters(cloud: String, backupDir: String) = Filters(
@@ -443,9 +418,4 @@ sealed class ListData(
         override val isUpdating: Boolean,
         override val labelFilters: Map<String, LabelFilterMode>,
     ) : ListData(selected, selectionMode, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
-}
-
-enum class LabelFilterMode {
-    INCLUDE,
-    EXCLUDE,
 }

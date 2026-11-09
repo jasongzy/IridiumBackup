@@ -151,14 +151,6 @@ class AppBackupRepository @Inject constructor(
         dao.importAppNotes(notes)
     }
 
-    suspend fun removeUnusedApps(userId: Int) {
-        dao.deleteUninstalledAppsWithoutRevisions(userId)
-    }
-
-    suspend fun removeUnusedApps() {
-        dao.deleteUninstalledAppsWithoutRevisions()
-    }
-
     suspend fun recordLegacyRevision(
         restore: PackageEntity,
         contentMask: Int,

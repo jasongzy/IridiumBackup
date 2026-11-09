@@ -162,7 +162,7 @@ class DetailsViewModel @Inject constructor(
                         labels = labels,
                         app = app,
                         refs = refs.filter { ref ->
-                            labels.find { it.label == ref.label } != null && ref.packageName == app.packageName && ref.userId == app.userId && ref.preserveId == app.preserveId
+                            ref.packageName == app.packageName && ref.userId == app.userId
                         },
                         architecture = runtimeInfo.architecture,
                         targetSdk = runtimeInfo.targetSdk,
@@ -252,7 +252,6 @@ class DetailsViewModel @Inject constructor(
                     label = normalized,
                     packageName = app.packageName,
                     userId = app.userId,
-                    preserveId = app.preserveId,
                 )
             )
         }
@@ -261,8 +260,7 @@ class DetailsViewModel @Inject constructor(
     fun deleteLabel(label: String) {
         viewModelScope.launchOnDefault {
             labelsRepo.deleteLabel(label)
-            listDataRepo.removeLabelFilter(label)
-            appBackupRepository.removeUnusedApps()
+            listDataRepo.onLabelChanged(label, null)
         }
     }
 
@@ -274,14 +272,13 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun updateLabel(oldLabel: String, newLabel: String, colorArgb: Long) {
+    fun updateLabel(oldLabel: String, newLabel: String, colorArgb: Long, allowMerge: Boolean) {
         viewModelScope.launchOnDefault {
-            val normalized = newLabel.trim()
-            if (oldLabel != normalized) {
-                labelsRepo.renameLabel(oldLabel, normalized)
-                listDataRepo.renameLabelFilter(oldLabel, normalized)
+            if (!labelsRepo.updateLabel(oldLabel, newLabel, colorArgb, allowMerge)) {
+                showToast(R.string.label_changed)
+            } else if (oldLabel != newLabel) {
+                listDataRepo.onLabelChanged(oldLabel, newLabel)
             }
-            labelsRepo.setLabelColor(normalized, colorArgb)
         }
     }
 
@@ -290,7 +287,6 @@ class DetailsViewModel @Inject constructor(
             if (ref != null) {
                 if (selected) {
                     labelsRepo.deleteLabelAppCrossRef(ref)
-                    appBackupRepository.removeUnusedApps(ref.userId)
                 } else {
                     labelsRepo.addLabelAppCrossRef(ref)
                 }

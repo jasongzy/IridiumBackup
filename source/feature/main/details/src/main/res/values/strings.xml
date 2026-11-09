@@ -3,4 +3,6 @@
     <string name="app_force_stopped">App stopped</string>
     <string name="app_not_running">App wasn’t running</string>
     <string name="force_stop_failed">Couldn’t stop this app</string>
+    <string name="confirm_merge_label">Merge “%1$s” into “%2$s” for all apps? The combined label will use the selected color.</string>
+    <string name="label_changed">Labels changed. Please try again</string>
 </resources>

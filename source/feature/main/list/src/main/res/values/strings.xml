@@ -20,4 +20,5 @@
     <string name="match_all">All</string>
     <string name="reset_filters">Reset filters</string>
     <string name="select_range">Select range</string>
+    <string name="label_already_exists">Label already exists</string>
 </resources>

@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import com.xayah.core.datastore.LabelFilterMode
 import com.xayah.core.database.dao.MediaDao
 import com.xayah.core.datastore.ConstantUtil
 import com.xayah.core.datastore.di.DbDispatchers.Default
@@ -25,6 +26,7 @@ import com.xayah.core.util.withLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import javax.inject.Inject
@@ -50,21 +52,18 @@ class FilesRepo @Inject constructor(
         opType: OpType,
         listData: Flow<ListData>,
         refs: Flow<List<LabelFileCrossRefEntity>>,
-        labelFilters: Flow<Map<String, LabelFilterMode>>,
         cloudName: String,
         backupDir: String
     ): Flow<List<File>> = combine(
         listData,
-        refs,
-        labelFilters,
+        refs.map { items -> items.groupBy { it.path to it.preserveId }.mapValues { (_, refs) -> refs.mapTo(mutableSetOf()) { it.label } } },
         when (opType) {
             OpType.BACKUP -> filesDao.queryFilesFlow(opType = opType, existed = true, blocked = false)
             OpType.RESTORE -> filesDao.queryFilesFlow(opType = opType, cloud = cloudName, backupDir = backupDir)
         }
-    ) { lData, lRefs, filters, files ->
+    ) { lData, labelsByFile, files ->
         val data = lData.castTo<ListData.Files>()
-        val labelsByFile = lRefs.groupBy { it.path to it.preserveId }
-            .mapValues { (_, refs) -> refs.mapTo(mutableSetOf()) { it.label } }
+        val filters = data.labelFilters
         val included = filters.filterValues { it == LabelFilterMode.INCLUDE }.keys
         val excluded = filters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
         files.asSequence()

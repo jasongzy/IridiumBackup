@@ -106,7 +106,7 @@ class AppRefreshTest {
             val repository = AppsRepo(
                 context, Dispatchers.Default, database.packageDao(), packages, root,
                 SettingsDataRepo(DbPreferencesDataSource(preferences)), paths, clouds, backups,
-                LabelsRepo(context, Dispatchers.Default, database.labelDao()), modules,
+                LabelsRepo(context, Dispatchers.Default, database), modules,
             )
             val app = PackageRestoreConfig(
                 packageName = info.packageName, userId = 0, createdAt = 0, compressionType = CompressionType.ZSTD,

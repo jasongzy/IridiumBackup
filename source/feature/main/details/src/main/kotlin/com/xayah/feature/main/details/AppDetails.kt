@@ -121,7 +121,7 @@ fun AppDetails(
     onSetDataStates: (Long, PackageDataStates) -> Unit,
     onAddLabel: (String) -> Unit,
     onDeleteLabel: (String) -> Unit,
-    onUpdateLabel: (String, String, Long) -> Unit,
+    onUpdateLabel: (String, String, Long, Boolean) -> Unit,
     onSelectLabel: (Boolean, LabelAppCrossRefEntity?) -> Unit,
     onUpdateAppNote: (String) -> Unit,
     onUninstall: () -> Unit,
@@ -284,9 +284,10 @@ fun AppDetails(
     uiState.labels.firstOrNull { it.label == colorCandidate }?.let { label ->
         LabelColorDialog(
             label = label,
+            labels = uiState.labels,
             onDismiss = { colorCandidate = null },
-            onConfirm = { name, color ->
-                onUpdateLabel(label.label, name, color)
+            onConfirm = { name, color, merge ->
+                onUpdateLabel(label.label, name, color, merge)
                 colorCandidate = null
             },
         )
@@ -672,7 +673,7 @@ private fun LabelsBottomSheet(
                                         .matchParentSize()
                                         .combinedClickable(
                                             onLongClick = { expanded = true },
-                                            onClick = { onSelectLabel(selected, LabelAppCrossRefEntity(item.label, app.packageName, app.userId, app.preserveId)) },
+                                            onClick = { onSelectLabel(selected, LabelAppCrossRefEntity(item.label, app.packageName, app.userId)) },
                                             interactionSource = interactionSource,
                                             indication = null,
                                         )
@@ -1007,8 +1008,9 @@ private fun Permissions(permissions: List<PackagePermission>, onClick: () -> Uni
 @Composable
 private fun LabelColorDialog(
     label: ColoredLabel,
+    labels: List<ColoredLabel>,
     onDismiss: () -> Unit,
-    onConfirm: (String, Long) -> Unit,
+    onConfirm: (String, Long, Boolean) -> Unit,
 ) {
     var name by rememberSaveable(label.label) { mutableStateOf(label.label) }
     var hex by rememberSaveable(label.colorArgb) { mutableStateOf("%08X".format(label.colorArgb)) }
@@ -1067,7 +1069,7 @@ private fun LabelColorDialog(
             androidx.compose.material3.TextButton(
                 enabled = name.trim().isNotEmpty() && parsedColor != null,
                 onClick = {
-                    if (name.trim() == label.label) onConfirm(name.trim(), parsedColor!!) else renameCandidate = name.trim()
+                    if (name.trim() == label.label) onConfirm(name.trim(), parsedColor!!, false) else renameCandidate = name.trim()
                 },
             ) { Text(stringResource(R.string.confirm)) }
         },
@@ -1078,13 +1080,14 @@ private fun LabelColorDialog(
         },
     )
     renameCandidate?.let { newName ->
+        val merge = labels.any { it.label == newName }
         AlertDialog(
             onDismissRequest = { renameCandidate = null },
             title = { Text(stringResource(R.string.rename_label)) },
-            text = { Text(stringResource(R.string.confirm_rename_label, label.label, newName)) },
+            text = { Text(stringResource(if (merge) R.string.confirm_merge_label else R.string.confirm_rename_label, label.label, newName)) },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
-                    onConfirm(newName, parsedColor!!)
+                    onConfirm(newName, parsedColor!!, merge)
                     renameCandidate = null
                 }) { Text(stringResource(R.string.confirm)) }
             },

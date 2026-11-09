@@ -199,7 +199,7 @@ class TitaniumImportRepository @Inject constructor(
             val labels = labelsRepo.getLabels().mapTo(mutableSetOf(), LabelEntity::label)
             val colors = labelsRepo.getLabelColors()
             val refs = labelsRepo.getAppRefs()
-                .filter { it.userId == 0 && it.preserveId == 0L }
+                .filter { it.userId == 0 }
                 .groupBy { it.label }
                 .mapValues { (_, values) -> values.mapTo(mutableSetOf()) { it.packageName } }
             readLabels(localDb).map { group ->
@@ -259,7 +259,7 @@ class TitaniumImportRepository @Inject constructor(
                     require(invalid == null) { "Invalid package name: $invalid" }
                     labelsRepo.addLabels(listOf(LabelEntity(group.name)))
                     labelsRepo.setLabelColor(group.name, group.color)
-                    labelsRepo.addLabelAppCrossRefs(group.packages.map { LabelAppCrossRefEntity(group.name, it, 0, 0) })
+                    labelsRepo.addLabelAppCrossRefs(group.packages.map { LabelAppCrossRefEntity(group.name, it, 0) })
                     LabelResult(group.name, group.color, group.packages.size, Status.IMPORTED)
                 }
             } catch (error: CancellationException) {

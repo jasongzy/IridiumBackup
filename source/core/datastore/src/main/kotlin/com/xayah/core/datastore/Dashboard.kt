@@ -1,10 +1,13 @@
 package com.xayah.core.datastore
 
 import android.content.Context
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 private val KeyDashboardSortField = stringPreferencesKey("dashboard_sort_field")
@@ -61,10 +64,9 @@ data class DashboardFilterPreference(
     val hasNoDataBackup: Boolean = false,
     val hasNonMatchingApkBackup: Boolean = false,
     val matchAllLabels: Boolean = false,
-    val labelFilters: Map<String, DashboardLabelFilterMode> = emptyMap(),
 )
 
-enum class DashboardLabelFilterMode { INCLUDE, EXCLUDE }
+enum class LabelFilterMode { INCLUDE, EXCLUDE }
 
 fun Context.readDashboardSortPreference() = dataStore.data.map { preferences ->
     DashboardSortPreference(
@@ -102,17 +104,36 @@ fun Context.readDashboardFilterPreference() = dataStore.data.map { preferences -
         hasNoDataBackup = preferences[KeyDashboardHasNoDataBackup] ?: false,
         hasNonMatchingApkBackup = preferences[KeyDashboardHasNonMatchingApkBackup] ?: false,
         matchAllLabels = preferences[KeyDashboardMatchAllLabels] ?: false,
-        labelFilters = preferences[KeyDashboardLabelFilters].orEmpty().mapNotNull { entry ->
-            val separator = entry.indexOf(':')
-            if (separator <= 0) return@mapNotNull null
-            val mode = runCatching { DashboardLabelFilterMode.valueOf(entry.substring(0, separator)) }.getOrNull()
-                ?: return@mapNotNull null
-            entry.substring(separator + 1) to mode
-        }.toMap(),
     )
 }
 
-suspend fun Context.saveDashboardFilterPreference(preference: DashboardFilterPreference) {
+private fun Preferences.labelFilters(): Map<String, LabelFilterMode> =
+    this[KeyDashboardLabelFilters].orEmpty().mapNotNull { entry ->
+        val separator = entry.indexOf(':')
+        if (separator <= 0) return@mapNotNull null
+        val mode = LabelFilterMode.entries.find { it.name == entry.substring(0, separator) } ?: return@mapNotNull null
+        entry.substring(separator + 1) to mode
+    }.toMap()
+
+fun Context.readDashboardLabelFilters() = dataStore.data.map { it.labelFilters() }.distinctUntilChanged()
+
+fun Map<String, LabelFilterMode>.renameLabelFilter(oldLabel: String, newLabel: String?): Map<String, LabelFilterMode> {
+    val mode = this[oldLabel] ?: return this
+    val remaining = this - oldLabel
+    return if (newLabel == null) remaining else remaining + (newLabel to mode)
+}
+
+internal fun MutablePreferences.editLabelFilters(edit: (Map<String, LabelFilterMode>) -> Map<String, LabelFilterMode>) {
+    val filters = edit(labelFilters())
+    if (filters.isEmpty()) remove(KeyDashboardLabelFilters)
+    else this[KeyDashboardLabelFilters] = filters.mapTo(mutableSetOf()) { (label, mode) -> "${mode.name}:$label" }
+}
+
+suspend fun Context.editDashboardLabelFilters(edit: (Map<String, LabelFilterMode>) -> Map<String, LabelFilterMode>) {
+    dataStore.edit { it.editLabelFilters(edit) }
+}
+
+suspend fun Context.saveDashboardFilterPreference(preference: DashboardFilterPreference, resetLabels: Boolean = false) {
     dataStore.edit { preferences ->
         preferences[KeyDashboardSystemApps] = preference.systemApps
         preferences[KeyDashboardNonSystemApps] = preference.nonSystemApps
@@ -132,8 +153,6 @@ suspend fun Context.saveDashboardFilterPreference(preference: DashboardFilterPre
         preferences[KeyDashboardHasNoDataBackup] = preference.hasNoDataBackup
         preferences[KeyDashboardHasNonMatchingApkBackup] = preference.hasNonMatchingApkBackup
         preferences[KeyDashboardMatchAllLabels] = preference.matchAllLabels
-        preferences[KeyDashboardLabelFilters] = preference.labelFilters.mapTo(mutableSetOf()) { (label, mode) ->
-            "${mode.name}:$label"
-        }
+        if (resetLabels) preferences.remove(KeyDashboardLabelFilters)
     }
 }

@@ -3,12 +3,34 @@ package com.xayah.core.datastore
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.model.KillAppOption
 import com.xayah.core.model.ThemeType
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConfigurationSettingsTest {
+    @Test
+    fun applyingOtherFiltersDoesNotRestoreAnOldLabelSelection() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val saved = context.readDashboardFilterPreference().first()
+        val labels = context.readDashboardLabelFilters().first()
+        val colors = context.readLabelColors().first()
+        try {
+            context.editDashboardLabelFilters { mapOf("work:old" to LabelFilterMode.EXCLUDE) }
+            context.saveEditedLabel("work:old", "work:new", 0xFF0000FF)
+            context.saveDashboardFilterPreference(saved.copy(frozenApps = !saved.frozenApps))
+            assertEquals(mapOf("work:new" to LabelFilterMode.EXCLUDE), context.readDashboardLabelFilters().first())
+            context.deleteLabelPreferences("work:new")
+            assertTrue(context.readDashboardLabelFilters().first().isEmpty())
+        } finally {
+            context.saveDashboardFilterPreference(saved)
+            context.deleteLabelPreferences("work:new")
+            context.saveLabelColors(colors)
+            context.editDashboardLabelFilters { labels }
+        }
+    }
+
     @Test
     fun importsPreferencesTogetherAndPreservesThemOnInvalidInput() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

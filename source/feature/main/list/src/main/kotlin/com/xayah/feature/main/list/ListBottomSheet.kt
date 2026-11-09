@@ -49,7 +49,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.data.repository.Filters
-import com.xayah.core.data.repository.LabelFilterMode
+import com.xayah.core.datastore.LabelFilterMode
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.OpType
 import com.xayah.core.model.SortType

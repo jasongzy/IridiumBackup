@@ -247,7 +247,7 @@ class VerificationRefreshTest {
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
             val importer = TitaniumImportRepository(
                 context, root, paths, repository, AppIconRepository(context, root, paths),
-                LabelsRepo(context, kotlinx.coroutines.Dispatchers.Default, database.labelDao()),
+                LabelsRepo(context, kotlinx.coroutines.Dispatchers.Default, database),
             )
             val invalid = TitaniumImportRepository.BackupCandidate(
                 metadataPath = "invalid.properties", backupDir = directory.path, packageName = revision.packageName,

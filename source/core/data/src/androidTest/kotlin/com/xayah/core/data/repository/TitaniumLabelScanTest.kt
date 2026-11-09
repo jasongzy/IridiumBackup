@@ -57,12 +57,16 @@ class TitaniumLabelScanTest {
             val icons = AppIconRepository(context, root, paths)
             val modules = XposedModuleDetector(context, root)
             val backups = AppBackupRepository(context, database, packages, icons, modules, root)
-            val labels = LabelsRepo(context, Dispatchers.Default, database.labelDao())
+            val labels = LabelsRepo(context, Dispatchers.Default, database)
             val repository = TitaniumImportRepository(context, root, paths, backups, icons, labels)
             val otherRefs = listOf(
-                LabelAppCrossRefEntity("tag", "com.example.secondary", 10, 0),
-                LabelAppCrossRefEntity("tag", "com.example.revision", 0, 1234),
+                LabelAppCrossRefEntity("tag", "com.example.secondary", 10),
+                root.gsonUtil.fromJson<LabelAppCrossRefEntity>(
+                    """{"label":"tag","packageName":"com.example.revision","userId":0,"preserveId":1234}""",
+                    LabelAppCrossRefEntity::class.java,
+                ),
             )
+            assertFalse("preserveId" in root.gsonUtil.toJson(otherRefs))
             labels.addLabels(listOf(LabelEntity("tag")))
             labels.setLabelColor("tag", 0xFF0000FFL)
             labels.addLabelAppCrossRefs(otherRefs)
@@ -76,7 +80,7 @@ class TitaniumLabelScanTest {
             repository.importLabels(candidates) { _, _, item -> result = item }
             assertEquals(TitaniumImportRepository.Status.IMPORTED, result?.status)
             assertEquals(
-                (otherRefs + otherRefs.map { it.copy(userId = 0, preserveId = 0) }).toSet(),
+                (otherRefs + otherRefs.first().copy(userId = 0)).toSet(),
                 labels.getAppRefs().toSet(),
             )
             assertTrue(repository.scanLabels(source.path).single().imported)

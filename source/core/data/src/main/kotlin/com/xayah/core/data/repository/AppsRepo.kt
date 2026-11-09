@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import com.xayah.core.datastore.LabelFilterMode
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.LauncherApps
@@ -117,23 +118,20 @@ class AppsRepo @Inject constructor(
         listData: Flow<ListData>,
         pkgUserSet: Flow<Set<String>>,
         refs: Flow<List<LabelAppCrossRefEntity>>,
-        labelFilters: Flow<Map<String, LabelFilterMode>>,
         cloudName: String,
         backupDir: String
     ): Flow<List<App>> = combine(
         listData,
         pkgUserSet,
-        refs,
-        labelFilters,
+        refs.map { items -> items.groupBy { AppKey(it.packageName, it.userId) }.mapValues { (_, refs) -> refs.mapTo(mutableSetOf()) { it.label } } },
         when (opType) {
             OpType.BACKUP -> appsDao.queryPackagesFlow(opType = opType, blocked = false)
             OpType.RESTORE -> appsDao.queryPackagesFlow(opType = opType, cloud = cloudName, backupDir = backupDir)
         }
-    ) { lData, pSet, lRefs, filters, apps ->
+    ) { lData, pSet, labelsByApp, apps ->
         val data = lData.castTo<ListData.Apps>()
         val userId = data.userList.getOrNull(data.userIndex)?.id
-        val labelsByApp = lRefs.groupBy { Triple(it.packageName, it.userId, it.preserveId) }
-            .mapValues { (_, refs) -> refs.mapTo(mutableSetOf()) { it.label } }
+        val filters = data.labelFilters
         val included = filters.filterValues { it == LabelFilterMode.INCLUDE }.keys
         val excluded = filters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
         apps.asSequence()
@@ -149,7 +147,7 @@ class AppsRepo @Inject constructor(
             }
             .filter { it.userId == userId }
             .filter { app ->
-                val appLabels = labelsByApp[Triple(app.packageName, app.userId, app.preserveId)].orEmpty()
+                val appLabels = labelsByApp[AppKey(app.packageName, app.userId)].orEmpty()
                 data.filters.matchesIncludedLabels(appLabels, included) && appLabels.none(excluded::contains)
             }
             .toList()

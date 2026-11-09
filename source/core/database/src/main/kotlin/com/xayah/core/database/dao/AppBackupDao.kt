@@ -75,7 +75,6 @@ interface AppBackupDao {
                 SELECT 1 FROM LabelAppCrossRefEntity
                 WHERE LabelAppCrossRefEntity.packageName = backup_apps.packageName
                     AND LabelAppCrossRefEntity.userId = backup_apps.userId
-                    AND LabelAppCrossRefEntity.preserveId = 0
             )
         """
     )
@@ -227,7 +226,6 @@ interface AppBackupDao {
                 SELECT 1 FROM LabelAppCrossRefEntity
                 WHERE LabelAppCrossRefEntity.packageName = backup_apps.packageName
                     AND LabelAppCrossRefEntity.userId = backup_apps.userId
-                    AND LabelAppCrossRefEntity.preserveId = 0
             )
         """
     )
