@@ -161,7 +161,7 @@ interface AppBackupDao {
     suspend fun getOldRevision(id: String, repositoryId: String, keep: Int): BackupRevisionEntity?
 
     @Query("SELECT COUNT(*) FROM backup_revisions WHERE repositoryId = :repositoryId")
-    suspend fun countRevisions(repositoryId: String): Int
+    fun observeRevisionCount(repositoryId: String): Flow<Int>
 
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId AND artifactId IN (:artifactIds)")
     suspend fun getRevisions(repositoryId: String, artifactIds: List<String>): List<BackupRevisionEntity>

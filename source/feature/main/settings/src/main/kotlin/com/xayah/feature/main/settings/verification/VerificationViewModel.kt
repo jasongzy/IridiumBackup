@@ -12,7 +12,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -38,15 +40,11 @@ class VerificationViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(VerificationUiState())
     val uiState = _uiState.asStateFlow()
 
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.value = _uiState.value.copy(total = repository.getLocalRevisionCount())
-        }
-    }
+    val availableCount = repository.observeLocalRevisionCount().stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
     fun verify() {
-        if (_uiState.value.total == 0 || _uiState.value.isRunning || _uiState.value.isCleaning) return
-        _uiState.value = VerificationUiState(isRunning = true, total = _uiState.value.total)
+        if (availableCount.value == 0 || _uiState.value.isRunning || _uiState.value.isCleaning) return
+        _uiState.value = VerificationUiState(isRunning = true, total = availableCount.value)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val results = repository.verifyAllLocal { completed, total ->
@@ -96,7 +94,6 @@ class VerificationViewModel @Inject constructor(
                 }
                 _uiState.value = _uiState.value.copy(
                     results = report.results,
-                    total = repository.getLocalRevisionCount(),
                     cleanupFailedCount = report.failedCount,
                 )
                 withContext(Dispatchers.Main.immediate) {

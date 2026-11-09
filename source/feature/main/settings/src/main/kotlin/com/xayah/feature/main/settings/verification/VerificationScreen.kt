@@ -60,6 +60,7 @@ fun PageBackupVerification(
     viewModel: VerificationViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val availableCount by viewModel.availableCount.collectAsStateWithLifecycle()
     val validCount = remember(uiState.results) { uiState.results.count { it.status == BackupVerificationStatus.VALID } }
     val navController = LocalNavController.current!!
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
@@ -83,7 +84,7 @@ fun PageBackupVerification(
         Column(modifier = Modifier.fillMaxSize()) {
             LazyColumn(modifier = Modifier.weight(1f)) {
                 item {
-                    VerificationSummary(uiState, validCount)
+                    VerificationSummary(uiState, validCount, availableCount)
                     uiState.error?.let { Text(it, modifier = Modifier.padding(horizontal = SizeTokens.Level16), color = MaterialTheme.colorScheme.error) }
                 }
 
@@ -106,7 +107,7 @@ fun PageBackupVerification(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(SizeTokens.Level16),
-                enabled = uiState.total > 0 && !uiState.isRunning && !uiState.isCleaning,
+                enabled = availableCount > 0 && !uiState.isRunning && !uiState.isCleaning,
                 onClick = viewModel::verify,
             ) {
                 Text(stringResource(if (uiState.isComplete) R.string.verify_again else R.string.verify_all_backups))
@@ -193,7 +194,7 @@ fun PageBackupVerification(
 }
 
 @Composable
-private fun VerificationSummary(uiState: VerificationUiState, validCount: Int) {
+private fun VerificationSummary(uiState: VerificationUiState, validCount: Int, availableCount: Int) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -238,7 +239,7 @@ private fun VerificationSummary(uiState: VerificationUiState, validCount: Int) {
 
             else -> {
                 Text(
-                    text = stringResource(R.string.backups_ready_for_verification, uiState.total),
+                    text = stringResource(R.string.backups_ready_for_verification, availableCount),
                     style = MaterialTheme.typography.titleMedium,
                 )
             }

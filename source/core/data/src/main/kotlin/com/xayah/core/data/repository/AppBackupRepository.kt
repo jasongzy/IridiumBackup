@@ -7,6 +7,7 @@ import com.xayah.core.data.R
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.database.SQLITE_BIND_LIMIT
 import com.xayah.core.datastore.readFastSameVersionBackup
+import com.xayah.core.datastore.readBackupSavePath
 import com.xayah.core.model.AppBackupOverview
 import com.xayah.core.model.AppNoteItem
 import com.xayah.core.model.AppKey
@@ -39,9 +40,12 @@ import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -599,7 +603,9 @@ class AppBackupRepository @Inject constructor(
         return true
     }
 
-    suspend fun getLocalRevisionCount(): Int = dao.countRevisions(":${context.localBackupSaveDir()}")
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeLocalRevisionCount(): Flow<Int> = context.readBackupSavePath().distinctUntilChanged()
+        .flatMapLatest { dao.observeRevisionCount(":$it") }
 
     suspend fun getLocalRetentionCandidates(retainCount: Int): List<RetentionCandidate> {
         val labels = dao.getRevisionLabels(":${context.localBackupSaveDir()}")
