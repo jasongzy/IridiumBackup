@@ -57,6 +57,7 @@
     <item name="confirm_delete_old_backups" type="string" />
     <item name="old_backup_cleanup_progress" type="string" />
     <item name="old_backup_cleanup_result" type="string" />
+    <item name="old_backup_cleanup_skipped" type="string" />
     <item name="latest_backup" type="string" />
     <item name="retention_backup_details" type="string" />
     <item name="expand_backups" type="string" />

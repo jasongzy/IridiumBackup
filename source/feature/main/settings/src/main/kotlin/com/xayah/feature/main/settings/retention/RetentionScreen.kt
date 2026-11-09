@@ -39,6 +39,7 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,8 +81,8 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val isBusy = state.isScanning || state.isDeleting
     val validCount = state.retainCount.toIntOrNull()?.let { it >= 1 } == true
-    val removableCount = state.candidates.count { it.removable }
-    val groups = state.candidates.groupBy { AppKey(it.revision.packageName, it.revision.userId) }
+    val removableCount = remember(state.candidates) { state.candidates.count { it.removable } }
+    val groups = remember(state.candidates) { state.candidates.groupBy { AppKey(it.revision.packageName, it.revision.userId) } }
     var collapsedApps by rememberSaveable(state.candidates) { mutableStateOf(emptyList<String>()) }
     var detailRevision by rememberSaveable { mutableStateOf<String?>(null) }
     var showDeleteConfirmation by rememberSaveable { mutableStateOf(false) }

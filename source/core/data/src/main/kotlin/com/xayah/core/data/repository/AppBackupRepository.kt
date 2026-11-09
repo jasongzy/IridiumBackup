@@ -31,6 +31,7 @@ import com.xayah.core.model.database.PackageDataStatesEntity
 import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
+import com.xayah.core.model.isProtectedByNote
 import com.xayah.core.model.findRetentionRevisions
 import com.xayah.core.model.hasValidFileEntries
 import com.xayah.core.model.matchesRevision
@@ -65,7 +66,7 @@ class AppBackupRepository @Inject constructor(
     private val dao = database.appBackupDao()
     private val _verificationResults = MutableStateFlow<Map<String, VerificationResult>>(emptyMap())
     val verificationResults = _verificationResults.asStateFlow()
-    private val manifestMutex = Mutex()
+    private val revisionMutex = Mutex()
 
     data class RestoreSelection(val cloudName: String, val backupDir: String)
     data class VerificationReport(
@@ -452,7 +453,7 @@ class AppBackupRepository @Inject constructor(
                 note = manifest.note.orEmpty(),
             )
         }
-        manifestMutex.withLock {
+        revisionMutex.withLock {
             database.withTransaction {
                 check(dao.getRevisions(repositoryId) == original) { context.getString(R.string.rebuild_source_changed) }
                 database.packageDao().replaceLocalRestoreIndex(backupDir, rebuilt.map { it.first })
@@ -493,7 +494,21 @@ class AppBackupRepository @Inject constructor(
         }
     }
 
-    suspend fun deleteRevision(revision: BackupRevisionEntity): Boolean {
+    enum class RetentionResult { DELETED, SKIPPED, FAILED }
+
+    suspend fun deleteOldRevision(id: String, keep: Int): RetentionResult = revisionMutex.withLock {
+        require(keep >= 1)
+        val revision = dao.getOldRevision(id, ":${context.localBackupSaveDir()}", keep)
+        when {
+            revision == null || revision.isProtectedByNote() -> RetentionResult.SKIPPED
+            removeRevision(revision) -> RetentionResult.DELETED
+            else -> RetentionResult.FAILED
+        }
+    }
+
+    suspend fun deleteRevision(revision: BackupRevisionEntity): Boolean = revisionMutex.withLock { removeRevision(revision) }
+
+    private suspend fun removeRevision(revision: BackupRevisionEntity): Boolean {
         if (!hasValidArtifactId(revision) || !dao.hasRevision(revision.id)) return false
         val packageEntity = findLegacyRevision(revision)
         val deleted = if (packageEntity != null) {
@@ -522,17 +537,14 @@ class AppBackupRepository @Inject constructor(
     suspend fun getLocalRevisionCount(): Int = dao.countRevisions(":${context.localBackupSaveDir()}")
 
     suspend fun getLocalRetentionCandidates(retainCount: Int): List<RetentionCandidate> {
-        require(retainCount >= 1)
-        return findRetentionRevisions(dao.getRevisions(":${context.localBackupSaveDir()}"), retainCount)
-            .groupBy { AppKey(it.revision.packageName, it.revision.userId) }
-            .flatMap { (key, revisions) ->
-                val appLabel = dao.getApp(key.packageName, key.userId)?.label ?: key.packageName
-                revisions.map { RetentionCandidate(appLabel, it.revision, it.removable) }
-            }
+        val labels = dao.getRevisionLabels(":${context.localBackupSaveDir()}")
+        return findRetentionRevisions(labels.keys, retainCount).map {
+            RetentionCandidate(labels.getValue(it.revision), it.revision, it.removable)
+        }
     }
 
     suspend fun updateRevisionNote(revision: BackupRevisionEntity, note: String): Boolean = withContext(Dispatchers.IO) {
-        manifestMutex.withLock {
+        revisionMutex.withLock {
             if (!dao.hasRevision(revision.id)) return@withLock false
             val normalized = note.trim()
             val revisionDir = getLocalRevisionDir(revision) ?: return@withLock false

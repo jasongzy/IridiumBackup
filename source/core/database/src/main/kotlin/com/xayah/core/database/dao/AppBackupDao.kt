@@ -2,6 +2,7 @@ package com.xayah.core.database.dao
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.MapColumn
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
@@ -115,6 +116,26 @@ interface AppBackupDao {
 
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC, revisionId")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>
+
+    @Query("""
+        SELECT r.*, COALESCE(a.label, r.packageName) AS appLabel
+        FROM backup_revisions r LEFT JOIN backup_apps a ON a.packageName = r.packageName AND a.userId = r.userId
+        WHERE r.repositoryId = :repositoryId
+    """)
+    suspend fun getRevisionLabels(repositoryId: String): Map<BackupRevisionEntity, @MapColumn(columnName = "appLabel") String>
+
+    @Query(
+        """
+        SELECT * FROM backup_revisions AS candidate
+        WHERE revisionId = :id AND repositoryId = :repositoryId AND (
+            SELECT COUNT(*) FROM backup_revisions AS newer
+            WHERE newer.repositoryId = candidate.repositoryId AND newer.packageName = candidate.packageName
+                AND newer.userId = candidate.userId AND (newer.createdAt > candidate.createdAt
+                    OR (newer.createdAt = candidate.createdAt AND newer.revisionId < candidate.revisionId))
+        ) >= :keep
+        """
+    )
+    suspend fun getOldRevision(id: String, repositoryId: String, keep: Int): BackupRevisionEntity?
 
     @Query("SELECT COUNT(*) FROM backup_revisions WHERE repositoryId = :repositoryId")
     suspend fun countRevisions(repositoryId: String): Int

@@ -327,6 +327,7 @@
     <string name="confirm_delete_old_backups">Delete the %1$d listed old backups?</string>
     <string name="old_backup_cleanup_progress">Deleting %1$d of %2$d backups</string>
     <string name="old_backup_cleanup_result">Deleted %1$d backups; %2$d failed</string>
+    <string name="old_backup_cleanup_skipped">; %1$d skipped</string>
     <string name="latest_backup">Latest</string>
     <string name="retention_backup_details">Backup details</string>
     <string name="expand_backups">Expand backups</string>

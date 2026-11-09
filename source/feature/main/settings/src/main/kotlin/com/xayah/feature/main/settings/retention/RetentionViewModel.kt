@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xayah.core.data.repository.AppBackupRepository
+import com.xayah.core.data.repository.AppBackupRepository.RetentionResult
 import com.xayah.feature.main.settings.R
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -94,23 +95,26 @@ class RetentionViewModel @Inject constructor(
             deleteTotal = candidateIds.size,
         )
         viewModelScope.launch(Dispatchers.IO) {
-            val deletedIds = mutableSetOf<String>()
+            var deleted = 0
+            var skipped = 0
+            var failed = 0
             try {
-                val candidates = repository.getLocalRetentionCandidates(retainCount)
-                    .filter { it.removable && it.revision.id in candidateIds }
-                _uiState.value = _uiState.value.copy(deleteTotal = candidates.size)
-                candidates.forEachIndexed { index, candidate ->
-                    if (repository.deleteRevision(candidate.revision)) deletedIds += candidate.revision.id
+                candidateIds.forEachIndexed { index, id ->
+                    when (repository.deleteOldRevision(id, retainCount)) {
+                        RetentionResult.DELETED -> deleted++
+                        RetentionResult.SKIPPED -> skipped++
+                        RetentionResult.FAILED -> failed++
+                    }
                     _uiState.value = _uiState.value.copy(completed = index + 1)
                 }
                 updateCandidates(repository.getLocalRetentionCandidates(retainCount))
                 withContext(Dispatchers.Main.immediate) {
                     Toast.makeText(
                         context,
-                        if (candidates.size == deletedIds.size) {
-                            context.getString(R.string.backups_deleted_count, deletedIds.size)
-                        } else {
-                            context.getString(R.string.old_backup_cleanup_result, deletedIds.size, candidates.size - deletedIds.size)
+                        buildString {
+                            append(if (failed == 0) context.getString(R.string.backups_deleted_count, deleted)
+                                else context.getString(R.string.old_backup_cleanup_result, deleted, failed))
+                            if (skipped > 0) append(context.getString(R.string.old_backup_cleanup_skipped, skipped))
                         },
                         Toast.LENGTH_SHORT,
                     ).show()

@@ -215,6 +215,16 @@ class VerificationRefreshTest {
             }
             assertEquals(context.getString(com.xayah.core.data.R.string.rebuild_source_changed), editedNote.exceptionOrNull()?.message)
             assertEquals("protected", database.appBackupDao().getRevisions(revision.repositoryId).single().note)
+            val revisions = database.appBackupDao()
+            val newer = revision.copy(id = "newer", createdAt = 2000, artifactId = "com.example/user_0@2000")
+            revisions.insertRevision(newer)
+            assertEquals(listOf(newer.id, revision.id), repository.getLocalRetentionCandidates(1).map { it.revision.id })
+            assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
+            check(repository.updateRevisionNote(revision, ""))
+            assertEquals(revision.id, revisions.getOldRevision(revision.id, revision.repositoryId, 1)?.id)
+            revisions.deleteRevision(newer.id)
+            assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
+            assertEquals(true, apk.exists())
             assertEquals(1, repository.rebuildLocalIndex { _, _, _ -> }.size)
             assertEquals(3L, dao.queryRevisions(config.packageName, OpType.RESTORE, 0, config.createdAt).single().displayStats.apkBytes)
         } finally {

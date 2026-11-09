@@ -152,19 +152,18 @@ data class RetentionRevision(
 )
 
 fun findRetentionRevisions(
-    revisions: List<BackupRevisionEntity>,
+    revisions: Collection<BackupRevisionEntity>,
     retainCount: Int,
 ): List<RetentionRevision> {
     require(retainCount >= 1)
-    return revisions.groupBy { AppKey(it.packageName, it.userId) }
+    return revisions.sortedWith(compareByDescending<BackupRevisionEntity> { it.createdAt }.thenBy { it.id })
+        .groupBy { AppKey(it.packageName, it.userId) }
         .values
         .flatMap { appRevisions ->
-            val sorted = appRevisions.sortedByDescending { it.createdAt }
-            val removableIds = sorted.drop(retainCount)
-                .filterNot(BackupRevisionEntity::isProtectedByNote)
-                .mapTo(mutableSetOf(), BackupRevisionEntity::id)
-            if (sorted.size <= retainCount) emptyList()
-            else sorted.map { RetentionRevision(it, it.id in removableIds) }
+            if (appRevisions.size <= retainCount) emptyList()
+            else appRevisions.mapIndexed { index, revision ->
+                RetentionRevision(revision, index >= retainCount && !revision.isProtectedByNote())
+            }
         }
 }
 
