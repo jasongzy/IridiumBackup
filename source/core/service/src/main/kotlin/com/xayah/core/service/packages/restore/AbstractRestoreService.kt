@@ -7,7 +7,6 @@ import com.xayah.core.datastore.readRestorePermissions
 import com.xayah.core.datastore.readRestoreSsaid
 import com.xayah.core.datastore.saveLastRestoreTime
 import com.xayah.core.model.DataType
-import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.ProcessingInfoType
@@ -94,7 +93,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
     override suspend fun onPreprocessing(entity: ProcessingInfoEntity) = Unit
 
     override suspend fun onProcessing() {
-        mTaskEntity.update(rawBytes = restoreRequest.sizeBytes.toDouble(), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mPkgEntities.size)
+        mTaskEntity.update(totalCount = mPkgEntities.size)
         log { "Task count: ${mPkgEntities.size}." }
 
         val killAppOption = mContext.readKillAppOption().first()

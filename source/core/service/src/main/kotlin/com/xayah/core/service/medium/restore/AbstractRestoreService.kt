@@ -7,7 +7,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.ProcessingInfoType
 import com.xayah.core.model.ProcessingType
-import com.xayah.core.model.TaskType
 import com.xayah.core.model.database.Info
 import com.xayah.core.model.database.MediaEntity
 import com.xayah.core.model.database.ProcessingInfoEntity
@@ -84,7 +83,7 @@ internal abstract class AbstractRestoreService : AbstractMediumService() {
     }
 
     override suspend fun onProcessing() {
-        mTaskEntity.update(rawBytes = mTaskRepo.getRawBytes(TaskType.MEDIA), availableBytes = mTaskRepo.getAvailableBytes(OpType.RESTORE), totalBytes = mTaskRepo.getTotalBytes(OpType.RESTORE), totalCount = mMediaEntities.size)
+        mTaskEntity.update(totalCount = mMediaEntities.size)
         log { "Task count: ${mMediaEntities.size}." }
 
         mMediaEntities.forEachIndexed { index, media ->

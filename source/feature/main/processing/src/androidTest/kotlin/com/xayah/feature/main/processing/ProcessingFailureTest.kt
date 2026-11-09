@@ -51,7 +51,7 @@ class ProcessingFailureTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
     private val root = RemoteRootService(context)
-    private val repository = TaskRepository(context, root, database.packageDao(), database.taskDao())
+    private val repository = TaskRepository(database.taskDao())
     private val stores = mutableListOf<ViewModelStore>()
 
     private class BindingContext(context: Context, val acceptBinding: Boolean = false) : ContextWrapper(context) {

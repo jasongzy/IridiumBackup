@@ -3,7 +3,6 @@ package com.xayah.core.service.packages.backup
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
-import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.BackupManifestFile
@@ -40,9 +39,6 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
 
     @Inject
     override lateinit var mTaskDao: TaskDao
-
-    @Inject
-    override lateinit var mTaskRepo: TaskRepository
 
     override val mTaskEntity by lazy {
         TaskEntity(

@@ -202,9 +202,6 @@ fun ProcessingInfoEntity.set(
 fun TaskEntity.set(
     startTimestamp: Long? = null,
     endTimestamp: Long? = null,
-    rawBytes: Double? = null,
-    availableBytes: Double? = null,
-    totalBytes: Double? = null,
     totalCount: Int? = null,
     successCount: Int? = null,
     failureCount: Int? = null,
@@ -217,9 +214,6 @@ fun TaskEntity.set(
 ) = run {
     if (startTimestamp != null) this.startTimestamp = startTimestamp
     if (endTimestamp != null) this.endTimestamp = endTimestamp
-    if (rawBytes != null) this.rawBytes = rawBytes
-    if (availableBytes != null) this.availableBytes = availableBytes
-    if (totalBytes != null) this.totalBytes = totalBytes
     if (totalCount != null) this.totalCount = totalCount
     if (successCount != null) this.successCount = successCount
     if (failureCount != null) this.failureCount = failureCount

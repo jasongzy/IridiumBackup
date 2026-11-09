@@ -14,7 +14,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.ProcessingInfoType
 import com.xayah.core.model.ProcessingType
-import com.xayah.core.model.TaskType
 import com.xayah.core.model.database.Info
 import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
@@ -157,13 +156,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     }
 
     override suspend fun onProcessing() {
-        val storage = mRootService.readStatFs(mRootDir)
-        mTaskEntity.update(
-            rawBytes = mTaskRepo.getRawBytes(TaskType.PACKAGE, mPkgEntities.map { it.packageEntity }),
-            availableBytes = storage.availableBytes.toDouble(),
-            totalBytes = storage.totalBytes.toDouble(),
-            totalCount = mPkgEntities.size,
-        )
+        mTaskEntity.update(totalCount = mPkgEntities.size)
         log { "Task count: ${mPkgEntities.size}." }
 
         val killAppOption = mContext.readKillAppOption().first()

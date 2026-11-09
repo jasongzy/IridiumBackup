@@ -1,7 +1,6 @@
 package com.xayah.core.service.medium.restore
 
 import com.xayah.core.data.repository.MediaRepository
-import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.database.dao.MediaDao
 import com.xayah.core.database.dao.TaskDao
@@ -34,9 +33,6 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
 
     @Inject
     override lateinit var mTaskDao: TaskDao
-
-    @Inject
-    override lateinit var mTaskRepo: TaskRepository
 
     override val mTaskEntity by lazy {
         TaskEntity(

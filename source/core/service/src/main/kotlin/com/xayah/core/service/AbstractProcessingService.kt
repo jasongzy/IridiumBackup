@@ -11,7 +11,6 @@ import android.os.IBinder
 import android.view.SurfaceControlHidden
 import androidx.core.content.ContextCompat
 import com.xayah.core.data.repository.CloudRepository
-import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.ConstantUtil.DEFAULT_IDLE_TIMEOUT
 import com.xayah.core.datastore.readAutoScreenOff
@@ -107,9 +106,6 @@ internal abstract class AbstractProcessingService : Service() {
     protected suspend fun TaskEntity.update(
         startTimestamp: Long? = null,
         endTimestamp: Long? = null,
-        rawBytes: Double? = null,
-        availableBytes: Double? = null,
-        totalBytes: Double? = null,
         totalCount: Int? = null,
         successCount: Int? = null,
         failureCount: Int? = null,
@@ -120,7 +116,7 @@ internal abstract class AbstractProcessingService : Service() {
         cloud: String? = null,
         backupDir: String? = null,
     ) {
-        set(startTimestamp, endTimestamp, rawBytes, availableBytes, totalBytes, totalCount, successCount, failureCount, preprocessingIndex, processingIndex, postProcessingIndex, isProcessing, cloud, backupDir)
+        set(startTimestamp, endTimestamp, totalCount, successCount, failureCount, preprocessingIndex, processingIndex, postProcessingIndex, isProcessing, cloud, backupDir)
         mTaskDao.upsert(this)
     }
 
@@ -145,7 +141,6 @@ internal abstract class AbstractProcessingService : Service() {
     protected abstract val mPathUtil: PathUtil
     protected abstract val mCommonBackupUtil: CommonBackupUtil
     protected abstract val mTaskDao: TaskDao
-    protected abstract val mTaskRepo: TaskRepository
     protected abstract val mTaskEntity: TaskEntity
 
     protected val mNotificationBuilder by lazy { NotificationUtil.getProgressNotificationBuilder(mContext, NotificationUtil.Channel.BackupRestore) }
