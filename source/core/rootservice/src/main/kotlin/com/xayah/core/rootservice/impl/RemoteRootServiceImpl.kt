@@ -108,8 +108,8 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
     override fun mkdirs(path: String): Boolean = synchronized(lock) {
         tryOn(
             block = {
-                val file = File(path)
-                if (file.exists().not()) file.mkdirs() else true
+                val dir = File(path)
+                dir.mkdirs() || dir.isDirectory
             },
             onException = { false }
         )

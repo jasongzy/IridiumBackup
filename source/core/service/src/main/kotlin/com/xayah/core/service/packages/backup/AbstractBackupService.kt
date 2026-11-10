@@ -283,12 +283,8 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
                     }
                 } else {
-                    val message = mContext.getString(R.string.backup_revision_directory_failed, revisionApp.archivesRelativeDir)
-                    for (type in DataType.packageArchives) {
-                        currentCoroutineContext().ensureActive()
-                        pkg.update(dataType = type, state = OperationState.ERROR, log = message.takeIf { type == DataType.PACKAGE_APK })
-                    }
-                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
+                    failPackage(pkg, mContext.getString(R.string.backup_revision_directory_failed, revisionApp.archivesRelativeDir))
+                    return@forEach
                 }
                 pkg.update(state = if (pkg.isSuccess) OperationState.DONE else OperationState.ERROR)
             } finally {

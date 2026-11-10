@@ -74,7 +74,7 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
     protected suspend fun failPackage(task: TaskDetailPackageEntity, detail: String) {
         val failed = DataType.packageArchives.firstOrNull { it.getSelected(task.packageEntity.dataStates) } ?: DataType.PACKAGE_APK
         DataType.packageArchives.forEach { type ->
-            task.set(type, state = if (type == failed) OperationState.ERROR else OperationState.SKIP, log = detail.takeIf { type == failed })
+            task.set(type, progress = 1f, state = if (type == failed) OperationState.ERROR else OperationState.SKIP, log = detail.takeIf { type == failed })
         }
         task.update(state = OperationState.ERROR, processingIndex = DataType.packageArchives.size)
         mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1, processingIndex = mTaskEntity.processingIndex + 1)
