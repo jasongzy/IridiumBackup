@@ -39,12 +39,11 @@ class ListTopBarViewModel @Inject constructor(
             val listData = data.castTo<ListData.Apps>()
             Success.Apps(
                 opType = opType,
-                selected = listData.selected,
+                selected = listData.selected.takeIf { listData.selectionMode },
                 isUpdating = listData.isUpdating,
                 refreshProgress = refreshProgress,
                 userIndex = listData.userIndex,
                 userList = listData.userList,
-                userMap = listData.userMap,
             )
         }
 
@@ -52,7 +51,7 @@ class ListTopBarViewModel @Inject constructor(
             val listData = it.castTo<ListData.Files>()
             Success.Files(
                 opType = opType,
-                selected = listData.selected,
+                selected = listData.selected.takeIf { it != 0L },
                 isUpdating = listData.isUpdating,
                 refreshProgress = null,
             )
@@ -69,9 +68,9 @@ class ListTopBarViewModel @Inject constructor(
         }
     }
 
-    fun setUser(index: Int) {
+    fun setUser(userId: Int) {
         viewModelScope.launchOnDefault {
-            listDataRepo.setUserIndex(index)
+            listDataRepo.setUser(userId)
         }
     }
 }
@@ -80,23 +79,22 @@ sealed interface ListTopBarUiState {
     data object Loading : ListTopBarUiState
     sealed class Success(
         open val opType: OpType,
-        open val selected: Long,
+        open val selected: Long?,
         open val isUpdating: Boolean,
         open val refreshProgress: Float?,
     ) : ListTopBarUiState {
         data class Apps(
             override val opType: OpType,
-            override val selected: Long,
+            override val selected: Long?,
             override val isUpdating: Boolean,
             override val refreshProgress: Float?,
             val userIndex: Int,
             val userList: List<UserInfo>,
-            val userMap: Map<Int, Long>,
         ) : Success(opType, selected, isUpdating, refreshProgress)
 
         data class Files(
             override val opType: OpType,
-            override val selected: Long,
+            override val selected: Long?,
             override val isUpdating: Boolean,
             override val refreshProgress: Float?,
         ) : Success(opType, selected, isUpdating, refreshProgress)

@@ -1,6 +1,5 @@
 package com.xayah.feature.main.list
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -19,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.outlined.ArrowDropDown
 import androidx.compose.material.icons.outlined.ArrowDropUp
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -42,19 +40,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.xayah.core.data.repository.Filters
+import com.xayah.core.datastore.DashboardFilterPreference
 import com.xayah.core.datastore.LabelFilterMode
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.OpType
 import com.xayah.core.model.SortType
 import com.xayah.core.model.Target
-import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStates.Companion.setSelected
@@ -67,7 +63,6 @@ import com.xayah.core.ui.component.Title
 import com.xayah.core.ui.component.TitleLargeText
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.token.SizeTokens
-import com.xayah.core.util.localBackupSaveDir
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -108,7 +103,6 @@ internal fun ListBottomSheet(
                 isShow = uiState.showFilterSheet,
                 sheetState = sheetState,
                 opType = uiState.opType,
-                clouds = uiState.clouds,
                 filters = uiState.filters,
                 loadSystemApps = uiState.loadSystemApps,
                 labelEntities = uiState.labelEntities,
@@ -147,65 +141,6 @@ internal fun ListBottomSheet(
                 onClickLabel = viewModel::cycleLabelFilter,
                 onLongClickLabel = viewModel::resetLabelFilter,
                 onDismissRequest = onDismissRequest,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SourceChips(clouds: List<CloudEntity>, selectedCloud: String, onChanged: (cloud: String, backupDir: String) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .paddingHorizontal(SizeTokens.Level24)
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level8),
-    ) {
-        val context = LocalContext.current
-        FilterChip(
-            onClick = {
-                onChanged("", context.localBackupSaveDir())
-            },
-            label = { Text(stringResource(R.string.local)) },
-            selected = selectedCloud.isEmpty(),
-            leadingIcon = if (selectedCloud.isEmpty()) {
-                {
-                    Icon(
-                        imageVector = Icons.Filled.Done,
-                        contentDescription = null,
-                        modifier = Modifier.size(FilterChipDefaults.IconSize)
-                    )
-                }
-            } else {
-                null
-            },
-        )
-
-        clouds.forEach { cloudEntity ->
-            FilterChip(
-                onClick = {
-                    onChanged(cloudEntity.name, cloudEntity.remote)
-                },
-                label = { Text(cloudEntity.name) },
-                selected = selectedCloud == cloudEntity.name,
-                leadingIcon = if (selectedCloud == cloudEntity.name) {
-                    {
-                        Icon(
-                            imageVector = Icons.Filled.Done,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize)
-                        )
-                    }
-                } else {
-                    null
-                },
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Outlined.Cloud,
-                        contentDescription = null,
-                        modifier = Modifier.size(FilterChipDefaults.IconSize)
-                    )
-                }
             )
         }
     }
@@ -370,14 +305,13 @@ internal fun AppsFilterSheet(
     isShow: Boolean,
     sheetState: SheetState,
     opType: OpType,
-    clouds: List<CloudEntity>,
-    filters: Filters,
+    filters: DashboardFilterPreference,
     loadSystemApps: Boolean,
     labelEntities: List<ColoredLabel>,
     labelFilters: Map<String, LabelFilterMode>,
     onClickLabel: (String) -> Unit,
     onLongClickLabel: (String) -> Unit,
-    setFilters: (Filters) -> Unit,
+    setFilters: (DashboardFilterPreference) -> Unit,
     onReset: () -> Unit,
     onDismissRequest: () -> Unit,
 ) {
@@ -399,11 +333,6 @@ internal fun AppsFilterSheet(
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
             ) {
-                if (opType == OpType.BACKUP) {
-                    SourceChips(clouds, filters.cloud) { cloud, backupDir ->
-                        setFilters(filters.copy(cloud = cloud, backupDir = backupDir))
-                    }
-                }
                 if (loadSystemApps) {
                     FilterGroup(
                         title = stringResource(R.string.app_type),

@@ -29,9 +29,9 @@ import com.xayah.core.util.maybePopBackStack
 
 @ExperimentalMaterial3Api
 @Composable
-fun PrimaryTopBar(scrollBehavior: TopAppBarScrollBehavior?, title: String, actions: @Composable RowScope.() -> Unit = {}) {
+fun PrimaryTopBar(scrollBehavior: TopAppBarScrollBehavior?, title: String, titleModifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
     TopAppBar(
-        title = { TopBarTitle(text = title) },
+        title = { TopBarTitle(modifier = titleModifier, text = title) },
         scrollBehavior = scrollBehavior,
         actions = actions,
     )

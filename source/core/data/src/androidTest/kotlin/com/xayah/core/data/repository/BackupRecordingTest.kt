@@ -86,12 +86,15 @@ class BackupRecordingTest {
 
             packages.deleteByIds(listOf(app.id))
             repository.syncInstalledApps(0, emptyList())
-            val uninstalled = dao.getApp(app.packageName, 0)
             repository.recordLegacyRevision(
-                revision.copy(indexInfo = revision.indexInfo.copy(preserveId = 2345)), 2, 768,
+                revision.copy(indexInfo = revision.indexInfo.copy(preserveId = 2345), packageInfo = current.packageInfo), 2, 768,
             )
             assertNull(packages.queryById(app.id))
-            assertEquals(uninstalled, dao.getApp(app.packageName, 0))
+            val archived = checkNotNull(dao.getApp(app.packageName, 0))
+            assertEquals(false, archived.isInstalled)
+            assertEquals("2.0", archived.versionName)
+            assertEquals("Current note", archived.note)
+            assertEquals(0L, archived.lastUpdateTime)
             assertEquals(2, dao.getRevisions(":/backup").size)
         } finally {
             database.close()

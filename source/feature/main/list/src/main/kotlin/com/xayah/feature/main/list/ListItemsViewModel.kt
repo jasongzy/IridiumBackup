@@ -55,24 +55,20 @@ class ListItemsViewModel @Inject constructor(
     val uiState: StateFlow<ListItemsUiState> = when (target) {
         Target.Apps -> combine(
             listDataRepo.getAppList(),
-            combine(appBackupRepository.observeApps(), appsRepo.getRestoreApps()) { overviews, restoreApps ->
-                overviews to restoreApps
+            combine(appBackupRepository.observeApps(), appsRepo.observeArchivedXposedApps()) { overviews, modules ->
+                overviews to modules
             },
             combine(listDataRepo.getListData(), listDataRepo.getSelectedAppKeys()) { data, keys -> data to keys },
             labelsRepo.getAppRefsFlow(),
             labelsRepo.getColoredLabelsFlow(),
         ) { installedApps, backupState, listState, labelRefs, labels ->
-            val (overviews, restoreApps) = backupState
+            val (overviews, xposedModules) = backupState
             val (rawListData, selectedKeys) = listState
             val listData = rawListData as ListData.Apps
             val uniqueInstalledApps = installedApps
                 .groupBy { it.packageName to it.userId }
                 .map { (_, apps) -> apps.minBy { it.id } }
             val overviewMap = overviews.associateBy { it.app.packageName to it.app.userId }
-            val xposedModules = restoreApps.asSequence()
-                .filter { it.packageInfo.isXposedModule }
-                .map { it.packageName to it.userId }
-                .toSet()
             val labelMap = labels.associateBy(ColoredLabel::label)
             val labelsByApp = labelRefs.groupBy { it.packageName to it.userId }
                 .mapValues { (_, refs) -> refs.mapNotNull { labelMap[it.label] }.distinctBy { it.label }.sortedBy { it.label } }
@@ -100,7 +96,6 @@ class ListItemsViewModel @Inject constructor(
                         overview.app.note.isNotEmpty() ||
                         labelsByApp[overview.app.packageName to overview.app.userId].isNullOrEmpty().not()
                 }
-                .filter { selectedUserId == null || it.app.userId == selectedUserId }
                 .filter { it.app.packageName to it.app.userId !in installedKeys }
                 .filter { listData.filters.notInstalledApps }
                 .filter { overview ->
@@ -122,7 +117,7 @@ class ListItemsViewModel @Inject constructor(
                             preserveId = 0,
                             isSystemApp = overview.app.isSystem,
                             isUpdatedSystemApp = false,
-                            isXposedModule = overview.app.packageName to overview.app.userId in xposedModules,
+                            isXposedModule = AppKey(overview.app.packageName, overview.app.userId) in xposedModules,
                             isFrozen = false,
                             isInstalled = false,
                             firstInstallTime = overview.app.firstInstallTime,
@@ -168,7 +163,8 @@ class ListItemsViewModel @Inject constructor(
             }
             Success.Apps(
                 opType = opType,
-                appList = filteredItems.filter(appSearchPredicate(listData.searchQuery)).sorted(listData),
+                appList = filteredItems.filter { it.app.userId == selectedUserId }
+                    .filter(appSearchPredicate(listData.searchQuery)).sorted(listData),
                 showInstallTime = listData.sortIndex == 1,
                 showDataSize = listData.sortIndex == 2,
                 showUpdateTime = listData.sortIndex == 3,

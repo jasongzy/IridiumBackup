@@ -52,8 +52,6 @@
     <item name="add_label_to_selected" type="string" />
     <item name="remove_label_from_selected" type="string" />
     <item name="new_label" type="string" />
-    <item name="confirm_add_labels" type="string" />
-    <item name="confirm_remove_labels" type="string" />
     <item name="label_created" type="string" />
     <item name="labels_updated" type="string" />
     <item name="items_added_to_blacklist" type="string" />

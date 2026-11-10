@@ -127,10 +127,10 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
             Title(title = stringResource(id = R.string.settings)) {
                 val dialogState = LocalSlotScope.current!!.dialogSlot
                 Selectable(
-                    enabled = (restoreUsers.size > 1 || currentIndex < 0) && !isCheckingRestore && !isStarting,
+                    enabled = restoreUsers.isNotEmpty() && (restoreUsers.size > 1 || currentIndex < 0) && !isCheckingRestore && !isStarting,
                     title = stringResource(id = R.string.restore_user),
                     value = stringResource(id = R.string.restore_user_desc),
-                    current = restoreUsers.getOrNull(currentIndex)?.title ?: restoreUser.toString(),
+                    current = restoreUsers.getOrNull(currentIndex)?.title ?: stringResource(R.string.not_selected),
                 ) {
                     viewModel.launchOnIO {
                         val (state, selectedIndex) = dialogState.select(
@@ -145,8 +145,12 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
                 }
                 if (targetConflict != null || currentIndex < 0 && preview != null) {
                     Text(
-                        text = if (targetConflict != null) stringResource(com.xayah.core.service.R.string.restore_target_conflict, targetConflict.packageName, targetConflict.userId)
-                        else stringResource(com.xayah.core.service.R.string.restore_user_missing, restoreUser),
+                        text = when {
+                            targetConflict != null -> stringResource(com.xayah.core.service.R.string.restore_target_conflict, targetConflict.packageName, targetConflict.userId)
+                            restoreUsers.isEmpty() -> stringResource(com.xayah.core.service.R.string.restore_users_unavailable)
+                            restoreUser == -1 -> stringResource(R.string.select_existing_restore_user)
+                            else -> stringResource(com.xayah.core.service.R.string.restore_user_missing, restoreUser)
+                        },
                         modifier = Modifier.paddingHorizontal(SizeTokens.Level24),
                         color = MaterialTheme.colorScheme.error,
                     )

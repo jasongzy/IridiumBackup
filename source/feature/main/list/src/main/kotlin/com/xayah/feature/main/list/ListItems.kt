@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
@@ -152,9 +153,9 @@ fun AppItem(
     val app = item.app
     val title = if (app.versionName.isEmpty()) app.label else "${app.label} · ${app.versionName}"
     val backupSummary = item.latestRevisionAt?.takeIf { item.revisionCount > 0 }?.let { timestamp ->
-        stringResource(
-            com.xayah.feature.main.list.R.string.backup_summary,
-            item.revisionCount,
+        pluralStringResource(
+            com.xayah.feature.main.list.R.plurals.backup_summary,
+            item.revisionCount, item.revisionCount,
             DateUtils.getRelativeTimeSpanString(timestamp),
         )
     } ?: stringResource(com.xayah.feature.main.list.R.string.no_backups)

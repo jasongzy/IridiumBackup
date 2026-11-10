@@ -64,7 +64,13 @@ data class DashboardFilterPreference(
     val hasNoDataBackup: Boolean = false,
     val hasNonMatchingApkBackup: Boolean = false,
     val matchAllLabels: Boolean = false,
-)
+) {
+    fun matchesXposed(isXposedModule: Boolean) =
+        xposedModules == nonXposedModules || xposedModules == isXposedModule
+
+    fun matchesIncludedLabels(labels: Set<String>, included: Set<String>) =
+        included.isEmpty() || if (matchAllLabels) labels.containsAll(included) else labels.any(included::contains)
+}
 
 enum class LabelFilterMode { INCLUDE, EXCLUDE }
 

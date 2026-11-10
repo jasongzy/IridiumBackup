@@ -46,9 +46,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withContext
@@ -121,8 +122,6 @@ class AppBackupRepository @Inject constructor(
     fun observeRevisions(packageName: String, userId: Int): Flow<List<BackupRevisionEntity>> =
         dao.observeRevisions(packageName, userId)
 
-    fun observeRevisions(): Flow<List<BackupRevisionEntity>> = dao.observeRevisions()
-
     suspend fun getRestoreSizeBytes(repositoryId: String, packages: List<PackageEntity>): Long {
         val revisions = packages.map { it.archivesRelativeDir }.distinct().chunked(SQLITE_BIND_LIMIT - 1)
             .flatMap { dao.getRevisions(repositoryId, it) }.associateBy { it.artifactId }
@@ -133,8 +132,11 @@ class AppBackupRepository @Inject constructor(
         }
     }
 
-    suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) {
+    suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) = database.withTransaction {
+        val names = apps.mapTo(mutableSetOf()) { it.packageName }
+        val removed = dao.getInstalledPackageNames(userId).filterNot(names::contains)
         dao.replaceInstalledApps(userId, apps.map { it.toBackupApp() })
+        refreshArchivedMetadata(removed.map { AppKey(it, userId) })
     }
 
     suspend fun updateAppNote(packageName: String, userId: Int, note: String) {
@@ -168,6 +170,7 @@ class AppBackupRepository @Inject constructor(
                 sizeBytes = sizeBytes,
             ),
         )
+        refreshArchivedMetadata(listOf(AppKey(restore.packageName, restore.userId)))
     }
 
     suspend fun findReusableApkArchive(app: PackageEntity, repositoryId: String, apkEntries: Set<String>): String? {
@@ -608,6 +611,10 @@ class AppBackupRepository @Inject constructor(
             true
         }
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeLocalRestorableApps(): Flow<Set<AppKey>> = context.readBackupSavePath().distinctUntilChanged()
+        .flatMapLatest { dao.observeBackedUpApps(":$it", BackupEngine.LEGACY) }.map { it.toSet() }.distinctUntilChanged()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     fun observeLocalRevisionCount(): Flow<Int> = context.readBackupSavePath().distinctUntilChanged()

@@ -35,6 +35,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,7 +120,10 @@ fun PageBackupVerification(
         AlertDialog(
             onDismissRequest = { showCleanupConfirmation = false },
             title = { Text(stringResource(R.string.clean_failed_backups)) },
-            text = { Text(stringResource(R.string.confirm_clean_failed_backups, uiState.results.count { it.canClean })) },
+            text = {
+                val count = uiState.results.count { it.canClean }
+                Text(pluralStringResource(R.plurals.confirm_clean_failed_backups, count, count))
+            },
             confirmButton = {
                 TextButton(
                     onClick = {

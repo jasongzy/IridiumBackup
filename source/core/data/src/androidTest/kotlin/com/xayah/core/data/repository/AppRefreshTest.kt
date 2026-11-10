@@ -33,11 +33,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AppRefreshTest {
     @Test
-    fun refreshesEligibleSystemAppsWithoutLosingCachedChoices() = runBlocking {
+    fun refreshPreservesBackupsAndChoicesAcrossProfiles() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val previousSu = context.readCustomSUFile().first()
         val previousSystemApps = context.readLoadSystemApps().first()
@@ -63,6 +64,7 @@ class AppRefreshTest {
                 .newInstance(0, "Owner", 0)
             val binder = Binder()
             var detailsRead = 0
+            var usersAvailable = true
             var listAvailable = true
             var detailsAvailable = true
             val remote = Proxy.newProxyInstance(
@@ -70,7 +72,7 @@ class AppRefreshTest {
             ) { _, method, _ ->
                 when (method.name) {
                     "asBinder" -> binder
-                    "getUsers" -> listOf(user)
+                    "getUsers" -> if (usersAvailable) listOf(user) else emptyList()
                     "getInstalledPackagesAsUser" -> {
                         check(listAvailable) { "Package service unavailable" }
                         val parcel = Parcel.obtain()
@@ -123,7 +125,7 @@ class AppRefreshTest {
             info.applicationInfo!!.enabled = false
             repository.fastInitialize { _, _, _ -> }
             assertEquals(0, detailsRead)
-            val systemOnly = DashboardFilterPreference(nonSystemApps = false).toFilters("", "")
+            val systemOnly = DashboardFilterPreference(nonSystemApps = false)
             val scope = repository.scanScope.first()
             assertEquals(true, scope.matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
             assertEquals(false, scope.matchesType(systemOnly, info.packageName, 0, isSystem = true, fromBackup = false))
@@ -139,6 +141,27 @@ class AppRefreshTest {
             }
             context.saveLoadSystemApps(true)
             assertEquals(false, repository.scanScope.first().matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
+            val former = app.copy(indexInfo = app.indexInfo.copy(userId = 10), packageInfo = app.packageInfo.copy(versionName = "2.0"))
+            database.packageDao().upsert(former)
+            backups.syncInstalledApps(10, listOf(former))
+            backups.recordLegacyRevision(
+                former.copy(
+                    indexInfo = former.indexInfo.copy(opType = OpType.RESTORE, preserveId = 42, backupDir = "/backup"),
+                    packageInfo = former.packageInfo.copy(versionName = "1.0"),
+                ),
+                contentMask = 1, sizeBytes = 100,
+            )
+            usersAvailable = false
+            check(runCatching { repository.fastInitialize { _, _, _ -> } }.isFailure)
+            assertEquals(true, database.appBackupDao().getApp(info.packageName, 10)?.isInstalled)
+            usersAvailable = true
+            repository.fastInitialize { _, _, _ -> }
+            val archived = checkNotNull(database.appBackupDao().getApp(info.packageName, 10))
+            assertEquals(false, archived.isInstalled)
+            assertEquals("1.0", archived.versionName)
+            assertTrue(database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 10).isEmpty())
+            val users = UsersRepo(context, Dispatchers.Default, root, database.packageDao(), database.appBackupDao())
+            assertEquals(listOf(0, 10), users.getUsers(OpType.BACKUP, flowOf(false)).first().map { it.id })
             listAvailable = false
             check(runCatching { repository.fastInitialize { _, _, _ -> } }.isFailure)
             check(runCatching { repository.fullInitialize { _, _, _ -> } }.isFailure)

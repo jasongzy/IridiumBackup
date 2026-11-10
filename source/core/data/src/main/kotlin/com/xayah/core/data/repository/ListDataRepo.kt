@@ -27,7 +27,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.scopes.ActivityRetainedScoped
 import javax.inject.Inject
@@ -45,7 +44,7 @@ class ListDataRepo @Inject constructor(
     private lateinit var listData: Flow<ListData>
     private var persistDashboardState = false
 
-    private lateinit var selected: Flow<Long>
+    private lateinit var selectedFiles: Flow<Long>
     private lateinit var selectionMode: MutableStateFlow<Boolean>
     private lateinit var searchQuery: MutableStateFlow<String>
     private lateinit var showFilterSheet: MutableStateFlow<Boolean>
@@ -57,10 +56,10 @@ class ListDataRepo @Inject constructor(
 
     // Apps
     private lateinit var showDataItemsSheet: MutableStateFlow<Boolean>
-    private lateinit var filters: MutableStateFlow<Filters>
-    private lateinit var userIndex: MutableStateFlow<Int>
+    private lateinit var filters: Flow<DashboardFilterPreference>
+    private lateinit var sessionFilters: MutableStateFlow<DashboardFilterPreference>
+    private lateinit var selectedUserId: MutableStateFlow<Int?>
     private lateinit var userList: Flow<List<UserInfo>>
-    private lateinit var userMap: Flow<Map<Int, Long>>
     private lateinit var appList: Flow<List<App>>
     private lateinit var selectedAppKeys: MutableStateFlow<Set<AppKey>>
     private lateinit var pkgUserSet: Flow<Set<String>> // "${pkgName}-${userId}"
@@ -75,14 +74,8 @@ class ListDataRepo @Inject constructor(
         labelFilters = if (persistDashboardState) context.readDashboardLabelFilters() else sessionLabelFilters
         when (target) {
             Target.Apps -> {
-                val savedFilters = if (persistDashboardState) {
-                    runBlocking { context.readDashboardFilterPreference().first() }
-                } else {
-                    DashboardFilterPreference()
-                }
                 selectedAppKeys = MutableStateFlow(emptySet())
                 selectionMode = MutableStateFlow(false)
-                selected = selectedAppKeys.map { it.size.toLong() }
                 searchQuery = MutableStateFlow("")
                 showFilterSheet = MutableStateFlow(false)
                 sortIndex = MutableStateFlow(0)
@@ -93,12 +86,10 @@ class ListDataRepo @Inject constructor(
                 }
 
                 showDataItemsSheet = MutableStateFlow(false)
-                filters = MutableStateFlow(
-                    savedFilters.toFilters(cloud = cloudName, backupDir = backupDir)
-                )
-                userIndex = MutableStateFlow(0)
-                userList = usersRepo.getUsers(opType)
-                userMap = usersRepo.getUsersMap(opType, cloudName, backupDir)
+                sessionFilters = MutableStateFlow(DashboardFilterPreference())
+                filters = if (persistDashboardState) context.readDashboardFilterPreference() else sessionFilters
+                selectedUserId = MutableStateFlow(null)
+                userList = usersRepo.getUsers(opType, isUpdating)
 
                 listData = getAppListData()
                 pkgUserSet = when (opType) {
@@ -120,7 +111,7 @@ class ListDataRepo @Inject constructor(
 
             Target.Files -> {
                 selectionMode = MutableStateFlow(false)
-                selected = filesRepo.countSelectedFiles(opType)
+                selectedFiles = filesRepo.countSelectedFiles(opType)
                 searchQuery = MutableStateFlow("")
                 showFilterSheet = MutableStateFlow(false)
                 sortIndex = MutableStateFlow(0)
@@ -137,7 +128,7 @@ class ListDataRepo @Inject constructor(
     }
 
     private fun getAppListData(): Flow<ListData.Apps> = combine(
-        combine(selected, selectionMode) { selected, selectionMode -> selected to selectionMode },
+        combine(selectedAppKeys, selectionMode) { keys, mode -> keys.size.toLong() to mode },
         searchQuery,
         showFilterSheet,
         sortIndex,
@@ -147,15 +138,18 @@ class ListDataRepo @Inject constructor(
         showDataItemsSheet,
         filters,
         appsRepo.scanScope,
-        userIndex,
+        selectedUserId,
         userList,
-        userMap,
-    ) { selection, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, scanScope, uIndex, uList, uMap ->
-        ListData.Apps(selection.first, selection.second, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, scanScope, uIndex, uList, uMap)
+    ) { (selected, mode), sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet, filters, scanScope, userId, users ->
+        val index = users.indexOfFirst { it.id == userId }.coerceAtLeast(0)
+        ListData.Apps(
+            selected, mode, sQuery, sFSheet, sIndex, sType, iUpdating, lIds, sDISheet,
+            filters, scanScope, index, users,
+        )
     }
 
     private fun getFileListData(): Flow<ListData.Files> = combine(
-        selected,
+        selectedFiles,
         selectionMode,
         searchQuery,
         showFilterSheet,
@@ -181,15 +175,11 @@ class ListDataRepo @Inject constructor(
 
     fun getFileList(): Flow<List<File>> = fileList
 
-    suspend fun setFilters(block: (Filters) -> Filters) {
-        filters.emit(block(filters.value))
-        saveDashboardFilters()
-    }
-
-    suspend fun resetFilters() {
-        filters.emit(DashboardFilterPreference().toFilters(filters.value.cloud, filters.value.backupDir))
-        if (!persistDashboardState) sessionLabelFilters.value = emptyMap()
-        saveDashboardFilters(resetLabels = true)
+    suspend fun setFilters(value: DashboardFilterPreference, resetLabels: Boolean = false) {
+        if (persistDashboardState) context.saveDashboardFilterPreference(value, resetLabels) else {
+            sessionFilters.value = value
+            if (resetLabels) sessionLabelFilters.value = emptyMap()
+        }
     }
 
     suspend fun setAppSelected(key: AppKey, selected: Boolean) {
@@ -246,8 +236,8 @@ class ListDataRepo @Inject constructor(
         searchQuery.emit(value)
     }
 
-    suspend fun setUserIndex(value: Int) {
-        userIndex.emit(value)
+    suspend fun setUser(userId: Int) {
+        selectedUserId.emit(userId)
     }
 
     suspend fun setShowFilterSheet(value: Boolean) {
@@ -284,34 +274,6 @@ class ListDataRepo @Inject constructor(
         )
     }
 
-    private suspend fun saveDashboardFilters(resetLabels: Boolean = false) {
-        if (!persistDashboardState) return
-        val current = filters.value
-        context.saveDashboardFilterPreference(
-            DashboardFilterPreference(
-                systemApps = current.systemApps,
-                nonSystemApps = current.nonSystemApps,
-                frozenApps = current.frozenApps,
-                unfrozenApps = current.unfrozenApps,
-                xposedModules = current.xposedModules,
-                nonXposedModules = current.nonXposedModules,
-                hasBackups = current.hasBackups,
-                hasNoBackups = current.hasNoBackups,
-                singleBackup = current.singleBackup,
-                multipleBackups = current.multipleBackups,
-                installedApps = current.installedApps,
-                notInstalledApps = current.notInstalledApps,
-                hasApkBackup = current.hasApkBackup,
-                hasNoApkBackup = current.hasNoApkBackup,
-                hasDataBackup = current.hasDataBackup,
-                hasNoDataBackup = current.hasNoDataBackup,
-                hasNonMatchingApkBackup = current.hasNonMatchingApkBackup,
-                matchAllLabels = current.matchAllLabels,
-            ),
-            resetLabels = resetLabels,
-        )
-    }
-
     private fun DashboardSortField.toSortIndex(): Int = when (this) {
         DashboardSortField.INSTALLED -> 1
         DashboardSortField.DATA_SIZE -> 2
@@ -327,58 +289,6 @@ class ListDataRepo @Inject constructor(
         4 -> DashboardSortField.BACKED_UP
         else -> DashboardSortField.NAME
     }
-}
-
-internal fun DashboardFilterPreference.toFilters(cloud: String, backupDir: String) = Filters(
-    cloud = cloud,
-    backupDir = backupDir,
-    systemApps = systemApps,
-    nonSystemApps = nonSystemApps,
-    frozenApps = frozenApps,
-    unfrozenApps = unfrozenApps,
-    xposedModules = xposedModules,
-    nonXposedModules = nonXposedModules,
-    hasBackups = hasBackups,
-    hasNoBackups = hasNoBackups,
-    singleBackup = singleBackup,
-    multipleBackups = multipleBackups,
-    installedApps = installedApps,
-    notInstalledApps = notInstalledApps,
-    hasApkBackup = hasApkBackup,
-    hasNoApkBackup = hasNoApkBackup,
-    hasDataBackup = hasDataBackup,
-    hasNoDataBackup = hasNoDataBackup,
-    hasNonMatchingApkBackup = hasNonMatchingApkBackup,
-    matchAllLabels = matchAllLabels,
-)
-
-data class Filters(
-    val cloud: String,
-    val backupDir: String,
-    val systemApps: Boolean,
-    val nonSystemApps: Boolean,
-    val frozenApps: Boolean,
-    val unfrozenApps: Boolean,
-    val xposedModules: Boolean,
-    val nonXposedModules: Boolean,
-    val hasBackups: Boolean,
-    val hasNoBackups: Boolean,
-    val singleBackup: Boolean,
-    val multipleBackups: Boolean,
-    val installedApps: Boolean,
-    val notInstalledApps: Boolean,
-    val hasApkBackup: Boolean,
-    val hasNoApkBackup: Boolean,
-    val hasDataBackup: Boolean,
-    val hasNoDataBackup: Boolean,
-    val hasNonMatchingApkBackup: Boolean,
-    val matchAllLabels: Boolean,
-) {
-    fun matchesXposed(isXposedModule: Boolean) =
-        xposedModules == nonXposedModules || xposedModules == isXposedModule
-
-    fun matchesIncludedLabels(labels: Set<String>, included: Set<String>) =
-        included.isEmpty() || if (matchAllLabels) labels.containsAll(included) else labels.any(included::contains)
 }
 
 sealed class ListData(
@@ -401,11 +311,10 @@ sealed class ListData(
         override val isUpdating: Boolean,
         override val labelFilters: Map<String, LabelFilterMode>,
         val showDataItemsSheet: Boolean,
-        val filters: Filters,
+        val filters: DashboardFilterPreference,
         val scanScope: AppScanScope,
         val userIndex: Int,
         val userList: List<UserInfo>,
-        val userMap: Map<Int, Long>,
     ) : ListData(selected, selectionMode, searchQuery, showFilterSheet, sortIndex, sortType, isUpdating, labelFilters)
 
     data class Files(

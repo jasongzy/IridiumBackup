@@ -1,7 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="apps">应用</string>
-    <string name="backup_summary">%1$d 个备份 · 最近 %2$s</string>
+    <string name="dashboard_selection_title">已选中：%1$d</string>
+    <plurals name="backup_summary">
+        <item quantity="other">%1$d 个备份 · 最近 %2$s</item>
+    </plurals>
+    <plurals name="confirm_add_labels">
+        <item quantity="other">将选中的 %1$d 个标签添加到全部所选应用吗？</item>
+    </plurals>
+    <plurals name="confirm_remove_labels">
+        <item quantity="other">从全部所选应用移除选中的 %1$d 个标签吗？</item>
+    </plurals>
     <string name="no_backups">暂无备份</string>
     <string name="back_up_selected">备份</string>
     <string name="unrestricted">不限</string>

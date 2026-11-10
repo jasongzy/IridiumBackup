@@ -2,12 +2,10 @@ package com.xayah.feature.main.list
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Tab
@@ -57,7 +55,7 @@ internal fun ListTopBar(
     viewModel: ListTopBarViewModel
 ) {
     val title: String
-    var subtitle: String? = null
+    val selected = (uiState as? ListTopBarUiState.Success)?.selected
     when (uiState) {
         is ListTopBarUiState.Loading -> {
             title = stringResource(id = R.string.loading)
@@ -81,10 +79,6 @@ internal fun ListTopBar(
                     }
                 }
             }
-
-            if (uiState.selected != 0L) {
-                subtitle = stringResource(R.string.selected_count, uiState.selected)
-            }
         }
     }
 
@@ -92,14 +86,10 @@ internal fun ListTopBar(
         val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
         if (isDashboard) {
             val navController = LocalNavController.current!!
-            val dashboardTitle = if (subtitle == null) {
-                stringResource(R.string.app_name)
-            } else {
-                "${stringResource(R.string.app_name)} $subtitle"
-            }
             PrimaryTopBar(
                 scrollBehavior = scrollBehavior,
-                title = dashboardTitle,
+                title = selected?.let { stringResource(R.string.dashboard_selection_title, it) } ?: stringResource(R.string.app_name),
+                titleModifier = if (selected != null) Modifier.basicMarquee() else Modifier,
                 actions = {
                     ListActions()
                     IconButton(
@@ -113,7 +103,7 @@ internal fun ListTopBar(
             SecondaryTopBar(
                 scrollBehavior = scrollBehavior,
                 title = title,
-                subtitle = subtitle,
+                subtitle = selected?.let { stringResource(R.string.selected_count, it) },
                 actions = { ListActions() },
             )
         }
@@ -145,7 +135,7 @@ internal fun ListTopBar(
 
         AnimatedVisibility(visible = uiState is ListTopBarUiState.Success.Apps) {
             val state = uiState.castTo<ListTopBarUiState.Success.Apps>()
-            UserTabs(selected = state.userIndex, userList = state.userList, usersMap = state.userMap, onTabClick = viewModel::setUser)
+            UserTabs(selected = state.userIndex, userList = state.userList, onTabClick = viewModel::setUser)
         }
 
         AnimatedVisibility(visible = uiState is ListTopBarUiState.Success.Files) {
@@ -156,7 +146,7 @@ internal fun ListTopBar(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UserTabs(selected: Int, userList: List<UserInfo>, usersMap: Map<Int, Long>, onTabClick: (index: Int) -> Unit) {
+private fun UserTabs(selected: Int, userList: List<UserInfo>, onTabClick: (userId: Int) -> Unit) {
     if (userList.isNotEmpty()) {
         PrimaryScrollableTabRow(
             selectedTabIndex = selected,
@@ -175,19 +165,10 @@ private fun UserTabs(selected: Int, userList: List<UserInfo>, usersMap: Map<Int,
                 Tab(
                     selected = selected == index,
                     onClick = {
-                        onTabClick(index)
+                        onTabClick(user.id)
                     },
                     text = {
-                        BadgedBox(
-                            modifier = Modifier.fillMaxSize(),
-                            badge = {
-                                if (usersMap.containsKey(user.id)) {
-                                    Badge { Text(text = usersMap[user.id].toString()) }
-                                }
-                            }
-                        ) {
-                            Text(text = "${user.name} (${user.id})", maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        }
+                        Text(text = "${user.name} (${user.id})", maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 )
             }

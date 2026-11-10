@@ -119,7 +119,7 @@ class RetentionViewModel @Inject constructor(
                         context,
                         buildString {
                             append(if (failed == 0) context.getString(R.string.backups_deleted_count, deleted)
-                                else context.getString(R.string.old_backup_cleanup_result, deleted, failed))
+                                else context.getString(R.string.cleanup_result, deleted, failed))
                             if (skipped > 0) append(context.getString(R.string.old_backup_cleanup_skipped, skipped))
                         },
                         Toast.LENGTH_SHORT,

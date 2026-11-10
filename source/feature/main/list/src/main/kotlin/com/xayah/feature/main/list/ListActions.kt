@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,12 +57,8 @@ internal fun ListActions(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val itemsUiState by itemsViewModel.uiState.collectAsStateWithLifecycle()
-    val visibleAppKeys = (itemsUiState as? ListItemsUiState.Success.Apps)
-        ?.appList
-        ?.map { it.app.key }
-        .orEmpty()
-
-    ListActions(uiState, viewModel, visibleAppKeys)
+    val visibleApps = (itemsUiState as? ListItemsUiState.Success.Apps)?.appList.orEmpty()
+    ListActions(uiState, viewModel, visibleApps.map { it.app.key }, visibleApps.count { it.app.selected } >= 2)
 }
 
 @Composable
@@ -69,15 +66,12 @@ internal fun ListActions(
     uiState: ListActionsUiState,
     viewModel: ListActionsViewModel,
     visibleAppKeys: List<AppKey>,
+    rangeSelectionEnabled: Boolean,
 ) {
     if (uiState is ListActionsUiState.Success) {
-        val target by remember(uiState) {
-            mutableStateOf(
-                when (uiState) {
-                    is ListActionsUiState.Success.Apps -> Target.Apps
-                    is ListActionsUiState.Success.Files -> Target.Files
-                }
-            )
+        val target = when (uiState) {
+            is ListActionsUiState.Success.Apps -> Target.Apps
+            is ListActionsUiState.Success.Files -> Target.Files
         }
 
         FilterAction(viewModel::showFilterSheet)
@@ -97,7 +91,7 @@ internal fun ListActions(
             ListAction(
                 viewModel = viewModel,
                 visibleAppKeys = visibleAppKeys,
-                rangeSelectionEnabled = target == Target.Apps && uiState.selected >= 2,
+                rangeSelectionEnabled = rangeSelectionEnabled,
             )
         }
 
@@ -480,7 +474,7 @@ private fun BatchLabelsDialog(
             onDismissRequest = { confirmation = null },
             title = { Text(stringResource(R.string.edit_labels)) },
             text = {
-                Text(stringResource(if (adding) R.string.confirm_add_labels else R.string.confirm_remove_labels, selected.size))
+                Text(pluralStringResource(if (adding) R.plurals.confirm_add_labels else R.plurals.confirm_remove_labels, selected.size, selected.size))
             },
             confirmButton = {
                 TextButton(onClick = {

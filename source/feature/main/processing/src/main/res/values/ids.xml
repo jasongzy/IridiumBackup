@@ -69,6 +69,7 @@
     <item name="auto_screen_off_desc" type="string" />
     <item name="backup_user" type="string" />
     <item name="restore_user" type="string" />
+    <item name="select_existing_restore_user" type="string" />
     <item name="restore_user_desc" type="string" />
     <item name="delete_desc" type="string" />
     <item name="protect" type="string" />

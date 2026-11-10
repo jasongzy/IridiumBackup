@@ -40,7 +40,6 @@
     <item name="all_backups_verified" type="string" />
     <item name="verify_again" type="string" />
     <item name="clean_failed_backups" type="string" />
-    <item name="confirm_clean_failed_backups" type="string" />
     <item name="cleanup_progress" type="string" />
     <item name="cleanup_failed" type="string" />
     <item name="cleanup_result" type="string" />
@@ -54,9 +53,6 @@
     <item name="old_backups_found" type="string" />
     <item name="no_old_backups" type="string" />
     <item name="delete_old_backups" type="string" />
-    <item name="confirm_delete_old_backups" type="string" />
-    <item name="old_backup_cleanup_progress" type="string" />
-    <item name="old_backup_cleanup_result" type="string" />
     <item name="old_backup_cleanup_skipped" type="string" />
     <item name="latest_backup" type="string" />
     <item name="retention_backup_details" type="string" />

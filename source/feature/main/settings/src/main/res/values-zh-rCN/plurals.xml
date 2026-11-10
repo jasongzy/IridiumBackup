@@ -1,0 +1,8 @@
+<resources>
+    <plurals name="confirm_clean_failed_backups">
+        <item quantity="other">永久删除 %1$d 个未通过校验的备份？</item>
+    </plurals>
+    <plurals name="confirm_delete_old_backups">
+        <item quantity="other">确定删除选中的 %1$d 个旧备份吗？</item>
+    </plurals>
+</resources>

@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.input.ImeAction
@@ -111,7 +112,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                 )
                 state.error?.let { error ->
                     Text(error, color = MaterialTheme.colorScheme.error)
-                    if (state.deleteTotal > 0) Text(stringResource(R.string.old_backup_cleanup_progress, state.completed, state.deleteTotal))
+                    if (state.deleteTotal > 0) Text(stringResource(R.string.cleanup_progress, state.completed, state.deleteTotal))
                 }
                 if (state.isScanning) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 if (state.isDeleting) {
@@ -119,7 +120,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
                         progress = if (state.deleteTotal == 0) 0f else state.completed.toFloat() / state.deleteTotal,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Text(stringResource(R.string.old_backup_cleanup_progress, state.completed, state.deleteTotal))
+                    Text(stringResource(R.string.cleanup_progress, state.completed, state.deleteTotal))
                 } else if (state.hasScanned) {
                     Text(
                         text = if (removableCount == 0) stringResource(R.string.no_old_backups)
@@ -200,7 +201,7 @@ fun PageBackupRetention(viewModel: RetentionViewModel = hiltViewModel()) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text(stringResource(R.string.clean_old_backups)) },
-            text = { Text(stringResource(R.string.confirm_delete_old_backups, state.selectedIds.size)) },
+            text = { Text(pluralStringResource(R.plurals.confirm_delete_old_backups, state.selectedIds.size, state.selectedIds.size)) },
             confirmButton = {
                 TextButton(onClick = {
                     showDeleteConfirmation = false

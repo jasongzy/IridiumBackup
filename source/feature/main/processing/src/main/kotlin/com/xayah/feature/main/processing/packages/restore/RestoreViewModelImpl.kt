@@ -79,8 +79,10 @@ class RestoreViewModelImpl @Inject constructor(
             }
 
             is GetUsers -> {
-                _restoreUsers.value = listOf(backupUser) + mRootService.getUsers().map { it.id }.distinct().sorted().map {
-                    DialogRadioItem(enum = it, title = it.toString())
+                val ids = mRootService.getUsers().map { it.id }.toSortedSet()
+                _restoreUsers.value = buildList {
+                    if (packages.isNotEmpty() && packages.all { it.userId in ids }) add(backupUser)
+                    ids.forEach { add(DialogRadioItem(enum = it, title = it.toString())) }
                 }
             }
 
@@ -92,7 +94,7 @@ class RestoreViewModelImpl @Inject constructor(
 
     private val backupUser = DialogRadioItem(enum = -1, title = mContext.getString(R.string.backup_user))
     private val _preview = MutableStateFlow<PackageTaskRequest.Restore?>(null)
-    private val _restoreUsers = MutableStateFlow(listOf(backupUser))
+    private val _restoreUsers = MutableStateFlow(emptyList<DialogRadioItem<Int>>())
     private val _warnings = MutableStateFlow<RestoreWarnings?>(null)
     private val _isCheckingRestore = MutableStateFlow(false)
 

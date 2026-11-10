@@ -12,6 +12,7 @@ import com.xayah.core.model.AppBackupOverview
 import com.xayah.core.model.AppKey
 import com.xayah.core.model.AppNoteItem
 import com.xayah.core.model.BackupAppEntity
+import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.OpType
 import com.xayah.core.model.toBackupApp
@@ -19,6 +20,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppBackupDao {
+    @Query("SELECT DISTINCT userId FROM backup_apps ORDER BY userId")
+    fun observeIndexedUserIds(): Flow<List<Int>>
+
+    @Query("SELECT packageName FROM backup_apps WHERE userId = :userId AND isInstalled = 1")
+    suspend fun getInstalledPackageNames(userId: Int): List<String>
+
     @Query("SELECT DISTINCT packageName, userId FROM backup_revisions")
     fun observeBackedUpApps(): Flow<List<AppKey>>
 
@@ -166,8 +173,8 @@ interface AppBackupDao {
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId AND artifactId IN (:artifactIds)")
     suspend fun getRevisions(repositoryId: String, artifactIds: List<String>): List<BackupRevisionEntity>
 
-    @Query("SELECT * FROM backup_revisions")
-    fun observeRevisions(): Flow<List<BackupRevisionEntity>>
+    @Query("SELECT DISTINCT packageName, userId FROM backup_revisions WHERE repositoryId = :repositoryId AND engine = :engine")
+    fun observeBackedUpApps(repositoryId: String, engine: BackupEngine): Flow<List<AppKey>>
 
     @Query("DELETE FROM backup_revisions WHERE repositoryId = :repositoryId")
     suspend fun deleteRevisions(repositoryId: String)

@@ -10,10 +10,7 @@ import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.data.repository.ListData
 import com.xayah.core.data.repository.ListDataRepo
-import com.xayah.core.datastore.readBackupSavePath
 import com.xayah.core.hiddenapi.castTo
-import com.xayah.core.model.AppKey
-import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.OpType
 import com.xayah.core.model.Target
 import com.xayah.core.model.util.of
@@ -65,12 +62,10 @@ class ListViewModel @Inject constructor(
         Target.Apps -> combine(
             listDataRepo.getListData(),
             listDataRepo.getAppList(),
-            combine(appBackupRepository.observeRevisions(), context.readBackupSavePath()) { revisions, path ->
-                revisions.filter { it.repositoryId == ":$path" }
-            },
+            appBackupRepository.observeLocalRestorableApps(),
             listDataRepo.getSelectedAppKeys(),
             isPreparing,
-        ) { data, apps, revisions, selectedKeys, preparing ->
+        ) { data, apps, restorableApps, selectedKeys, preparing ->
             val listData = data.castTo<ListData.Apps>()
             Success.Apps(
                 opType = opType,
@@ -81,10 +76,7 @@ class ListViewModel @Inject constructor(
                 backupDir = backupDir,
                 isPreparing = preparing,
                 hasSelectedInstalledApps = apps.any { it.selected && it.isInstalled },
-                hasSelectedBackups = revisions.any {
-                    it.engine == BackupEngine.LEGACY &&
-                        AppKey(it.packageName, it.userId) in selectedKeys
-                },
+                hasSelectedBackups = selectedKeys.any(restorableApps::contains),
             )
         }
 

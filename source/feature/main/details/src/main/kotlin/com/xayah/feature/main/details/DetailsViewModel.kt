@@ -32,6 +32,7 @@ import com.xayah.core.data.repository.ListDataRepo
 import com.xayah.core.data.util.srcDir
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.OpType
+import com.xayah.core.model.AppKey
 import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
@@ -68,6 +69,7 @@ import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,28 +124,13 @@ class DetailsViewModel @Inject constructor(
                 appsRepo.getApp(checkNotNull(packageName), userId)
             }
             val appFlow = if (packageName != null) {
-                val indexedAppFlow = combine(
-                    appBackupRepository.observeApp(packageName, userId),
-                    appsRepo.getRestoreApps(),
-                ) { indexed, restoreApps ->
-                    indexed?.let { app ->
-                        app to restoreApps.any {
-                            it.packageName == packageName &&
-                                it.userId == userId &&
-                                it.packageInfo.isXposedModule
-                        }
-                    }
-                }
-                combine(installedAppFlow, indexedAppFlow) { installed, indexedState ->
-                    installed?.let { AppDetailsSource(it, true, indexedState?.first?.note.orEmpty()) }
-                        ?: indexedState?.let { (indexed, isXposedModule) ->
-                            AppDetailsSource(indexed.toPackageEntity(isXposedModule), false, indexed.note)
-                        }
+                val key = AppKey(packageName, userId)
+                combine(installedAppFlow, appBackupRepository.observeApp(packageName, userId), appsRepo.observeArchivedXposedApps()) { installed, indexed, modules ->
+                    installed?.let { AppDetailsSource(it, true, indexed?.note.orEmpty()) }
+                        ?: indexed?.let { AppDetailsSource(it.toPackageEntity(key in modules), false, it.note) }
                 }
             } else {
-                installedAppFlow.combine(kotlinx.coroutines.flow.flowOf(null as BackupAppEntity?)) { installed, _ ->
-                    installed?.let { AppDetailsSource(it, true) }
-                }
+                installedAppFlow.map { app -> app?.let { AppDetailsSource(it, true) } }
             }
             viewModelScope.launchOnDefault {
                 appFlow

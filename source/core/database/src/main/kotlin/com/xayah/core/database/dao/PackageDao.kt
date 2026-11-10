@@ -1,12 +1,12 @@
 package com.xayah.core.database.dao
 
 import androidx.room.Dao
-import androidx.room.MapColumn
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import androidx.room.Upsert
 import com.xayah.core.database.SQLITE_BIND_LIMIT
+import com.xayah.core.model.AppKey
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.database.PackageDataStatesEntity
@@ -67,6 +67,13 @@ interface PackageDao {
                 " AND indexInfo_cloud = :cloud AND indexInfo_backupDir = :backupDir"
     )
     suspend fun query(packageName: String, opType: OpType, userId: Int, cloud: String, backupDir: String): List<PackageEntity>
+
+    @Query("""
+        SELECT DISTINCT indexInfo_packageName AS packageName, indexInfo_userId AS userId
+        FROM PackageEntity
+        WHERE indexInfo_opType = :opType AND extraInfo_blocked = 0 AND packageInfo_isXposedModule = 1
+    """)
+    fun observeXposedAppKeys(opType: OpType): Flow<List<AppKey>>
 
     @Query("UPDATE PackageEntity SET packageInfo_isXposedModule = :isXposedModule WHERE id = :id")
     suspend fun updateXposedModule(id: Long, isXposedModule: Boolean)
@@ -178,14 +185,11 @@ interface PackageDao {
     )
     fun queryFlow(packageName: String, opType: OpType, userId: Int, preserveId: Long): Flow<PackageEntity?>
 
-    @Query(
-        "SELECT indexInfo_userId, COUNT(*) as iCount FROM PackageEntity WHERE" +
-                " indexInfo_opType = :opType AND extraInfo_blocked = :blocked AND" +
-                " indexInfo_cloud = :cloud AND indexInfo_backupDir = :backupDir AND" +
-                " extraInfo_activated = 1 GROUP BY indexInfo_userId"
-    )
-    fun countUsersMapFlow(opType: OpType, blocked: Boolean, cloud: String, backupDir: String):
-            Flow<Map<@MapColumn(columnName = "indexInfo_userId") Int, @MapColumn(columnName = "iCount") Long>>
+    @Query("""
+        SELECT indexInfo_userId FROM PackageEntity WHERE indexInfo_opType = :opType
+        UNION SELECT userId FROM backup_apps WHERE isInstalled = 1
+    """)
+    suspend fun getCachedInstalledUserIds(opType: OpType): List<Int>
 
     @Query(
         "SELECT * FROM PackageEntity WHERE id = :id"

@@ -1,0 +1,10 @@
+<resources>
+    <plurals name="confirm_clean_failed_backups">
+        <item quantity="one">Permanently delete %1$d backup that did not pass verification?</item>
+        <item quantity="other">Permanently delete %1$d backups that did not pass verification?</item>
+    </plurals>
+    <plurals name="confirm_delete_old_backups">
+        <item quantity="one">Delete the %1$d selected old backup?</item>
+        <item quantity="other">Delete the %1$d selected old backups?</item>
+    </plurals>
+</resources>

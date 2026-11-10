@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="apps">Apps</string>
-    <string name="backup_summary">%1$d backups · latest %2$s</string>
+    <string name="dashboard_selection_title">@string/selected_count</string>
+    <plurals name="backup_summary">
+        <item quantity="one">%1$d backup · latest %2$s</item>
+        <item quantity="other">%1$d backups · latest %2$s</item>
+    </plurals>
+    <plurals name="confirm_add_labels">
+        <item quantity="one">Add %1$d selected label to all selected apps?</item>
+        <item quantity="other">Add %1$d selected labels to all selected apps?</item>
+    </plurals>
+    <plurals name="confirm_remove_labels">
+        <item quantity="one">Remove %1$d selected label from all selected apps?</item>
+        <item quantity="other">Remove %1$d selected labels from all selected apps?</item>
+    </plurals>
     <string name="no_backups">No backups</string>
     <string name="back_up_selected">Back up</string>
     <string name="unrestricted">Any</string>

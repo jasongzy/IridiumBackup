@@ -1,6 +1,7 @@
 package com.xayah.core.data.repository
 
 import android.content.Context
+import com.xayah.core.datastore.DashboardFilterPreference
 import com.xayah.core.datastore.LabelFilterMode
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -65,7 +66,7 @@ data class AppScanScope(val loadSystemApps: Boolean, private val backedUp: Set<A
     fun includes(packageName: String, userId: Int, isSystem: Boolean) =
         loadSystemApps || !isSystem || AppKey(packageName, userId) in backedUp
 
-    fun matchesType(filters: Filters, packageName: String, userId: Int, isSystem: Boolean, fromBackup: Boolean): Boolean =
+    fun matchesType(filters: DashboardFilterPreference, packageName: String, userId: Int, isSystem: Boolean, fromBackup: Boolean): Boolean =
         if (loadSystemApps) {
             if (isSystem) filters.systemApps else filters.nonSystemApps
         } else fromBackup || includes(packageName, userId, isSystem)
@@ -106,8 +107,8 @@ class AppsRepo @Inject constructor(
         appsDao.queryFlow(packageName, OpType.BACKUP, userId, DefaultPreserveId)
             .flowOn(defaultDispatcher)
 
-    fun getRestoreApps(): Flow<List<PackageEntity>> =
-        packageRepo.queryPackagesFlow(OpType.RESTORE, blocked = false).flowOn(defaultDispatcher)
+    fun observeArchivedXposedApps(): Flow<Set<AppKey>> =
+        appsDao.observeXposedAppKeys(OpType.RESTORE).map { it.toSet() }.distinctUntilChanged().flowOn(defaultDispatcher)
 
     fun getApps(
         opType: OpType,
@@ -126,7 +127,6 @@ class AppsRepo @Inject constructor(
         }
     ) { lData, pSet, labelsByApp, apps ->
         val data = lData.castTo<ListData.Apps>()
-        val userId = data.userList.getOrNull(data.userIndex)?.id
         val filters = data.labelFilters
         val included = filters.filterValues { it == LabelFilterMode.INCLUDE }.keys
         val excluded = filters.filterValues { it == LabelFilterMode.EXCLUDE }.keys
@@ -141,7 +141,6 @@ class AppsRepo @Inject constructor(
             .filter { app ->
                 if (opType == OpType.BACKUP || app.pkgUserKey in pSet) data.filters.installedApps else data.filters.notInstalledApps
             }
-            .filter { it.userId == userId }
             .filter { app ->
                 val appLabels = labelsByApp[AppKey(app.packageName, app.userId)].orEmpty()
                 data.filters.matchesIncludedLabels(appLabels, included) && appLabels.none(excluded::contains)
@@ -170,7 +169,7 @@ class AppsRepo @Inject constructor(
     suspend fun deleteSelected(ids: List<Long>) =
         ids.count { id -> appsDao.queryById(id)?.let { appBackupRepository.deleteBackup(it) } == true }
 
-    suspend fun setDataItems(ids: List<Long>, selections: PackageDataStates) {
+    suspend fun setDataItems(ids: Collection<Long>, selections: PackageDataStates) {
         appsDao.updatePackageDataStates(ids.map { PackageDataStatesEntity(it, selections) })
     }
 
@@ -183,9 +182,7 @@ class AppsRepo @Inject constructor(
         val scope = scanScope.first()
         val settings = settingsDataRepo.settingsData.first()
         val pm = context.packageManager
-        val installedPackagesByUser = rootService.getUsers().associate { userInfo ->
-            userInfo.id to getInstalledPackages(userInfo.id)
-        }
+        val installedPackagesByUser = installedPackagesByUser()
         val itemCount = installedPackagesByUser.values.sumOf { it.size }
         var current = 0
         for ((userId, installedPackages) in installedPackagesByUser) {
@@ -219,9 +216,8 @@ class AppsRepo @Inject constructor(
         val scope = scanScope.first()
         val settings = settingsDataRepo.settingsData.first()
         val pm = context.packageManager
-        val batches = rootService.getUsers().map { userInfo ->
-            val userId = userInfo.id
-            val installedPackages = getInstalledPackages(userId).associateBy { it.packageName }
+        val batches = installedPackagesByUser().map { (userId, packages) ->
+            val installedPackages = packages.associateBy { it.packageName }
             val storedApps = appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, userId)
             val storedPackages = storedApps.associateBy { it.packageName }
             val scanned = installedPackages.filterValues { info ->
@@ -425,6 +421,14 @@ class AppsRepo @Inject constructor(
             firstUpdated = true,
             enabled = info.applicationInfo?.enabled ?: false,
         )
+    }
+
+    private suspend fun installedPackagesByUser(): Map<Int, List<android.content.pm.PackageInfo>> {
+        val users = rootService.getUsers()
+        check(users.isNotEmpty()) { "Unable to list Android users" }
+        val installed = users.associate { it.id to getInstalledPackages(it.id) }.toMutableMap()
+        for (userId in appsDao.getCachedInstalledUserIds(OpType.BACKUP)) installed.putIfAbsent(userId, emptyList())
+        return installed
     }
 
     private suspend fun getInstalledPackages(userId: Int) =
