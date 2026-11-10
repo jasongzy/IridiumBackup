@@ -18,6 +18,8 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.toBackupApp
 import kotlinx.coroutines.flow.Flow
 
+data class ConfigurationCounts(val blacklist: Int, val accounts: Int, val labels: Int, val appNotes: Int)
+
 @Dao
 interface AppBackupDao {
     @Query("SELECT DISTINCT userId FROM backup_apps ORDER BY userId")
@@ -71,8 +73,15 @@ interface AppBackupDao {
     @Query("SELECT * FROM backup_apps WHERE note != ''")
     suspend fun getAppsWithNotes(): List<BackupAppEntity>
 
-    @Query("SELECT COUNT(*) FROM backup_apps WHERE note != ''")
-    fun observeAppNoteCount(): Flow<Int>
+    @Query("""
+        SELECT (SELECT COUNT(*) FROM PackageEntity WHERE indexInfo_opType = 'BACKUP' AND extraInfo_blocked = 1) +
+               (SELECT COUNT(*) FROM MediaEntity WHERE indexInfo_opType = 'BACKUP' AND extraInfo_blocked = 1) AS blacklist,
+               (SELECT COUNT(*) FROM CloudEntity) AS accounts,
+               (SELECT COUNT(*) FROM LabelEntity) + (SELECT COUNT(*) FROM LabelFileCrossRefEntity) +
+               (SELECT COUNT(*) FROM (SELECT DISTINCT label, packageName, userId FROM LabelAppCrossRefEntity)) AS labels,
+               (SELECT COUNT(*) FROM backup_apps WHERE note != '') AS appNotes
+    """)
+    fun observeConfigurationCounts(): Flow<ConfigurationCounts>
 
     @Query("UPDATE backup_apps SET isInstalled = 0, firstInstallTime = 0, lastUpdateTime = 0 WHERE userId = :userId")
     suspend fun markUserAppsUninstalled(userId: Int)

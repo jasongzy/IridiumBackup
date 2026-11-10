@@ -34,23 +34,17 @@ fun PageConfigurations() {
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val viewModel = hiltViewModel<IndexViewModel>()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val blockedPackagesState by viewModel.blockedPackagesState.collectAsStateWithLifecycle()
-    val blockedFilesState by viewModel.blockedFilesState.collectAsStateWithLifecycle()
-    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
-    val labels by viewModel.labels.collectAsStateWithLifecycle()
-    val labelAppRefs by viewModel.labelAppRefs.collectAsStateWithLifecycle()
-    val labelFileRefs by viewModel.labelFileRefs.collectAsStateWithLifecycle()
-    val appNotesCount by viewModel.appNotesCount.collectAsStateWithLifecycle()
+    val counts by viewModel.counts.collectAsStateWithLifecycle()
 
     ConfigurationsScaffold(
         scrollBehavior = scrollBehavior, snackbarHostState = viewModel.snackbarHostState,
         title = stringResource(id = R.string.configurations), actions = {
             OutlinedButton(
-                enabled = uiState.settingsSelected ||
-                    (uiState.blacklistSelected && (blockedPackagesState.isNotEmpty() || blockedFilesState.isNotEmpty())) ||
-                    (uiState.cloudSelected && accounts.isNotEmpty()) ||
-                    (uiState.labelSelected && labels.size + labelAppRefs.size + labelFileRefs.size > 0) ||
-                    (uiState.appNotesSelected && appNotesCount > 0),
+                enabled = counts?.let {
+                    uiState.settingsSelected || (uiState.blacklistSelected && it.blacklist > 0) ||
+                        (uiState.cloudSelected && it.accounts > 0) || (uiState.labelSelected && it.labels > 0) ||
+                        (uiState.appNotesSelected && it.appNotes > 0)
+                } == true,
                 onClick = { viewModel.emitIntentOnIO(IndexUiIntent.Export) },
             ) {
                 Text(
@@ -70,7 +64,7 @@ fun PageConfigurations() {
         Checkable(
             icon = Icons.Outlined.Block,
             title = stringResource(id = R.string.blacklist),
-            value = (blockedPackagesState.size + blockedFilesState.size).toString(),
+            value = counts?.blacklist?.toString(),
             checked = uiState.blacklistSelected,
         ) {
             viewModel.emitStateOnMain(uiState.copy(blacklistSelected = it.not()))
@@ -78,7 +72,7 @@ fun PageConfigurations() {
         Checkable(
             icon = Icons.Outlined.Cloud,
             title = stringResource(id = R.string.cloud_accounts),
-            value = accounts.size.toString(),
+            value = counts?.accounts?.toString(),
             checked = uiState.cloudSelected,
         ) {
             viewModel.emitStateOnMain(uiState.copy(cloudSelected = it.not()))
@@ -86,7 +80,7 @@ fun PageConfigurations() {
         Checkable(
             icon = Icons.Outlined.BookmarkBorder,
             title = stringResource(id = R.string.labels),
-            value = (labels.size + labelAppRefs.size + labelFileRefs.size).toString(),
+            value = counts?.labels?.toString(),
             checked = uiState.labelSelected,
         ) {
             viewModel.emitStateOnMain(uiState.copy(labelSelected = it.not()))
@@ -94,7 +88,7 @@ fun PageConfigurations() {
         Checkable(
             icon = Icons.AutoMirrored.Outlined.Notes,
             title = stringResource(id = R.string.app_notes),
-            value = appNotesCount.toString(),
+            value = counts?.appNotes?.toString(),
             checked = uiState.appNotesSelected,
         ) {
             viewModel.emitStateOnMain(uiState.copy(appNotesSelected = it.not()))

@@ -9,20 +9,12 @@ import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.data.repository.importBlacklist
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.data.repository.LabelsRepo
-import com.xayah.core.data.repository.MediaRepository
-import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.datastore.ConstantUtil
 import com.xayah.core.datastore.validatePreferences
 import com.xayah.core.datastore.saveConfigurationSettings
 import com.xayah.core.model.Configurations
-import com.xayah.core.model.OpType
-import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.isValidCloudAccountName
-import com.xayah.core.model.database.LabelAppCrossRefEntity
 import com.xayah.core.model.database.LabelEntity
-import com.xayah.core.model.database.LabelFileCrossRefEntity
-import com.xayah.core.model.database.MediaEntity
-import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.util.CommonBackupUtil
 import com.xayah.core.ui.component.DialogState
@@ -41,8 +33,6 @@ import com.xayah.core.util.LanguageUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
 data class IndexUiState(
@@ -66,9 +56,7 @@ class IndexViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val rootService: RemoteRootService,
     private val database: AppDatabase,
-    private val packageRepo: PackageRepository,
     private val cloudRepo: CloudRepository,
-    private val mediaRepo: MediaRepository,
     private val labelsRepo: LabelsRepo,
     private val appBackupRepository: AppBackupRepository,
     private val commonBackupUtil: CommonBackupUtil,
@@ -169,20 +157,5 @@ class IndexViewModel @Inject constructor(
         }
     }
 
-    private val _blockedPackages: Flow<List<PackageEntity>> = packageRepo.queryPackagesFlow(opType = OpType.BACKUP, blocked = true).flowOnIO()
-    val blockedPackagesState: StateFlow<List<PackageEntity>> = _blockedPackages.stateInScope(listOf())
-
-    private val _blockedFiles: Flow<List<MediaEntity>> = mediaRepo.queryFlow(opType = OpType.BACKUP, blocked = true).flowOnIO()
-    val blockedFilesState: StateFlow<List<MediaEntity>> = _blockedFiles.stateInScope(listOf())
-
-    private val _accounts: Flow<List<CloudEntity>> = cloudRepo.clouds.flowOnIO()
-    val accounts: StateFlow<List<CloudEntity>> = _accounts.stateInScope(listOf())
-
-    private val _labels: Flow<List<LabelEntity>> = labelsRepo.getLabelsFlow().flowOnIO()
-    private val _labelAppRefs: Flow<List<LabelAppCrossRefEntity>> = labelsRepo.getAppRefsFlow().flowOnIO()
-    private val _labelFileRefs: Flow<List<LabelFileCrossRefEntity>> = labelsRepo.getFileRefsFlow().flowOnIO()
-    val labels: StateFlow<List<LabelEntity>> = _labels.stateInScope(listOf())
-    val labelAppRefs: StateFlow<List<LabelAppCrossRefEntity>> = _labelAppRefs.stateInScope(listOf())
-    val labelFileRefs: StateFlow<List<LabelFileCrossRefEntity>> = _labelFileRefs.stateInScope(listOf())
-    val appNotesCount = database.appBackupDao().observeAppNoteCount().stateInScope(0)
+    val counts = database.appBackupDao().observeConfigurationCounts().stateInScope(null)
 }
