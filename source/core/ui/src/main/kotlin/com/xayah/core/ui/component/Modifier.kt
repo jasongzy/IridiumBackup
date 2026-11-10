@@ -8,11 +8,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
@@ -23,7 +25,6 @@ import com.google.accompanist.placeholder.fade
 import com.google.accompanist.placeholder.placeholder
 import com.xayah.core.ui.material3.util.lerp
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
-import com.xayah.core.ui.theme.darkTheme
 import com.xayah.core.ui.theme.value
 import kotlin.math.absoluteValue
 
@@ -40,8 +41,9 @@ fun Modifier.paddingHorizontal(horizontal: Dp) = padding(horizontal, 0.dp)
 fun Modifier.paddingVertical(vertical: Dp) = padding(0.dp, vertical)
 
 fun Modifier.shimmer(visible: Boolean = true, colorAlpha: Float = 0.1f, highlightAlpha: Float = 0.3f) = composed {
-    val alphaColor = if (darkTheme()) highlightAlpha else colorAlpha
-    val alphaHighlight = if (darkTheme()) colorAlpha else highlightAlpha
+    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val alphaColor = if (dark) highlightAlpha else colorAlpha
+    val alphaHighlight = if (dark) colorAlpha else highlightAlpha
     placeholder(
         visible = visible,
         shape = CircleShape,
