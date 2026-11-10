@@ -6,16 +6,12 @@ import android.content.Context
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
-import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
-import android.media.MediaScannerConnection
 import android.os.Build
-import android.os.Environment
 import android.os.StrictMode
-import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -25,7 +21,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xayah.core.data.repository.AppsRepo
 import com.xayah.core.data.repository.AppBackupRepository
-import com.xayah.core.data.repository.AppIconRepository
+import com.xayah.core.ui.component.PackageIconLoader
 import com.xayah.core.data.repository.FilesRepo
 import com.xayah.core.data.repository.LabelsRepo
 import com.xayah.core.data.repository.ListDataRepo
@@ -79,12 +75,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.ZipFile
 import javax.inject.Inject
-
-private const val ICON_EXPORT_DIR = "IridiumBackup"
 
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
@@ -93,7 +86,7 @@ class DetailsViewModel @Inject constructor(
     private val rootService: RemoteRootService,
     private val appsRepo: AppsRepo,
     private val appBackupRepository: AppBackupRepository,
-    private val appIconRepository: AppIconRepository,
+    private val icons: PackageIconLoader,
     private val filesRepo: FilesRepo,
     private val labelsRepo: LabelsRepo,
     private val listDataRepo: ListDataRepo,
@@ -499,9 +492,8 @@ class DetailsViewModel @Inject constructor(
     fun saveAppIcon() {
         viewModelScope.launchOnDefault {
             val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
-            val icon = rootService.getInstalledIcon(app.packageName, app.userId)
-                ?: rootService.readIcon(appIconRepository.getLocalIconPath(app.packageName))
-            val saved = icon != null && saveIcon(icon.toBitmap(512, 512, Bitmap.Config.ARGB_8888), app.packageName)
+            val icon = icons.load(app.packageName, app.userId, refresh = true)
+            val saved = icon != null && context.exportAppIcon(icon.toBitmap(512, 512, Bitmap.Config.ARGB_8888), app.packageName)
             showToast(if (saved) R.string.app_icon_saved else R.string.app_icon_save_failed)
         }
     }
@@ -697,44 +689,6 @@ class DetailsViewModel @Inject constructor(
         "x86", "x86_64" -> this
         else -> null
     }
-
-    private fun saveIcon(bitmap: Bitmap, packageName: String): Boolean {
-        val fileName = "${packageName}_${System.currentTimeMillis()}.png"
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
-                put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ICON_EXPORT_DIR")
-                put(MediaStore.Images.Media.IS_PENDING, 1)
-            }
-            val resolver = context.contentResolver
-            val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return false
-            val saved = runCatching {
-                resolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) } == true
-            }.getOrDefault(false)
-            if (saved) {
-                resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
-            } else {
-                resolver.delete(uri, null, null)
-            }
-            saved
-        } else {
-            saveLegacyIcon(bitmap, fileName)
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    private fun saveLegacyIcon(bitmap: Bitmap, fileName: String): Boolean = runCatching {
-        val directory = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            ICON_EXPORT_DIR,
-        )
-        if (directory.exists().not() && directory.mkdirs().not()) return@runCatching false
-        val file = File(directory, fileName)
-        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        MediaScannerConnection.scanFile(context, arrayOf(file.path), arrayOf("image/png"), null)
-        true
-    }.getOrDefault(false)
 
     fun protect() {
         viewModelScope.launchOnDefault {

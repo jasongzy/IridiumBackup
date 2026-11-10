@@ -26,7 +26,7 @@ class AppNotesImportTest {
             val repository = AppBackupRepository(
                 context, database,
                 PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), database.packageDao(), paths),
-                AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root,
+                AppIconRepository(context, root), XposedModuleDetector(context, root), root,
             )
             val installed = AppKey("com.example.app", 0).toBackupApp().copy(
                 label = "Example", versionName = "2.0", versionCode = 2,

@@ -54,7 +54,7 @@ class TitaniumLabelScanTest {
             }
             val paths = PathUtil(context)
             val packages = PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), database.packageDao(), paths)
-            val icons = AppIconRepository(context, root, paths)
+            val icons = AppIconRepository(context, root)
             val modules = XposedModuleDetector(context, root)
             val backups = AppBackupRepository(context, database, packages, icons, modules, root)
             val labels = LabelsRepo(context, Dispatchers.Default, database)

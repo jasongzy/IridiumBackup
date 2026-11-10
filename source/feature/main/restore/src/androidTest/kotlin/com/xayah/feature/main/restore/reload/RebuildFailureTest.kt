@@ -71,7 +71,7 @@ class RebuildFailureTest {
                 val clouds = CloudRepository(context, root, database.cloudDao())
                 val packages = PackageRepository(context, root, clouds, database.packageDao(), paths)
                 val repository = AppBackupRepository(
-                    context, database, packages, AppIconRepository(context, root, paths),
+                    context, database, packages, AppIconRepository(context, root),
                     XposedModuleDetector(context, root), root,
                 )
                 val app = AppKey("com.example.backup", 0).toBackupApp()

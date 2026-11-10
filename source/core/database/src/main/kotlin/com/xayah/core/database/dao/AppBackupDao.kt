@@ -26,6 +26,13 @@ interface AppBackupDao {
     @Query("SELECT packageName FROM backup_apps WHERE userId = :userId AND isInstalled = 1")
     suspend fun getInstalledPackageNames(userId: Int): List<String>
 
+    @Query("""
+        SELECT substr(repositoryId, 2) FROM backup_revisions
+        WHERE packageName = :packageName AND (:userId IS NULL OR userId = :userId) AND repositoryId LIKE ':/%'
+        GROUP BY repositoryId ORDER BY MAX(createdAt) DESC, repositoryId
+    """)
+    suspend fun localBackupDirs(packageName: String, userId: Int?): List<String>
+
     @Query("SELECT DISTINCT packageName, userId FROM backup_revisions")
     fun observeBackedUpApps(): Flow<List<AppKey>>
 

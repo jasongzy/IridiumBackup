@@ -152,7 +152,7 @@ class VerificationRefreshTest {
             val repository = AppBackupRepository(
                 context, database,
                 PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), interleaved, paths),
-                AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root,
+                AppIconRepository(context, root), XposedModuleDetector(context, root), root,
             )
             val revision = BackupRevisionEntity(config.packageName, 0, 1234, "1.0", 1, BackupEngine.LEGACY, ":${directory.path}", restore.archivesRelativeDir, 1)
             root.writeJson(config, PathUtil.getPackageRestoreConfigDst(revisionDir.path))
@@ -274,7 +274,7 @@ class VerificationRefreshTest {
             assertEquals(listOf(newer.id, revision.id), repository.getLocalRetentionCandidates(1).map { it.revision.id })
             assertEquals(AppBackupRepository.RetentionResult.SKIPPED, repository.deleteOldRevision(revision.id, 1))
             val importer = TitaniumImportRepository(
-                context, root, paths, repository, AppIconRepository(context, root, paths),
+                context, root, paths, repository, AppIconRepository(context, root),
                 LabelsRepo(context, kotlinx.coroutines.Dispatchers.Default, database),
             )
             val invalid = TitaniumImportRepository.BackupCandidate(

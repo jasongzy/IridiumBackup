@@ -32,7 +32,7 @@ class BackupRecordingTest {
             val repository = AppBackupRepository(
                 context, database,
                 PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), packages, paths),
-                AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root,
+                AppIconRepository(context, root), XposedModuleDetector(context, root), root,
             )
             val app = PackageRestoreConfig(
                 packageName = "com.example.backup", userId = 0, createdAt = 0, compressionType = CompressionType.ZSTD,

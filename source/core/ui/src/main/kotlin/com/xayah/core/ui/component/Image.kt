@@ -65,7 +65,7 @@ fun PackageIconImage(
     LaunchedEffect(packageName, userId, icon, inCircleShape, refreshKey) {
         if (icon == null) {
             val (foreground, background) = withContext(Dispatchers.IO) {
-                val iconDrawable = viewModel.load(packageName, userId, refreshKey != null)
+                val iconDrawable = viewModel.icons.load(packageName, userId, refreshKey != null)
                 if (iconDrawable != null) {
                     if (inCircleShape) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && iconDrawable is AdaptiveIconDrawable) {

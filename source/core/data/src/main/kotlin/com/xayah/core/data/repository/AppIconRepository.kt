@@ -27,11 +27,8 @@ import javax.inject.Singleton
 class AppIconRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val rootService: RemoteRootService,
-    private val pathUtil: PathUtil,
 ) {
     private val extractionMutex = Mutex()
-
-    fun getLocalIconPath(packageName: String): String = pathUtil.getLocalBackupAppIconPath(packageName)
 
     suspend fun saveInstalledIcon(info: ApplicationInfo, appsDir: String): String? {
         val drawable = withContext(Dispatchers.IO) {

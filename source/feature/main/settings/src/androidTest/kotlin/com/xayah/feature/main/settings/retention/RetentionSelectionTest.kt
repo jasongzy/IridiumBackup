@@ -38,7 +38,7 @@ class RetentionSelectionTest {
             val root = RemoteRootService(context)
             val paths = PathUtil(context)
             val packages = PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), database.packageDao(), paths)
-            val repository = AppBackupRepository(context, database, packages, AppIconRepository(context, root, paths), XposedModuleDetector(context, root), root)
+            val repository = AppBackupRepository(context, database, packages, AppIconRepository(context, root), XposedModuleDetector(context, root), root)
             val model = RetentionViewModel(context, repository)
             val key = AppKey("test.app", 0)
             val dao = database.appBackupDao()

@@ -116,7 +116,6 @@ class PathUtil @Inject constructor(
     private fun getAppsDir(parent: String): String = "${parent.trimEnd('/')}/${getAppsRelativeDir()}"
     private fun getFilesDir(parent: String): String = "${parent.trimEnd('/')}/${getFilesRelativeDir()}"
     fun getLocalBackupAppsDir(backupDir: String = context.localBackupSaveDir()): String = getAppsDir(parent = backupDir)
-    fun getLocalBackupAppIconPath(packageName: String): String = getAppIconPath(getLocalBackupAppsDir(), packageName)
     fun getCloudRemoteAppsDir(remote: String): String = getAppsDir(parent = remote)
     fun getLocalBackupFilesDir(): String = getFilesDir(parent = context.localBackupSaveDir())
     fun getCloudRemoteFilesDir(remote: String): String = getFilesDir(parent = remote)
