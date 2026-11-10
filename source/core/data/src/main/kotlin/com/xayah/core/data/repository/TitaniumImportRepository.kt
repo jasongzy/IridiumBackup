@@ -605,7 +605,8 @@ class TitaniumImportRepository @Inject constructor(
             val parent = sourcePath.substringBeforeLast('/')
             val target = "$destination/${type.type}.${compression.suffix}"
             reserve(target)
-            val result = Tar.compress(type.archiveExclusions(packageName).tarPatterns, "", parent, packageName, target, compressionArgs)
+            val exclusions = type.archiveExclusions(packageName)
+            val result = Tar.compress("", parent, packageName, target, compressionArgs, exclusions.paths, exclusions.namePrefixes)
             check(result.isSuccess) { result.outString.ifBlank { "Unable to convert ${type.type}" } }
             if (Tar.hasContent(target, packageName, compression.decompressPara).getOrThrow()) {
                 imported += type

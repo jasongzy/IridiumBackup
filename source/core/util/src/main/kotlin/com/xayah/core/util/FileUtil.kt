@@ -16,7 +16,6 @@ import java.nio.file.Path
 import java.nio.file.Paths
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.attribute.BasicFileAttributes
-import java.util.concurrent.atomic.AtomicLong
 
 object FileUtil {
     fun listFilePaths(path: String, listFiles: Boolean = true, listDirs: Boolean = true): List<String> = runCatching {
@@ -38,51 +37,21 @@ object FileUtil {
         }
     }
 
-    fun calculateSize(path: String): Long = run {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            calculateSizeApi26(path)
-        } else {
-            calculateSizeApi24(path)
+    fun calculateSize(path: String): Long {
+        val pending = ArrayDeque<File>()
+        pending.add(File(path))
+        var size = 0L
+        while (pending.isNotEmpty()) {
+            val file = pending.removeLast()
+            val stat = try {
+                Os.lstat(file.path)
+            } catch (_: ErrnoException) {
+                continue
+            }
+            if (OsConstants.S_ISDIR(stat.st_mode)) file.listFiles()?.forEach(pending::add)
+            else size += stat.st_size
         }
-    }
-
-    internal fun calculateSizeApi24(path: String): Long {
-        val stat = try {
-            Os.lstat(path)
-        } catch (_: ErrnoException) {
-            return 0
-        }
-        return if (OsConstants.S_ISDIR(stat.st_mode)) {
-            File(path).listFiles()?.sumOf { calculateSizeApi24(it.path) } ?: 0
-        } else stat.st_size
-    }
-
-    @TargetApi(Build.VERSION_CODES.O)
-    private fun calculateSizeApi26(path: String): Long {
-        val size = AtomicLong(0)
-        runCatching {
-            Files.walkFileTree(Paths.get(path), object : SimpleFileVisitor<Path>() {
-                override fun preVisitDirectory(dir: Path?, attrs: BasicFileAttributes?): FileVisitResult {
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun visitFile(file: Path?, attrs: BasicFileAttributes?): FileVisitResult {
-                    if (file != null && attrs != null) {
-                        size.addAndGet(attrs.size())
-                    }
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun visitFileFailed(file: Path?, exc: IOException?): FileVisitResult {
-                    return FileVisitResult.CONTINUE
-                }
-
-                override fun postVisitDirectory(dir: Path?, exc: IOException?): FileVisitResult {
-                    return FileVisitResult.CONTINUE
-                }
-            })
-        }
-        return size.get()
+        return size
     }
 
     fun deleteRecursively(path: String): Boolean {

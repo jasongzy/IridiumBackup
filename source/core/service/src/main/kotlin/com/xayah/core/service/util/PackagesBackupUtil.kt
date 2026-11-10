@@ -17,6 +17,7 @@ import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
 import com.xayah.core.model.util.get
 import com.xayah.core.model.util.set
 import com.xayah.core.model.database.PackageEntity
+import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.util.getCompressPara
 import com.xayah.core.network.client.CloudClient
@@ -56,24 +57,16 @@ class PackagesBackupUtil @Inject constructor(
 
     private fun log(onMsg: () -> String) = LogUtil.log(TAG, onMsg())
 
-    private fun PackageEntity.setDataBytes(dataType: DataType, sizeBytes: Long) = when (dataType) {
-        DataType.PACKAGE_APK -> dataStats.apkBytes = sizeBytes
-        DataType.PACKAGE_USER -> dataStats.userBytes = sizeBytes
-        DataType.PACKAGE_USER_DE -> dataStats.userDeBytes = sizeBytes
-        DataType.PACKAGE_DATA -> dataStats.dataBytes = sizeBytes
-        DataType.PACKAGE_OBB -> dataStats.obbBytes = sizeBytes
-        DataType.PACKAGE_MEDIA -> dataStats.mediaBytes = sizeBytes
-        else -> Unit
-    }
-
-    private fun PackageEntity.setDisplayBytes(dataType: DataType, sizeBytes: Long) = when (dataType) {
-        DataType.PACKAGE_APK -> displayStats.apkBytes = sizeBytes
-        DataType.PACKAGE_USER -> displayStats.userBytes = sizeBytes
-        DataType.PACKAGE_USER_DE -> displayStats.userDeBytes = sizeBytes
-        DataType.PACKAGE_DATA -> displayStats.dataBytes = sizeBytes
-        DataType.PACKAGE_OBB -> displayStats.obbBytes = sizeBytes
-        DataType.PACKAGE_MEDIA -> displayStats.mediaBytes = sizeBytes
-        else -> Unit
+    private fun PackageDataStats.setBytes(type: DataType, bytes: Long) {
+        when (type) {
+            DataType.PACKAGE_APK -> apkBytes = bytes
+            DataType.PACKAGE_USER -> userBytes = bytes
+            DataType.PACKAGE_USER_DE -> userDeBytes = bytes
+            DataType.PACKAGE_DATA -> dataBytes = bytes
+            DataType.PACKAGE_OBB -> obbBytes = bytes
+            DataType.PACKAGE_MEDIA -> mediaBytes = bytes
+            else -> Unit
+        }
     }
 
     private suspend fun TaskDetailPackageEntity.updateInfo(
@@ -97,7 +90,6 @@ class PackagesBackupUtil @Inject constructor(
         val out = mutableListOf<String>()
 
         Tar.compress(
-            exclusionList = listOf(),
             h = "",
             srcDir = context.filesDir(),
             src = IconRelativeDir,
@@ -144,8 +136,8 @@ class PackagesBackupUtil @Inject constructor(
             } else archive
         }
         if (result.isSuccess) {
-            p.setDataBytes(dataType, size)
-            p.setDisplayBytes(dataType, rootService.calculateSize(dst))
+            p.dataStats.setBytes(dataType, size)
+            p.displayStats.setBytes(dataType, rootService.calculateSize(dst))
         }
         t.updateInfo(dataType = dataType, state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR, log = result.outString)
         return result
@@ -186,10 +178,12 @@ class PackagesBackupUtil @Inject constructor(
                 return@run ShellResult(if (required) -1 else -2, emptyList(), listOf(message))
             }
 
-            val sizeBytes = rootService.calculateSize(src)
+            val exclusions = dataType.archiveExclusions(packageName)
+            val sizeBytes = rootService.calculateSize(src, exclusions.children, exclusions.namePrefixes)
             t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = sizeBytes)
             Tar.compress(
-                exclusionList = dataType.archiveExclusions(packageName).tarPatterns,
+                excludePaths = exclusions.paths,
+                excludeNamePrefixes = exclusions.namePrefixes,
                 h = if (context.readFollowSymlinks().first()) "-h" else "",
                 srcDir = srcDir,
                 src = packageName,
@@ -203,8 +197,8 @@ class PackagesBackupUtil @Inject constructor(
                 val contents = Tar.hasContent(dst, packageName, ct.decompressPara)
                 when (contents.getOrNull()) {
                     true -> {
-                        p.setDataBytes(dataType, sizeBytes)
-                        p.setDisplayBytes(dataType, rootService.calculateSize(dst))
+                        p.dataStats.setBytes(dataType, sizeBytes)
+                        p.displayStats.setBytes(dataType, rootService.calculateSize(dst))
                     }
                     false -> {
                         rootService.deleteRecursively(dst)

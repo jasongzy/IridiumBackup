@@ -184,7 +184,7 @@ class DetailsViewModel @Inject constructor(
                             if (!state.isInstalled) return@withLock
                             when (state.app.indexInfo.opType) {
                                 OpType.BACKUP -> {
-                                    appsRepo.updateApp(state.app, state.app.userId)
+                                    appsRepo.updateApp(state.app)
                                     appsRepo.calculateLocalAppSize(state.app)
                                 }
 
@@ -460,7 +460,7 @@ class DetailsViewModel @Inject constructor(
                         if (granted) AppOpsManager.MODE_ALLOWED else AppOpsManager.MODE_IGNORED,
                     )
                 }
-                appsRepo.updateApp(app, app.userId)
+                appsRepo.updateApp(app)
                 val packageInfo = rootService.getPackageInfoAsUser(
                     app.packageName,
                     PackageManager.GET_PERMISSIONS,

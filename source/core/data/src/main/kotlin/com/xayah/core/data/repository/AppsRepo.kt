@@ -6,8 +6,8 @@ import com.xayah.core.datastore.LabelFilterMode
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.UserHandle
 import com.xayah.core.data.R
+import com.xayah.core.data.util.archiveExclusions
 import com.xayah.core.data.util.srcDir
 import com.xayah.core.database.dao.PackageDao
 import com.xayah.core.datastore.di.DbDispatchers.Default
@@ -257,10 +257,9 @@ class AppsRepo @Inject constructor(
             }
             if (apps.isNotEmpty()) appsDao.upsert(apps)
 
-            val userHandle = rootService.getUserHandle(batch.userId)
             val updates = batch.changedApps.mapNotNull { app ->
                 onInit(current++, itemCount, app.packageName)
-                updateApp(pm, app, batch.userId, userHandle)
+                updateApp(pm, app)
             }
             appsDao.update(updates)
             syncInstalledApps(batch.userId)
@@ -320,12 +319,11 @@ class AppsRepo @Inject constructor(
         val itemCount = appsByUser.values.sumOf { it.size }
         var current = 0
         for ((userId, apps) in appsByUser) {
-            val userHandle = rootService.getUserHandle(userId)
             val updateList = mutableListOf<PackageUpdateEntity>()
 
             apps.forEach { pkg ->
                 onUpdate(current++, itemCount, pkg.packageName)
-                val updateEntity = updateApp(pm, pkg, userId, userHandle)
+                val updateEntity = updateApp(pm, pkg)
                 if (updateEntity != null) {
                     updateList.add(updateEntity)
                 }
@@ -343,9 +341,7 @@ class AppsRepo @Inject constructor(
         val updateList = mutableListOf<PackageUpdateEntity>()
         apps.forEachIndexed { index, pkg ->
             onUpdate(index, apps.size, pkg.packageName)
-            val userId = pkg.userId
-            val userHandle = rootService.getUserHandle(userId)
-            val updateEntity = updateApp(pm, pkg, userId, userHandle)
+            val updateEntity = updateApp(pm, pkg)
             if (updateEntity != null) {
                 updateList.add(updateEntity)
             }
@@ -372,13 +368,11 @@ class AppsRepo @Inject constructor(
         )
     }
 
-    suspend fun updateApp(pkg: PackageEntity, userId: Int) {
-        val pm = context.packageManager
-        val userHandle = rootService.getUserHandle(userId)
-        val updateEntity = updateApp(pm, pkg, userId, userHandle)
+    suspend fun updateApp(pkg: PackageEntity) {
+        val updateEntity = updateApp(context.packageManager, pkg)
         if (updateEntity != null) {
             appsDao.update(updateEntity)
-            syncInstalledApps(userId)
+            syncInstalledApps(pkg.userId)
         }
     }
 
@@ -388,14 +382,13 @@ class AppsRepo @Inject constructor(
         labelsRepo.deleteOrphanedAppRefs()
     }
 
-    private suspend fun updateApp(pm: PackageManager, pkg: PackageEntity, userId: Int, userHandle: UserHandle?): PackageUpdateEntity? {
+    private suspend fun updateApp(pm: PackageManager, pkg: PackageEntity): PackageUpdateEntity? {
         val info = rootService.getPackageInfoAsUser(
             pkg.packageName,
             PackageManager.GET_PERMISSIONS or PackageManager.GET_META_DATA,
-            userId,
+            pkg.userId,
         ) ?: return null
         val uid = info.applicationInfo?.uid ?: -1
-        val stats = userHandle?.let { rootService.queryStatsForPackage(info, it) }
         return PackageUpdateEntity(
             id = pkg.id,
             packageInfo = PackageInfo(
@@ -411,13 +404,10 @@ class AppsRepo @Inject constructor(
                 lastUpdateTime = info.lastUpdateTime,
                 isXposedModule = xposedModuleDetector.isModule(info),
             ),
-            storageStats = stats?.let {
-                PackageStorageStats(it.appBytes, it.cacheBytes, it.dataBytes, it.externalCacheBytes)
-            } ?: pkg.storageStats,
             uid = uid,
             permissions = rootService.getPermissions(packageInfo = info),
             hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid, pkg.extraInfo),
-            ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = userId),
+            ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = pkg.userId),
             firstUpdated = true,
             enabled = info.applicationInfo?.enabled ?: false,
         )
@@ -488,18 +478,8 @@ class AppsRepo @Inject constructor(
             return rootService.getPackageSourceDir(p.packageName, p.userId).sumOf { rootService.calculateSize(it) }
         }
         val src = "${dataType.srcDir(p.userId)}/${p.packageName}"
-        if (!rootService.exists(src)) return 0L
-        val excluded = when (dataType) {
-            DataType.PACKAGE_USER, DataType.PACKAGE_USER_DE ->
-                listOf(".ota", "cache", "lib", "code_cache", "no_backup").map { "$src/$it" }
-            DataType.PACKAGE_DATA, DataType.PACKAGE_OBB, DataType.PACKAGE_MEDIA ->
-                rootService.listFilePaths(src).filter { path ->
-                    val name = PathUtil.getFileName(path)
-                    name == "cache" || name.startsWith("Backup_")
-                }
-            else -> emptyList()
-        }
-        return (rootService.calculateSize(src) - excluded.sumOf { rootService.calculateSize(it) }).coerceAtLeast(0L)
+        val exclusions = dataType.archiveExclusions(p.packageName)
+        return rootService.calculateSize(src, exclusions.children, exclusions.namePrefixes)
     }
 
     suspend fun calculateLocalAppArchiveSize(app: PackageEntity) {

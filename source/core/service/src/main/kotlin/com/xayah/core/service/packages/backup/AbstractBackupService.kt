@@ -203,7 +203,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     ),
                     extraInfo = installedApp.extraInfo.copy(uid = info.uid),
                     dataStates = installedApp.dataStates.copy(),
-                    storageStats = installedApp.storageStats.copy(),
                     dataStats = PackageDataStats(),
                     displayStats = PackageDataStats(),
                 )

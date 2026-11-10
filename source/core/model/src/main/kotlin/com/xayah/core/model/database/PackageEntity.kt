@@ -248,9 +248,6 @@ data class PackageEntity(
     val ssaidSelected: Boolean
         get() = dataStates.ssaidState == DataState.Selected
 
-    val storageStatsBytes: Double
-        get() = (storageStats.appBytes + storageStats.dataBytes).toDouble()
-
     val displayStatsBytes: Double
         get() = (displayStats.apkBytes + displayStats.userBytes + displayStats.userDeBytes + displayStats.dataBytes + displayStats.obbBytes + displayStats.mediaBytes).toDouble()
 
@@ -261,9 +258,6 @@ data class PackageEntity(
             (if (dataSelected) displayStats.dataBytes else 0L) +
             (if (obbSelected) displayStats.obbBytes else 0L) +
             (if (mediaSelected) displayStats.mediaBytes else 0L)
-
-    val storageStatsFormat: String
-        get() = storageStatsBytes.formatSize()
 
     val displayStatsFormat: String
         get() = displayStatsBytes.formatSize()
@@ -326,7 +320,6 @@ data class PackageDisplayStatsEntity(
 data class PackageUpdateEntity(
     var id: Long,
     @Embedded(prefix = "packageInfo_") var packageInfo: PackageInfo,
-    @Embedded(prefix = "storageStats_") var storageStats: PackageStorageStats,
     @ColumnInfo(name = "extraInfo_uid") var uid: Int,
     @ColumnInfo(name = "extraInfo_hasKeystore") var hasKeystore: Boolean,
     @ColumnInfo(name = "extraInfo_permissions") var permissions: List<PackagePermission>,

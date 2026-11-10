@@ -6,7 +6,6 @@ import android.app.ActivityManagerHidden
 import android.app.ActivityThread
 import android.app.AppOpsManager
 import android.app.AppOpsManagerHidden
-import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.IPackageManager
@@ -37,7 +36,6 @@ import com.xayah.core.rootservice.IRemoteRootService
 import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable
 import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.rootservice.parcelables.StatFsParcelable
-import com.xayah.core.rootservice.parcelables.StorageStatsParcelable
 import com.xayah.core.rootservice.util.ExceptionUtil.tryOn
 import com.xayah.core.rootservice.util.ExceptionUtil.tryWithBoolean
 import com.xayah.core.rootservice.util.SsaidUtil
@@ -85,9 +83,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         process.inputStream.bufferedReader().use { it.readText() }
         process.waitFor() == 0
     }.getOrDefault(false)
-
-    @TargetApi(Build.VERSION_CODES.O)
-    private fun getStorageStatsManager(): StorageStatsManager = systemContext.getSystemService(Context.STORAGE_STATS_SERVICE) as StorageStatsManager
 
     private fun getUserManager(): UserManagerHidden = UserManagerHidden.get(systemContext).castTo()
 
@@ -292,9 +287,8 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
             }
         }
 
-    override fun calculateSize(path: String): Long = synchronized(lock) {
-        NativeLib.calculateSize(path)
-    }
+    override fun calculateSize(path: String, excludedChildren: Array<String>, excludedPrefixes: Array<String>): Long =
+        NativeLib.calculateSize(path, excludedChildren, excludedPrefixes)
 
     override fun fileLength(path: String): Long = FileUtil.statIfPresent(path)?.let {
         check(OsConstants.S_ISREG(it.st_mode)) { "Not a regular file: $path" }
@@ -364,61 +358,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
 
     override fun getUserHandle(userId: Int): UserHandle = synchronized(lock) {
         UserHandleHidden.of(userId)
-    }
-
-    private fun queryStatsForPackageApi24(packageInfo: PackageInfo, user: UserHandle): StorageStatsParcelable {
-        val userHandle: UserHandleHidden = user.castTo()
-        // https://cs.android.com/android/platform/superproject/+/android-8.0.0_r51:frameworks/base/services/core/java/com/android/server/pm/Installer.java;l=225
-        // https://cs.android.com/android/platform/superproject/+/android-8.0.0_r51:frameworks/native/cmds/installd/InstalldNativeService.cpp;l=1340
-        // https://cs.android.com/android/platform/superproject/+/android-8.0.0_r51:frameworks/base/services/usage/java/com/android/server/usage/StorageStatsService.java;l=439
-        // https://cs.android.com/android/platform/superproject/+/android-8.0.0_r51:frameworks/base/core/java/android/app/usage/StorageStats.java;l=31
-        val userDir = "${PathUtil.getPackageUserDir(userHandle.identifier)}/${packageInfo.packageName}"
-        val userCacheDir = "$userDir/cache"
-        val userCodeCacheDir = "$userDir/code_cache"
-        val dataDir = "${PathUtil.getPackageDataDir(userHandle.identifier)}/${packageInfo.packageName}"
-        val dataCacheDir = "$dataDir/cache"
-        val dataCodeCacheDir = "$dataDir/code_cache"
-        val obbDir = "${PathUtil.getPackageObbDir(userHandle.identifier)}/${packageInfo.packageName}"
-        val obbCacheDir = "$obbDir/cache"
-        val obbCodeCacheDir = "$obbDir/code_cache"
-        val mediaDir = "${PathUtil.getPackageMediaDir(userHandle.identifier)}/${packageInfo.packageName}"
-        val mediaCacheDir = "$mediaDir/cache"
-        val mediaCodeCacheDir = "$mediaDir/code_cache"
-
-        val appDirSize = runCatching { FileUtil.calculateSize(PathUtil.getParentPath(packageInfo.applicationInfo!!.sourceDir)) }.getOrElse { 0 }
-        val cacheDirSize = FileUtil.calculateSize(userCacheDir) + FileUtil.calculateSize(userCodeCacheDir) +
-                FileUtil.calculateSize(dataCacheDir) + FileUtil.calculateSize(dataCodeCacheDir) +
-                FileUtil.calculateSize(obbCacheDir) + FileUtil.calculateSize(obbCodeCacheDir) +
-                FileUtil.calculateSize(mediaCacheDir) + FileUtil.calculateSize(mediaCodeCacheDir)
-        val dataDirSize = FileUtil.calculateSize(userDir) + FileUtil.calculateSize(dataDir) + FileUtil.calculateSize(obbDir) + FileUtil.calculateSize(mediaDir) - cacheDirSize
-        return StorageStatsParcelable(
-            appDirSize,
-            cacheDirSize,
-            dataDirSize,
-            0,
-        )
-    }
-
-    @TargetApi(Build.VERSION_CODES.O)
-    fun queryStatsForPackageApi26(packageInfo: PackageInfo, user: UserHandle): StorageStatsParcelable {
-        val stats = runCatching { getStorageStatsManager().queryStatsForPackage(packageInfo.applicationInfo!!.storageUuid, packageInfo.packageName, user) }.getOrNull()
-
-        return StorageStatsParcelable(
-            stats?.appBytes ?: 0,
-            stats?.cacheBytes ?: 0,
-            stats?.dataBytes ?: 0,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) stats?.externalCacheBytes ?: 0 else 0,
-        )
-    }
-
-    override fun queryStatsForPackage(packageInfo: PackageInfo, user: UserHandle): StorageStatsParcelable? = synchronized(lock) {
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                queryStatsForPackageApi26(packageInfo, user)
-            } else {
-                queryStatsForPackageApi24(packageInfo, user)
-            }
-        }.getOrNull()
     }
 
     override fun getUsers(): List<UserInfo> = synchronized(lock) {

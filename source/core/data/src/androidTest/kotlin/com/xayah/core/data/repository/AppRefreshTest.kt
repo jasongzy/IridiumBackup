@@ -85,7 +85,6 @@ class AppRefreshTest {
                         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                     }
                     "getPackageInfoAsUser" -> info.takeIf { detailsAvailable }?.also { detailsRead++ }
-                    "getUserHandle" -> null
                     "getPermissions" -> emptyList<Any>()
                     "getPackageSsaidAsUser" -> ""
                     else -> error("Unexpected root operation: ${method.name}")

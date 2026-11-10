@@ -1,6 +1,5 @@
 package com.xayah.core.util.command
 
-import com.xayah.core.common.util.toSpaceString
 import com.xayah.core.util.shellQuote
 import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.model.ShellResult
@@ -44,43 +43,18 @@ object Tar {
         }
     }
 
-    suspend fun compress(exclusionList: List<String>, h: String, srcDir: String, src: String, dst: String, extra: String): ShellResult =
-        run {
-            val exclusion = exclusionList.map { "--exclude=${shellQuote(it)}" }.toSpaceString()
-            if (extra.isEmpty()) {
-                // tar --totals "$exclusion" $h -cpf - -C "$srcDir" -- "$src" > "$dst"
-                execute(
-                    "--totals",
-                    exclusion,
-                    h,
-                    "-cpf",
-                    "-",
-                    "-C",
-                    shellQuote(srcDir),
-                    "--",
-                    shellQuote(src),
-                    ">",
-                    shellQuote(dst),
-                ).acceptFileChangedWarnings()
-            } else {
-                // tar --totals "$exclusion" $h -cpf - -C "$srcDir" -- "$src" | $extra > "$dst"
-                execute(
-                    "--totals",
-                    exclusion,
-                    h,
-                    "-cpf",
-                    "-",
-                    "-C",
-                    shellQuote(srcDir),
-                    "--",
-                    shellQuote(src),
-                    "|",
-                    extra,
-                    ">",
-                    shellQuote(dst),
-                ).acceptFileChangedWarnings()
-            }
-        }
+    suspend fun compress(
+        h: String, srcDir: String, src: String, dst: String, extra: String,
+        excludePaths: List<String> = emptyList(), excludeNamePrefixes: List<String> = emptyList(),
+    ): ShellResult {
+        val paths = excludePaths.joinToString(" ") { "--exclude=${shellQuote(it)}" }
+        val names = excludeNamePrefixes.joinToString(" ") { "--exclude=${shellQuote("$it*")}" }
+        val compressor = if (extra.isEmpty()) "" else "| $extra"
+        return execute(
+            "--totals", "--anchored", paths, "--no-anchored", names, h, "-cpf", "-", "-C", shellQuote(srcDir), "--", shellQuote(src),
+            compressor, ">", shellQuote(dst),
+        ).acceptFileChangedWarnings()
+    }
 
     private suspend fun list(src: String, compression: String, output: String): ShellResult =
         if (compression.isEmpty()) {

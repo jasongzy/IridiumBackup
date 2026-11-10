@@ -26,7 +26,6 @@ import com.xayah.core.rootservice.R
 import com.xayah.core.rootservice.impl.RemoteRootServiceImpl
 import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.rootservice.parcelables.StatFsParcelable
-import com.xayah.core.rootservice.parcelables.StorageStatsParcelable
 import com.xayah.core.rootservice.util.withIOContext
 import com.xayah.core.rootservice.util.withMainContext
 import com.xayah.core.util.GsonUtil
@@ -327,7 +326,8 @@ class RemoteRootService(private val context: Context) {
         bytes
     }.onFailure(onFailure).getOrElse { ByteArray(0) }
 
-    suspend fun calculateSize(path: String): Long = runCatching { getService().calculateSize(path) }.onFailure(onFailure).getOrElse { 0 }
+    suspend fun calculateSize(path: String, excludedChildren: List<String> = emptyList(), excludedPrefixes: List<String> = emptyList()): Long =
+        runCatching { getService().calculateSize(path, excludedChildren.toTypedArray(), excludedPrefixes.toTypedArray()) }.onFailure(onFailure).getOrElse { 0 }
 
     suspend fun fileLengthIfPresent(path: String): Long? = getService().fileLength(path).takeIf { it >= 0 }
 
@@ -365,9 +365,6 @@ class RemoteRootService(private val context: Context) {
         runCatching { getService().getPackageUid(packageName, userId) }.onFailure(onFailure).getOrElse { -1 }
 
     suspend fun getUserHandle(userId: Int): UserHandle? = runCatching { getService().getUserHandle(userId) }.onFailure(onFailure).getOrNull()
-
-    suspend fun queryStatsForPackage(packageInfo: PackageInfo, user: UserHandle): StorageStatsParcelable? =
-        runCatching { getService().queryStatsForPackage(packageInfo, user) }.onFailure(onFailure).getOrNull()
 
     suspend fun getUsers(): List<UserInfo> = runCatching { getService().users }.onFailure(onFailure).getOrElse { listOf() }
 

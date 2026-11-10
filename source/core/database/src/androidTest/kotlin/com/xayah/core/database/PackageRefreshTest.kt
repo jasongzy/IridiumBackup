@@ -61,7 +61,6 @@ class PackageRefreshTest {
             val refresh = PackageUpdateEntity(
                 id = app.id,
                 packageInfo = app.packageInfo.copy(versionName = "2.0", versionCode = 2),
-                storageStats = PackageStorageStats(appBytes = 200),
                 uid = 10002,
                 hasKeystore = true,
                 permissions = emptyList(),
@@ -79,7 +78,6 @@ class PackageRefreshTest {
             val expected = current.copy(
                 packageInfo = refresh.packageInfo,
                 extraInfo = current.extraInfo.copy(uid = 10002, hasKeystore = true, ssaid = "updated", firstUpdated = true, enabled = false),
-                storageStats = refresh.storageStats,
             )
             dao.update(refresh)
             assertEquals(expected, dao.queryById(app.id))

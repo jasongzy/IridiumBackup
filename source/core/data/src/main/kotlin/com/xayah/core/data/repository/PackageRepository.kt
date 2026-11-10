@@ -10,7 +10,6 @@ import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
-import com.xayah.core.model.SortType
 import com.xayah.core.model.database.MediaEntity
 import com.xayah.core.model.database.MediaExtraInfo
 import com.xayah.core.model.database.MediaIndexInfo
@@ -36,7 +35,6 @@ import com.xayah.core.util.withLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import java.text.Collator
 import java.util.UUID
 import javax.inject.Inject
 
@@ -74,65 +72,6 @@ class PackageRepository @Inject constructor(
     private val localBackupSaveDir get() = context.localBackupSaveDir()
 
     fun getArchiveDst(dstDir: String, dataType: DataType, ct: CompressionType) = "${dstDir}/${dataType.type}.${ct.suffix}"
-
-    fun getKeyPredicateNew(key: String): (PackageEntity) -> Boolean = { p ->
-        p.packageInfo.label.lowercase().contains(key.lowercase()) || p.packageName.lowercase().contains(key.lowercase())
-    }
-
-    private fun sortByInstallTimeNew(type: SortType): Comparator<PackageEntity> = when (type) {
-        SortType.ASCENDING -> {
-            compareBy { p -> p.packageInfo.firstInstallTime }
-        }
-
-        SortType.DESCENDING -> {
-            compareByDescending { p -> p.packageInfo.firstInstallTime }
-        }
-    }
-
-    private fun sortByDataSizeNew(type: SortType): Comparator<PackageEntity> = when (type) {
-        SortType.ASCENDING -> {
-            compareBy { p -> p.storageStatsBytes }
-        }
-
-        SortType.DESCENDING -> {
-            compareByDescending { p -> p.storageStatsBytes }
-        }
-    }
-
-    private fun sortByAlphabetNew(type: SortType): Comparator<PackageEntity> = Comparator { p1, p2 ->
-        if (p1 != null && p2 != null) {
-            when (type) {
-                SortType.ASCENDING -> {
-                    Collator.getInstance().let { collator ->
-                        collator.getCollationKey(p1.packageInfo.label).compareTo(collator.getCollationKey(p2.packageInfo.label))
-                    }
-                }
-
-                SortType.DESCENDING -> {
-                    Collator.getInstance().let { collator ->
-                        collator.getCollationKey(p2.packageInfo.label).compareTo(collator.getCollationKey(p1.packageInfo.label))
-                    }
-                }
-            }
-        } else {
-            0
-        }
-    }
-
-    fun getSortComparatorNew(sortIndex: Int, sortType: SortType): Comparator<in PackageEntity> = when (sortIndex) {
-        1 -> sortByInstallTimeNew(sortType)
-        2 -> sortByDataSizeNew(sortType)
-        3 -> compareByDirection(sortType) { it.packageInfo.lastUpdateTime }
-        4 -> compareByDirection(sortType) { it.extraInfo.lastBackupTime }
-        else -> sortByAlphabetNew(sortType)
-    }
-
-    private fun <T : Comparable<T>> compareByDirection(
-        sortType: SortType,
-        selector: (PackageEntity) -> T,
-    ): Comparator<PackageEntity> = compareBy(selector).let { comparator ->
-        if (sortType == SortType.ASCENDING) comparator else comparator.reversed()
-    }
 
     fun getDataSrcDir(dataType: DataType, userId: Int) = dataType.srcDir(userId)
 

@@ -35,11 +35,11 @@ class FileSizeTest {
             assertThrows(IllegalStateException::class.java) { FileUtil.statIfPresent(links[2].path) }
             assertThrows(IllegalStateException::class.java) { FileUtil.statIfPresent(externalFile.resolve("child").path) }
             val expected = 18L + links.sumOf { Os.lstat(it.path).st_size }
-            assertEquals(expected, FileUtil.calculateSizeApi24(root.path))
+            assertEquals(expected, FileUtil.calculateSize(root.path))
             links.forEach { link ->
-                assertEquals(Os.lstat(link.path).st_size, FileUtil.calculateSizeApi24(link.path))
+                assertEquals(Os.lstat(link.path).st_size, FileUtil.calculateSize(link.path))
             }
-            assertEquals(0L, FileUtil.calculateSizeApi24(File(workspace, "missing").path))
+            assertEquals(0L, FileUtil.calculateSize(File(workspace, "missing").path))
         } finally {
             check(FileUtil.deleteRecursively(workspace.path))
         }

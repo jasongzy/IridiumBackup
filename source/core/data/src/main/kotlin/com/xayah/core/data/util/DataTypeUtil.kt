@@ -12,14 +12,14 @@ fun DataType.srcDir(userId: Int): String = when (this) {
     else -> ""
 }
 
-class ArchiveExclusions(val paths: List<String>, val namePrefixes: List<String> = emptyList()) {
-    val tarPatterns get() = paths + namePrefixes.map { "$it*" }
+class ArchiveExclusions(packageName: String, val children: List<String>, val namePrefixes: List<String> = emptyList()) {
+    val paths = children.map { "$packageName/$it" }
 }
 
 fun DataType.archiveExclusions(packageName: String) = when (this) {
     DataType.PACKAGE_USER, DataType.PACKAGE_USER_DE ->
-        ArchiveExclusions(listOf(".ota", "cache", "lib", "code_cache", "no_backup").map { "$packageName/$it" })
+        ArchiveExclusions(packageName, listOf(".ota", "cache", "lib", "code_cache", "no_backup"))
     DataType.PACKAGE_DATA, DataType.PACKAGE_OBB, DataType.PACKAGE_MEDIA ->
-        ArchiveExclusions(listOf("$packageName/cache"), listOf("Backup_"))
-    else -> ArchiveExclusions(emptyList())
+        ArchiveExclusions(packageName, listOf("cache"), listOf("Backup_"))
+    else -> ArchiveExclusions(packageName, emptyList())
 }

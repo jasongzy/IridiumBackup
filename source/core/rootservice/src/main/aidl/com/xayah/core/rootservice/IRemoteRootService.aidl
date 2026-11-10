@@ -2,7 +2,6 @@ package com.xayah.core.rootservice;
 
 import android.content.Intent;
 import com.xayah.core.rootservice.parcelables.StatFsParcelable;
-import com.xayah.core.rootservice.parcelables.StorageStatsParcelable;
 import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable;
 import com.xayah.core.model.database.PackagePermission;
 
@@ -26,7 +25,7 @@ interface IRemoteRootService {
     List<String> listFilePaths(String path, boolean listFiles, boolean listDirs);
     ParcelFileDescriptor readText(String path);
     ParcelFileDescriptor readBytes(String path);
-    long calculateSize(String path);
+    long calculateSize(String path, in String[] excludedChildren, in String[] excludedPrefixes);
     long fileLength(String path);
     int fileGroupId(String path);
 
@@ -40,7 +39,6 @@ interface IRemoteRootService {
     boolean queryInstalled(String packageName, int userId);
     int getPackageUid(String packageName, int userId);
     UserHandle getUserHandle(int userId);
-    StorageStatsParcelable queryStatsForPackage(in PackageInfo packageInfo, in UserHandle user);
     List<UserInfo> getUsers();
     ParcelFileDescriptor walkFileTree(String path);
     PackageInfo getPackageArchiveInfo(String path);
