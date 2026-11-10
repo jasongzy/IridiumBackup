@@ -24,7 +24,7 @@ import com.xayah.feature.main.processing.GetUsers
 import com.xayah.feature.main.processing.IndexUiState
 import com.xayah.feature.main.processing.ProcessingUiIntent
 import com.xayah.feature.main.processing.R
-import com.xayah.feature.main.processing.SetCloudEntity
+import com.xayah.feature.main.processing.LoadRestoreSource
 import com.xayah.feature.main.processing.UpdateApps
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -60,13 +60,13 @@ class RestoreViewModelImpl @Inject constructor(
                 _preview.value = PackageTaskRequest.Restore(packages, size)
             }
 
-            is SetCloudEntity -> {
+            is LoadRestoreSource -> {
                 val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: ""
                 val backupDir = args.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.takeIf { it.isNotBlank() }
                 if (name.isNotEmpty()) {
-                    emitState(state.copy(storageIndex = 1, storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name), backupDir = backupDir))
+                    emitState(state.copy(storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name), backupDir = backupDir))
                 } else {
-                    emitState(state.copy(storageIndex = 0, storageType = StorageMode.Local, cloudEntity = null, backupDir = backupDir))
+                    emitState(state.copy(storageType = StorageMode.Local, cloudEntity = null, backupDir = backupDir))
                 }
             }
 

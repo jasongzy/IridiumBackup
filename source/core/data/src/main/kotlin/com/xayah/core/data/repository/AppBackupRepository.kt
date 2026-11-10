@@ -311,11 +311,10 @@ class AppBackupRepository @Inject constructor(
                 packageRepository.updateXposedModule(app.id, isXposedModule)
             }
         }
-        val preserveId = revision.artifactId.substringAfterLast('@').toLongOrNull() ?: return
         packageRepository.updateRevisionXposedModule(
             packageName = revision.packageName,
             userId = revision.userId,
-            preserveId = preserveId,
+            preserveId = revision.createdAt,
             cloud = revision.repositoryId.substringBefore(':'),
             backupDir = revision.repositoryId.substringAfter(':'),
             isXposedModule = isXposedModule,
@@ -644,20 +643,25 @@ class AppBackupRepository @Inject constructor(
         findLegacyRevision(revision)?.copy(dataStates = dataStates.copy())
 
     suspend fun latestLocalPackagesForRestore(keys: Set<AppKey>): List<PackageEntity> {
-        val repositoryId = ":${context.localBackupSaveDir()}"
-        return database.withTransaction {
-            dao.getRevisions(repositoryId)
-                .distinctBy { AppKey(it.packageName, it.userId) }
-                .filter { AppKey(it.packageName, it.userId) in keys }
-                .mapNotNull { revision -> revisionForRestore(revision, PackageDataStates.fromArchiveMask(revision.contentMask)) }
+        val backupDir = context.localBackupSaveDir()
+        val packages = database.withTransaction {
+            keys.groupBy(AppKey::userId).flatMap { (userId, group) ->
+                group.map(AppKey::packageName).chunked(SQLITE_BIND_LIMIT - 4).flatMap { names ->
+                    dao.latestLocalRestorePackages(backupDir, userId, names, OpType.RESTORE).entries
+                }
+            }
         }
+        return packages.sortedWith(compareByDescending<Map.Entry<BackupRevisionEntity, PackageEntity>> { it.key.createdAt }.thenBy { it.key.id })
+            .mapNotNull { (revision, app) ->
+                if (revision.engine != BackupEngine.LEGACY || !hasValidArtifactId(revision)) null
+                else app.copy(dataStates = PackageDataStates.fromArchiveMask(revision.contentMask))
+            }
     }
 
     private suspend fun findLegacyRevision(revision: BackupRevisionEntity): PackageEntity? {
         if (revision.engine != BackupEngine.LEGACY || !hasValidArtifactId(revision)) return null
-        val preserveId = revision.artifactId.substringAfterLast('@').toLongOrNull() ?: return null
         return packageRepository
-            .getRevisions(revision.packageName, revision.userId, preserveId)
+            .getRevisions(revision.packageName, revision.userId, revision.createdAt)
             .firstOrNull { "${it.indexInfo.cloud}:${it.indexInfo.backupDir}" == revision.repositoryId }
     }
 

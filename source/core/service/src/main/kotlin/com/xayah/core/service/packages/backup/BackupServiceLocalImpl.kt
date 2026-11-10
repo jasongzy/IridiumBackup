@@ -10,7 +10,6 @@ import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.util.CommonBackupUtil
 import com.xayah.core.service.util.PackagesBackupUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -54,7 +53,7 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
         mRootService.requireBackupStorage(mContext, mRootDir, allowNewDirectory = true)
     }
 
-    override val mRootDir by lazy { requestedBackupDir ?: mContext.localBackupSaveDir() }
+    override val mRootDir get() = storage.backupDir
     override val mAppsDir by lazy { mPathUtil.getLocalBackupAppsDir(mRootDir) }
     override val mConfigsDir by lazy { "$mRootDir/${PathUtil.getConfigsRelativeDir()}" }
 }

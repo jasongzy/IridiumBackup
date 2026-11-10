@@ -22,9 +22,7 @@ import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +31,7 @@ import androidx.compose.ui.res.vectorResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.model.StorageMode
+import com.xayah.core.model.Target
 import com.xayah.core.ui.component.Clickable
 import com.xayah.core.ui.component.CloudAccountPicker
 import com.xayah.core.ui.component.PackageIcons
@@ -44,6 +43,8 @@ import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.util.navigateSingle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @SuppressLint("StringFormatInvalid")
 @ExperimentalFoundationApi
@@ -60,8 +61,8 @@ fun PageRestore() {
     val lastRestoreTime by viewModel.lastRestoreTimeState.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
 
-    LaunchedEffect(null) {
-        viewModel.launchOnIO {
+    LaunchedEffect(uiState.storageType, uiState.cloudEntity) {
+        withContext(Dispatchers.IO) {
             viewModel.emitIntent(IndexUiIntent.UpdateApps)
             viewModel.emitIntent(IndexUiIntent.UpdateFiles)
         }
@@ -81,7 +82,6 @@ fun PageRestore() {
                 lastRestoreTime = lastRestoreTime
             )
 
-            var enabled by remember { mutableStateOf(true) }
             val storageOptions = remember { listOf(context.getString(R.string.local), context.getString(R.string.cloud)) }
             SingleChoiceSegmentedButtonRow(
                 modifier = Modifier
@@ -91,35 +91,29 @@ fun PageRestore() {
             ) {
                 storageOptions.forEachIndexed { index, label ->
                     SegmentedButton(
-                        enabled = enabled,
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = storageOptions.size),
-                        onClick = {
-                            viewModel.launchOnIO {
-                                enabled = false
-                                viewModel.emitState(state = uiState.copy(storageIndex = index, storageType = if (index == 0) StorageMode.Local else StorageMode.Cloud))
-                                viewModel.emitIntent(IndexUiIntent.UpdateApps)
-                                viewModel.emitIntent(IndexUiIntent.UpdateFiles)
-                                enabled = true
-                            }
-                        },
-                        selected = index == uiState.storageIndex
+                        onClick = { viewModel.selectStorage(index) },
+                        selected = index == uiState.storageType.ordinal
                     ) {
                         Text(label)
                     }
                 }
             }
 
-            AnimatedVisibility(uiState.storageIndex == 1) {
+            AnimatedVisibility(uiState.storageType == StorageMode.Cloud) {
                 CloudAccountPicker(
                     accounts = accounts,
                     selected = uiState.cloudEntity,
+                    autoSelectFirst = uiState.autoSelectFirstCloud,
                     onManage = { navController.navigateSingle(MainRoutes.Cloud.route) },
-                    enabled = enabled,
-                ) { name -> viewModel.emitIntentOnIO(IndexUiIntent.SetCloudEntity(name)) }
+                    onSelect = viewModel::selectCloudAccount,
+                )
             }
 
+            val sourceAvailable = uiState.storageType == StorageMode.Local || uiState.cloudEntity in accounts
             val appsInteractionSource = remember { MutableInteractionSource() }
             Clickable(
+                enabled = sourceAvailable,
                 title = stringResource(id = R.string.apps),
                 value = if (uiState.packages.isEmpty()) null else
                     "${context.getString(R.string.args_apps_backed_up, uiState.packages.size)}${if (uiState.packagesSize.isNotEmpty()) " (${uiState.packagesSize})" else ""}",
@@ -131,11 +125,12 @@ fun PageRestore() {
                     }
                 }
             ) {
-                viewModel.emitIntentOnIO(IndexUiIntent.ToAppList(navController))
+                viewModel.emitIntentOnIO(IndexUiIntent.ToList(Target.Apps, navController))
             }
 
             val filesInteractionSource = remember { MutableInteractionSource() }
             Clickable(
+                enabled = sourceAvailable,
                 title = stringResource(id = R.string.files),
                 value = if (uiState.medium.isEmpty()) null else
                     "${context.getString(R.string.args_files_backed_up, uiState.medium.size)}${if (uiState.mediumSize.isNotEmpty()) " (${uiState.mediumSize})" else ""}"
@@ -143,7 +138,7 @@ fun PageRestore() {
                 leadingIcon = ImageVector.vectorResource(id = R.drawable.ic_rounded_folder_open),
                 interactionSource = filesInteractionSource,
             ) {
-                viewModel.emitIntentOnIO(IndexUiIntent.ToFileList(navController))
+                viewModel.emitIntentOnIO(IndexUiIntent.ToList(Target.Files, navController))
             }
         }
     }

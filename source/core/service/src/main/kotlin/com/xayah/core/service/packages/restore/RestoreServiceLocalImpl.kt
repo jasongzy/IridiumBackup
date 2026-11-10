@@ -11,7 +11,6 @@ import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.util.CommonBackupUtil
 import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -54,6 +53,6 @@ internal class RestoreServiceLocalImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     override lateinit var mPackagesRestoreUtil: PackagesRestoreUtil
 
-    override val mRootDir by lazy { requestedBackupDir ?: mContext.localBackupSaveDir() }
+    override val mRootDir get() = storage.backupDir
     override val mAppsDir by lazy { "$mRootDir/${PathUtil.getAppsRelativeDir()}" }
 }

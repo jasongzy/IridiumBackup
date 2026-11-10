@@ -7,7 +7,6 @@ import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.TaskType
-import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.MediaEntity
 import com.xayah.core.model.database.TaskDetailMediaEntity
 import com.xayah.core.model.database.TaskEntity
@@ -50,16 +49,11 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     }
 
     override suspend fun getMedium(): List<MediaEntity> {
-        mCloudRepo.getClient().also { (c, e) ->
-            mCloudEntity = e
-            mClient = c
-        }
+        mClient = mCloudRepo.getClient(storage.cloud).first
+        mRemoteFilesDir = mPathUtil.getCloudRemoteFilesDir(storage.backupDir)
+        mTaskEntity.update(cloud = storage.cloud, backupDir = storage.backupDir)
 
-        mRemotePath = mCloudEntity.remote
-        mRemoteFilesDir = mPathUtil.getCloudRemoteFilesDir(mRemotePath)
-        mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
-
-        return mMediaRepo.queryActivated(OpType.RESTORE, mCloudEntity.name, mCloudEntity.remote)
+        return mMediaRepo.queryActivated(OpType.RESTORE, storage.cloud, storage.backupDir)
     }
 
     private fun getRemoteFileDir(archivesRelativeDir: String) = "${mRemoteFilesDir}/${archivesRelativeDir}"
@@ -95,8 +89,6 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     lateinit var mCloudRepo: CloudRepository
 
-    private lateinit var mCloudEntity: CloudEntity
     private lateinit var mClient: CloudClient
-    private lateinit var mRemotePath: String
     private lateinit var mRemoteFilesDir: String
 }

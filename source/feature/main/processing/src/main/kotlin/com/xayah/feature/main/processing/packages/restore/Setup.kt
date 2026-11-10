@@ -54,7 +54,7 @@ import com.xayah.core.ui.token.SizeTokens
 import com.xayah.feature.main.processing.GetUsers
 import com.xayah.feature.main.processing.ProcessingSetupScaffold
 import com.xayah.feature.main.processing.R
-import com.xayah.feature.main.processing.SetCloudEntity
+import com.xayah.feature.main.processing.LoadRestoreSource
 import com.xayah.feature.main.processing.UpdateApps
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
@@ -79,7 +79,7 @@ fun PagePackagesRestoreProcessingSetup(localNavController: NavHostController, vi
 
     LaunchedEffect(null) {
         viewModel.launchOnIO {
-            viewModel.emitIntent(SetCloudEntity(""))
+            viewModel.emitIntent(LoadRestoreSource)
             viewModel.emitIntent(GetUsers)
             viewModel.emitIntent(UpdateApps)
         }

@@ -3,6 +3,7 @@ package com.xayah.core.data.repository
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.database.AppDatabase
+import com.xayah.core.model.AppKey
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
@@ -14,6 +15,7 @@ import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.PathUtil
+import com.xayah.core.util.localBackupSaveDir
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -25,6 +27,7 @@ class BackupRecordingTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         try {
+            val backupDir = context.localBackupSaveDir()
             val root = RemoteRootService(context)
             val paths = PathUtil(context)
             val packages = database.packageDao()
@@ -60,7 +63,7 @@ class BackupRecordingTest {
             repository.updateAppNote(app.packageName, 0, "Current note")
             val currentMetadata = dao.getApp(app.packageName, 0)
 
-            val revision = request.copy(id = 0, indexInfo = request.indexInfo.copy(opType = OpType.RESTORE, backupDir = "/backup", preserveId = 1234))
+            val revision = request.copy(id = 0, indexInfo = request.indexInfo.copy(opType = OpType.RESTORE, backupDir = backupDir, preserveId = 1234))
             repository.recordLegacyRevision(revision, 2, 512)
             repository.recordLegacyRevision(revision, 2, 512)
             val stored = packages.queryRevisions(app.packageName, OpType.RESTORE, 0, 1234).single()
@@ -71,7 +74,7 @@ class BackupRecordingTest {
                 packages.queryById(app.id),
             )
             assertEquals(temporaryScope, request.dataStates)
-            val recorded = dao.getRevisions(":/backup").single()
+            val recorded = dao.getRevisions(":$backupDir").single()
             assertEquals(stored.copy(dataStates = temporaryScope), repository.revisionForRestore(recorded, temporaryScope))
             assertEquals(stored, packages.queryById(stored.id))
             assertEquals("1.0", recorded.appVersionName)
@@ -95,7 +98,15 @@ class BackupRecordingTest {
             assertEquals("2.0", archived.versionName)
             assertEquals("Current note", archived.note)
             assertEquals(0L, archived.lastUpdateTime)
-            assertEquals(2, dao.getRevisions(":/backup").size)
+            assertEquals(2, dao.getRevisions(":$backupDir").size)
+            val profile = revision.copy(indexInfo = revision.indexInfo.copy(userId = 10))
+            repository.recordLegacyRevision(profile, 1, 512)
+            repository.recordLegacyRevision(revision.copy(indexInfo = revision.indexInfo.copy(cloud = "other", preserveId = 3456)), 1, 100)
+            val keys = setOf(AppKey(app.packageName, 0), AppKey(app.packageName, 10))
+            val latest = repository.latestLocalPackagesForRestore(keys)
+            assertEquals(listOf(2345L, 1234L), latest.map { it.preserveId })
+            assertEquals(listOf(2, 1), latest.map { it.selectionFlag })
+            assertEquals(listOf(10), repository.latestLocalPackagesForRestore(setOf(AppKey(app.packageName, 10))).map { it.userId })
         } finally {
             database.close()
         }

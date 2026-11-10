@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.RemoteException
 import com.xayah.core.model.PackageTaskRequest
+import com.xayah.core.model.TaskStorage
 import com.xayah.core.util.withMainContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -73,14 +74,14 @@ abstract class AbstractProcessingServiceProxy {
             ?: throw RemoteException(context.getString(R.string.processing_service_disconnected))
     }
 
-    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?): Long {
+    suspend fun initialize(storage: TaskStorage, request: PackageTaskRequest?): Long {
         val service = withMainContext {
             check(owner == null) { context.getString(R.string.processing_task_busy) }
             owner = this@AbstractProcessingServiceProxy
             withTimeoutOrNull(15_000) { bindService() }
                 ?: throw RemoteException(context.getString(R.string.processing_service_timeout))
         }
-        return service.initialize(cloudName, backupDir, request)
+        return service.initialize(storage, request)
     }
 
     suspend fun preprocessing() = activeService().preprocessing()

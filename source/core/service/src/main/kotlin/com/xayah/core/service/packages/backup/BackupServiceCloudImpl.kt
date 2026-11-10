@@ -9,7 +9,6 @@ import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.TaskType
-import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
@@ -53,15 +52,10 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     }
 
     override suspend fun onTargetDirsCreated() {
-        mCloudRepo.getClient(requestedCloudName).also { (c, e) ->
-            mCloudEntity = e
-            mClient = c
-        }
-
-        mRemotePath = requestedBackupDir ?: mCloudEntity.remote
-        mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(mRemotePath)
-        mRemoteConfigsDir = mPathUtil.getCloudRemoteConfigsDir(mRemotePath)
-        mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
+        mClient = mCloudRepo.getClient(storage.cloud).first
+        mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(storage.backupDir)
+        mRemoteConfigsDir = mPathUtil.getCloudRemoteConfigsDir(storage.backupDir)
+        mTaskEntity.update(cloud = storage.cloud, backupDir = storage.backupDir)
 
         log { "Trying to create: $mRemoteAppsDir." }
         log { "Trying to create: $mRemoteConfigsDir." }
@@ -108,7 +102,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     }
 
     override suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) =
-        uploadBackupFile(mCloudRepo, mClient, path, mRemotePath, entity)
+        uploadBackupFile(mCloudRepo, mClient, path, storage.backupDir, entity)
 
     override suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) =
         uploadBackupFile(mCloudRepo, mClient, path, mRemoteConfigsDir, entity)
@@ -132,9 +126,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     @Inject
     lateinit var mCloudRepo: CloudRepository
 
-    private lateinit var mCloudEntity: CloudEntity
     private lateinit var mClient: CloudClient
-    private lateinit var mRemotePath: String
     private lateinit var mRemoteAppsDir: String
     private lateinit var mRemoteConfigsDir: String
 }

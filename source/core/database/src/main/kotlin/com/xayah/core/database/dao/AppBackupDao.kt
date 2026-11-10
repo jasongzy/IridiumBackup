@@ -15,6 +15,7 @@ import com.xayah.core.model.BackupAppEntity
 import com.xayah.core.model.BackupEngine
 import com.xayah.core.model.BackupRevisionEntity
 import com.xayah.core.model.OpType
+import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.toBackupApp
 import kotlinx.coroutines.flow.Flow
 
@@ -172,6 +173,19 @@ interface AppBackupDao {
         WHERE a.isInstalled = 0 AND a.userId = :userId AND a.packageName IN (:names)
     """)
     suspend fun latestArchivedApps(userId: Int, names: List<String>, opType: OpType): List<BackupAppEntity>
+
+    @Query("""
+        SELECT r.*, p.* FROM backup_apps a
+        JOIN backup_revisions r ON r.revisionId = (
+            SELECT revisionId FROM backup_revisions WHERE packageName = a.packageName AND userId = a.userId
+                AND repositoryId = ':' || :backupDir ORDER BY createdAt DESC, revisionId LIMIT 1
+        )
+        JOIN PackageEntity p ON p.indexInfo_packageName = a.packageName AND p.indexInfo_userId = a.userId
+            AND p.indexInfo_preserveId = r.createdAt AND p.indexInfo_opType = :opType
+            AND p.indexInfo_cloud = '' AND p.indexInfo_backupDir = :backupDir
+        WHERE a.userId = :userId AND a.packageName IN (:names)
+    """)
+    suspend fun latestLocalRestorePackages(backupDir: String, userId: Int, names: List<String>, opType: OpType): Map<BackupRevisionEntity, PackageEntity>
 
     @Query("SELECT * FROM backup_revisions WHERE repositoryId = :repositoryId ORDER BY createdAt DESC, revisionId")
     suspend fun getRevisions(repositoryId: String): List<BackupRevisionEntity>

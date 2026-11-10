@@ -5,6 +5,7 @@
     <item name="delete" type="string" />
     <item name="account" type="string" />
     <item name="no_available_account" type="string" />
+    <item name="choose_an_account" type="string" />
     <item name="unknown" type="string" />
     <item name="user" type="string" />
     <item name="id" type="string" />

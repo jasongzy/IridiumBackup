@@ -14,7 +14,6 @@ import com.xayah.core.service.util.CommonBackupUtil
 import com.xayah.core.service.util.MediumBackupUtil
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.localBackupSaveDir
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -66,9 +65,9 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
         mRootService.requireBackupStorage(mContext, mRootDir, allowNewDirectory = true)
     }
 
-    override val mRootDir by lazy { mContext.localBackupSaveDir() }
-    override val mFilesDir by lazy { mPathUtil.getLocalBackupFilesDir() }
-    override val mConfigsDir by lazy { mPathUtil.getLocalBackupConfigsDir() }
+    override val mRootDir get() = storage.backupDir
+    override val mFilesDir by lazy { mPathUtil.getLocalBackupFilesDir(mRootDir) }
+    override val mConfigsDir by lazy { mPathUtil.getLocalBackupConfigsDir(mRootDir) }
 
     override suspend fun createDirectory(path: String): Boolean = when {
         path == mFilesDir -> mRootService.mkdirs(path)

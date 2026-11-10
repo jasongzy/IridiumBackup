@@ -5,7 +5,6 @@ import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.TaskType
-import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.database.TaskEntity
@@ -46,14 +45,9 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     }
 
     override suspend fun prepareSource() {
-        mCloudRepo.getClient(requestedCloudName).also { (c, e) ->
-            mCloudEntity = e
-            mClient = c
-        }
-
-        mRemotePath = requestedBackupDir ?: mCloudEntity.remote
-        mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(mRemotePath)
-        mTaskEntity.update(cloud = mCloudEntity.name, backupDir = mRemotePath)
+        mClient = mCloudRepo.getClient(storage.cloud).first
+        mRemoteAppsDir = mPathUtil.getCloudRemoteAppsDir(storage.backupDir)
+        mTaskEntity.update(cloud = storage.cloud, backupDir = storage.backupDir)
     }
 
     private fun getRemoteAppDir(archivesRelativeDir: String) = "${mRemoteAppsDir}/${archivesRelativeDir}"
@@ -80,8 +74,6 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
     @Inject
     lateinit var mCloudRepo: CloudRepository
 
-    private lateinit var mCloudEntity: CloudEntity
     private lateinit var mClient: CloudClient
-    private lateinit var mRemotePath: String
     private lateinit var mRemoteAppsDir: String
 }

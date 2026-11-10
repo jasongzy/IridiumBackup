@@ -2,6 +2,8 @@ package com.xayah.core.model
 
 import com.xayah.core.model.database.PackageEntity
 
+data class TaskStorage(val cloud: String, val backupDir: String)
+
 sealed interface PackageTaskRequest {
     val packages: List<PackageEntity>
 

@@ -49,7 +49,6 @@ import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.FinishSetup
 import com.xayah.feature.main.processing.ProcessingSetupScaffold
 import com.xayah.feature.main.processing.R
-import com.xayah.feature.main.processing.SetCloudEntity
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
 @ExperimentalCoroutinesApi
@@ -111,7 +110,7 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
                         onClick = {
                             viewModel.selectStorage(index)
                         },
-                        selected = index == uiState.storageIndex
+                        selected = index == uiState.storageType.ordinal
                     ) {
                         Text(label)
                     }
@@ -119,13 +118,15 @@ fun PagePackagesBackupProcessingSetup(localNavController: NavHostController, vie
             }
 
             Title(title = stringResource(id = R.string.storage)) {
-                AnimatedVisibility(uiState.storageIndex == 1) {
+                AnimatedVisibility(uiState.storageType == StorageMode.Cloud) {
                     CloudAccountPicker(
                         accounts = accounts,
                         selected = uiState.cloudEntity,
+                        autoSelectFirst = uiState.autoSelectFirstCloud,
                         onManage = { navController.navigateSingle(MainRoutes.Cloud.route) },
                         enabled = !isStarting,
-                    ) { name -> viewModel.emitIntentOnIO(SetCloudEntity(name)) }
+                        onSelect = viewModel::selectCloudAccount,
+                    )
                 }
 
                 val interactionSource = remember { MutableInteractionSource() }

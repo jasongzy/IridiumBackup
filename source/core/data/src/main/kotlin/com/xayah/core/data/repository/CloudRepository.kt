@@ -3,7 +3,6 @@ package com.xayah.core.data.repository
 import android.content.Context
 import androidx.annotation.StringRes
 import com.xayah.core.database.dao.CloudDao
-import com.xayah.core.datastore.readCloudActivatedAccountName
 import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.network.client.CloudClient
 import com.xayah.core.network.client.getCloud
@@ -20,7 +19,6 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -119,14 +117,13 @@ class CloudRepository @Inject constructor(
         return checkNotNull(config) { "Invalid backup config: $path" }
     }
 
-    suspend fun getClient(name: String? = null): Pair<CloudClient, CloudEntity> {
-        val account = name ?: context.readCloudActivatedAccountName().first()
-        val entity = checkNotNull(queryByName(account)) { "Cloud account not found: $account" }
-        check(entity.remote.isNotEmpty()) { "$account: Remote directory is not set." }
+    suspend fun getClient(name: String): Pair<CloudClient, CloudEntity> {
+        val entity = checkNotNull(queryByName(name)) { "Cloud account not found: $name" }
+        check(entity.remote.isNotEmpty()) { "$name: Remote directory is not set." }
         return entity.getCloud().apply { connect() } to entity
     }
 
-    suspend fun withClient(name: String? = null, block: suspend (client: CloudClient, entity: CloudEntity) -> Unit) = run {
+    suspend fun withClient(name: String, block: suspend (client: CloudClient, entity: CloudEntity) -> Unit) = run {
         val (client, entity) = getClient(name)
         try {
             block(client, entity)

@@ -17,6 +17,7 @@ import com.xayah.core.datastore.readScreenOffTimeout
 import com.xayah.core.datastore.saveScreenOffTimeout
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.PackageTaskRequest
+import com.xayah.core.model.TaskStorage
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.model.database.TaskEntity
 import com.xayah.core.model.util.set
@@ -151,18 +152,15 @@ internal abstract class AbstractProcessingService : Service() {
     private val screenMutex = Mutex()
     protected var mStartTimestamp: Long = 0
     protected var mEndTimestamp: Long = 0
-    protected var requestedCloudName: String? = null
-        private set
-    protected var requestedBackupDir: String? = null
+    protected lateinit var storage: TaskStorage
         private set
     protected var packageRequest: PackageTaskRequest? = null
         private set
 
     @SuppressLint("StringFormatInvalid")
-    suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?): Long {
+    suspend fun initialize(storage: TaskStorage, request: PackageTaskRequest?): Long {
         mMutex.withLock {
-            requestedCloudName = cloudName
-            requestedBackupDir = backupDir
+            this.storage = storage
             packageRequest = request
             if (clearPreviousTasks) {
                 mTaskDao.deleteAllTasks()

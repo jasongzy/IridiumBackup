@@ -6,20 +6,29 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.os.SystemClock
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.data.repository.CloudRepository
+import com.xayah.core.data.repository.MediaRepository
 import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.AppDatabase
+import com.xayah.core.model.CloudType
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.DataType
+import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.PackageRestoreConfig
+import com.xayah.core.model.database.CloudEntity
+import com.xayah.core.model.database.MediaEntity
+import com.xayah.core.model.database.MediaExtraInfo
+import com.xayah.core.model.database.MediaIndexInfo
+import com.xayah.core.model.database.MediaInfo
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.TaskDetailPackageEntity
@@ -27,9 +36,16 @@ import com.xayah.core.model.toPackageEntity
 import com.xayah.core.network.client.CloudClient
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.AbstractProcessingServiceProxy
+import com.xayah.core.service.medium.restore.ProcessingServiceProxyCloudImpl
+import com.xayah.core.service.medium.restore.ProcessingServiceProxyLocalImpl
 import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.ui.model.ProcessingDataCardItem
+import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.util.PathUtil
+import com.xayah.feature.main.processing.medium.restore.RestoreViewModelImpl
+import java.io.File
+import java.io.IOException
+import java.lang.reflect.Proxy
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,9 +61,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
-import java.io.IOException
-import java.lang.reflect.Proxy
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalCoroutinesApi::class)
 class ProcessingFailureTest {
@@ -75,6 +88,11 @@ class ProcessingFailureTest {
         context, root, repository, proxy(context), proxy(context),
     ) {
         override val _dataItems = flowOf(emptyList<ProcessingDataCardItem>())
+
+        suspend fun startTask() {
+            submitSetup {}
+            initialize(autoStart = true)
+        }
 
         suspend fun submitSetup(onReady: suspend () -> Unit) = finishSetup(uiState.value, onReady)
 
@@ -160,10 +178,44 @@ class ProcessingFailureTest {
     }
 
     @Test
-    fun initializationFailureIsAnInspectableTerminalState() = runBlocking {
+    fun fileRestorePreviewsTheSelectedDirectoryEvenAfterTheAccountPathChanges() = runBlocking {
+        val cloud = CloudRepository(context, root, database.cloudDao())
+        val account = CloudEntity("server", CloudType.FTP, "localhost", "", "", "/new", "", false)
+        cloud.add(account)
+        val files = MediaRepository(context, root, cloud, database.mediaDao(), PathUtil(context))
+        val original = MediaEntity(
+            0, MediaIndexInfo(OpType.RESTORE, "docs", CompressionType.TAR, 1, account.name, "/original"),
+            MediaInfo("/docs", 42, 42), MediaExtraInfo(0, false, true, true),
+        )
+        files.upsert(listOf(original, original.copy(indexInfo = original.indexInfo.copy(name = "other", backupDir = account.remote))))
+        val model = RestoreViewModelImpl(
+            context, root, repository, files, cloud, ProcessingServiceProxyLocalImpl(), ProcessingServiceProxyCloudImpl(),
+            SavedStateHandle(mapOf(MainRoutes.ARG_ACCOUNT_NAME to account.name, MainRoutes.ARG_ACCOUNT_REMOTE to "/original")),
+        )
+        stores += ViewModelStore().apply { put("restore", model) }
+        model.emitIntent(LoadRestoreSource)
+        assertEquals(listOf("docs"), model.medium.value?.map { it.name })
+        assertEquals("/original", model.uiState.value.backupDir)
+        cloud.delete(account.name)
+        model.emitIntent(LoadRestoreSource)
+        assertTrue(model.medium.value!!.isEmpty())
+    }
+
+    @Test
+    fun losingConfirmationDoesNotStartALocalTask() = runBlocking {
         val binding = BindingContext(context)
         val model = create(binding)
         model.initialize(autoStart = true)
+        val state = withTimeout(5_000) { model.uiState.first { it.state == OperationState.ERROR } }
+        assertEquals(context.getString(com.xayah.core.service.R.string.package_request_expired), state.failure)
+        assertFalse(binding.bound.isCompleted)
+    }
+
+    @Test
+    fun initializationFailureIsAnInspectableTerminalState() = runBlocking {
+        val binding = BindingContext(context)
+        val model = create(binding)
+        model.startTask()
         val state = withTimeout(5_000) { model.uiState.first { it.state == OperationState.ERROR } }
         assertEquals(context.getString(com.xayah.core.service.R.string.processing_service_bind_failed), state.failure)
         assertEquals(1, binding.unbindCount)
@@ -173,12 +225,12 @@ class ProcessingFailureTest {
     fun aSecondTaskCannotBindOrReleaseTheRunningTask() = runBlocking {
         val firstBinding = BindingContext(context, acceptBinding = true)
         val first = create(firstBinding)
-        first.initialize(autoStart = true)
+        first.startTask()
         withTimeout(5_000) { firstBinding.bound.await() }
 
         val secondBinding = BindingContext(context)
         val second = create(secondBinding)
-        second.initialize(autoStart = true)
+        second.startTask()
         val failure = withTimeout(5_000) { second.uiState.first { it.state == OperationState.ERROR } }
         assertEquals(context.getString(com.xayah.core.service.R.string.processing_task_busy), failure.failure)
         second.emitIntent(ProcessingUiIntent.Exit)
@@ -187,7 +239,7 @@ class ProcessingFailureTest {
 
         first.emitIntent(ProcessingUiIntent.Exit)
         assertEquals(1, firstBinding.unbindCount)
-        create(secondBinding).initialize(autoStart = true)
+        create(secondBinding).startTask()
         withTimeout(5_000) { secondBinding.bound.await() }
     }
 
@@ -195,7 +247,7 @@ class ProcessingFailureTest {
     fun cancellingInitializationReleasesTheBindingWithoutReportingFailure() = runBlocking {
         val binding = BindingContext(context, acceptBinding = true)
         val model = create(binding)
-        model.initialize(autoStart = true)
+        model.startTask()
         withTimeout(5_000) { binding.bound.await() }
         model.emitIntent(ProcessingUiIntent.Exit)
         assertEquals(AbstractProcessingViewModel.ExitState.COMPLETE, model.exitState.value)

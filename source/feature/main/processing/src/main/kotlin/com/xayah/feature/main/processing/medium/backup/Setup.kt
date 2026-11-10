@@ -48,7 +48,6 @@ import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.FinishSetup
 import com.xayah.feature.main.processing.ProcessingSetupScaffold
 import com.xayah.feature.main.processing.R
-import com.xayah.feature.main.processing.SetCloudEntity
 import com.xayah.feature.main.processing.UpdateFiles
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 
@@ -64,7 +63,7 @@ fun PageMediumBackupProcessingSetup(localNavController: NavHostController, viewM
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
-    val isTesting by viewModel.isTesting.collectAsStateWithLifecycle()
+    val isStarting by viewModel.isStarting.collectAsStateWithLifecycle()
     val mediumSize by viewModel.mediumSize.collectAsStateWithLifecycle()
 
     LaunchedEffect(null) {
@@ -84,7 +83,7 @@ fun PageMediumBackupProcessingSetup(localNavController: NavHostController, viewM
                 horizontalArrangement = Arrangement.spacedBy(SizeTokens.Level12, Alignment.End),
             ) {
                 Button(
-                    enabled = uiState.storageType == StorageMode.Local || (uiState.cloudEntity in accounts && !isTesting),
+                    enabled = !isStarting && (uiState.storageType == StorageMode.Local || uiState.cloudEntity in accounts),
                     onClick = {
                         viewModel.emitIntentOnIO(FinishSetup(navController = localNavController))
                     }) {
@@ -108,10 +107,9 @@ fun PageMediumBackupProcessingSetup(localNavController: NavHostController, viewM
                 storageOptions.forEachIndexed { index, label ->
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = storageOptions.size),
-                        onClick = {
-                            viewModel.emitStateOnMain(state = uiState.copy(storageIndex = index, storageType = if (index == 0) StorageMode.Local else StorageMode.Cloud))
-                        },
-                        selected = index == uiState.storageIndex
+                        enabled = !isStarting,
+                        onClick = { viewModel.selectStorage(index) },
+                        selected = index == uiState.storageType.ordinal
                     ) {
                         Text(label)
                     }
@@ -119,13 +117,15 @@ fun PageMediumBackupProcessingSetup(localNavController: NavHostController, viewM
             }
 
             Title(title = stringResource(id = R.string.storage)) {
-                AnimatedVisibility(uiState.storageIndex == 1) {
+                AnimatedVisibility(uiState.storageType == StorageMode.Cloud) {
                     CloudAccountPicker(
                         accounts = accounts,
                         selected = uiState.cloudEntity,
+                        autoSelectFirst = uiState.autoSelectFirstCloud,
                         onManage = { navController.navigateSingle(MainRoutes.Cloud.route) },
-                        enabled = !isTesting,
-                    ) { name -> viewModel.emitIntentOnIO(SetCloudEntity(name)) }
+                        enabled = !isStarting,
+                        onSelect = viewModel::selectCloudAccount,
+                    )
                 }
 
                 Clickable(

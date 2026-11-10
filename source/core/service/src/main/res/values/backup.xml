@@ -4,7 +4,7 @@
     <string name="backup_revision_directory_failed">Couldn’t create a new backup directory: %1$s</string>
     <string name="backup_no_content">The selected items contain no files to restore</string>
     <string name="backup_metadata_failed">Couldn’t save the backup metadata</string>
-    <string name="package_request_expired">Select the apps again to start a new task</string>
+    <string name="package_request_expired">Select the items again to start a new task</string>
     <string name="restore_users_unavailable">Couldn’t read the Android users</string>
     <string name="restore_user_missing">Android user %1$d is unavailable. Choose another restore user.</string>
     <string name="restore_target_conflict">More than one backup would restore %1$s to user %2$d. Restore them separately or keep their original users.</string>
