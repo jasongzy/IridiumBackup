@@ -18,6 +18,11 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.toBackupApp
 import kotlinx.coroutines.flow.Flow
 
+private const val LATEST_BACKUP_TIME = """COALESCE((
+    SELECT MAX(createdAt) FROM backup_revisions
+    WHERE packageName = PackageEntity.indexInfo_packageName AND userId = PackageEntity.indexInfo_userId
+), 0)"""
+
 data class ConfigurationCounts(val blacklist: Int, val accounts: Int, val labels: Int, val appNotes: Int)
 
 @Dao
@@ -25,8 +30,18 @@ interface AppBackupDao {
     @Query("SELECT DISTINCT userId FROM backup_apps ORDER BY userId")
     fun observeIndexedUserIds(): Flow<List<Int>>
 
-    @Query("SELECT packageName FROM backup_apps WHERE userId = :userId AND isInstalled = 1")
-    suspend fun getInstalledPackageNames(userId: Int): List<String>
+    @Query("SELECT * FROM backup_apps WHERE userId = :userId AND (:packageName IS NULL OR packageName = :packageName)")
+    suspend fun getIndexedApps(userId: Int, packageName: String?): List<BackupAppEntity>
+
+    @Query("""
+        SELECT indexInfo_packageName AS packageName, indexInfo_userId AS userId, packageInfo_label AS label,
+            packageInfo_versionName AS versionName, packageInfo_versionCode AS versionCode,
+            packageInfo_firstInstallTime AS firstInstallTime, packageInfo_lastUpdateTime AS lastUpdateTime,
+            (packageInfo_flags & ${ApplicationInfo.FLAG_SYSTEM}) != 0 AS isSystem, 1 AS isInstalled, '' AS note
+        FROM PackageEntity WHERE indexInfo_opType = :opType AND indexInfo_userId = :userId
+            AND (:packageName IS NULL OR indexInfo_packageName = :packageName)
+    """)
+    suspend fun getScannedApps(userId: Int, packageName: String?, opType: OpType): List<BackupAppEntity>
 
     @Query("""
         SELECT substr(repositoryId, 2) FROM backup_revisions
@@ -39,21 +54,21 @@ interface AppBackupDao {
     fun observeBackedUpApps(): Flow<List<AppKey>>
 
     @Transaction
-    suspend fun replaceInstalledApps(userId: Int, apps: List<BackupAppEntity>) {
-        markUserAppsUninstalled(userId)
-        upsertAppMetadata(apps)
-        deleteUninstalledAppsWithoutRevisions(userId)
-        syncLastBackupTimes(OpType.BACKUP)
+    suspend fun syncInstalledApps(userId: Int, packageName: String? = null): List<AppKey> {
+        val indexed = getIndexedApps(userId, packageName).associateByTo(mutableMapOf(), BackupAppEntity::packageName)
+        val changes = getScannedApps(userId, packageName, OpType.BACKUP).mapNotNull { app ->
+            val old = indexed.remove(app.packageName)
+            app.copy(note = old?.note.orEmpty()).takeUnless { it == old }
+        }
+        val removed = indexed.values.filter { it.isInstalled }
+        upsertApps(changes + removed.map { it.copy(isInstalled = false, firstInstallTime = 0, lastUpdateTime = 0) })
+        deleteUninstalledAppsWithoutRevisions(userId, packageName)
+        syncLastBackupTimes(OpType.BACKUP, userId, packageName)
+        return removed.map { AppKey(it.packageName, it.userId) }
     }
 
     @Upsert
     suspend fun upsertApps(apps: List<BackupAppEntity>)
-
-    @Transaction
-    suspend fun upsertAppMetadata(apps: List<BackupAppEntity>) {
-        val notes = getAppsWithNotes().associate { AppKey(it.packageName, it.userId) to it.note }
-        upsertApps(apps.map { it.copy(note = notes[AppKey(it.packageName, it.userId)].orEmpty()) })
-    }
 
     @Query("UPDATE backup_apps SET note = :note WHERE packageName = :packageName AND userId = :userId")
     suspend fun updateAppNote(packageName: String, userId: Int, note: String)
@@ -83,13 +98,11 @@ interface AppBackupDao {
     """)
     fun observeConfigurationCounts(): Flow<ConfigurationCounts>
 
-    @Query("UPDATE backup_apps SET isInstalled = 0, firstInstallTime = 0, lastUpdateTime = 0 WHERE userId = :userId")
-    suspend fun markUserAppsUninstalled(userId: Int)
-
     @Query(
         """
         DELETE FROM backup_apps
-        WHERE userId = :userId AND isInstalled = 0 AND note = ''
+        WHERE (:userId IS NULL OR userId = :userId) AND (:packageName IS NULL OR packageName = :packageName)
+            AND isInstalled = 0 AND note = ''
             AND NOT EXISTS (
                 SELECT 1 FROM backup_revisions
                 WHERE backup_revisions.packageName = backup_apps.packageName
@@ -102,7 +115,7 @@ interface AppBackupDao {
             )
         """
     )
-    suspend fun deleteUninstalledAppsWithoutRevisions(userId: Int)
+    suspend fun deleteUninstalledAppsWithoutRevisions(userId: Int? = null, packageName: String? = null)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertRevision(revision: BackupRevisionEntity)
@@ -117,7 +130,7 @@ interface AppBackupDao {
     suspend fun recordRevision(app: BackupAppEntity, revision: BackupRevisionEntity) {
         insertMissingApp(app)
         insertRevision(revision)
-        syncLastBackupTime(app.packageName, app.userId, OpType.BACKUP)
+        syncLastBackupTimes(OpType.BACKUP, app.userId, app.packageName)
     }
 
     @Upsert
@@ -204,56 +217,16 @@ interface AppBackupDao {
     @Transaction
     suspend fun deleteRevisionAndSync(revision: BackupRevisionEntity) {
         deleteRevision(revision.id)
-        syncLastBackupTime(revision.packageName, revision.userId, OpType.BACKUP)
+        syncLastBackupTimes(OpType.BACKUP, revision.userId, revision.packageName)
     }
 
-    @Query(
-        """
-        UPDATE PackageEntity
-        SET extraInfo_lastBackupTime = COALESCE((
-            SELECT MAX(backup_revisions.createdAt)
-            FROM backup_revisions
-            WHERE backup_revisions.packageName = PackageEntity.indexInfo_packageName
-                AND backup_revisions.userId = PackageEntity.indexInfo_userId
-        ), 0)
-        WHERE indexInfo_opType = :opType
-            AND indexInfo_packageName = :packageName
-            AND indexInfo_userId = :userId
-        """
-    )
-    suspend fun syncLastBackupTime(packageName: String, userId: Int, opType: OpType)
-
-    @Query(
-        """
-        UPDATE PackageEntity
-        SET extraInfo_lastBackupTime = COALESCE((
-            SELECT MAX(backup_revisions.createdAt)
-            FROM backup_revisions
-            WHERE backup_revisions.packageName = PackageEntity.indexInfo_packageName
-                AND backup_revisions.userId = PackageEntity.indexInfo_userId
-        ), 0)
-        WHERE indexInfo_opType = :opType
-        """
-    )
-    suspend fun syncLastBackupTimes(opType: OpType)
-
-    @Query(
-        """
-        DELETE FROM backup_apps
-        WHERE isInstalled = 0 AND note = ''
-            AND NOT EXISTS (
-                SELECT 1 FROM backup_revisions
-                WHERE backup_revisions.packageName = backup_apps.packageName
-                    AND backup_revisions.userId = backup_apps.userId
-            )
-            AND NOT EXISTS (
-                SELECT 1 FROM LabelAppCrossRefEntity
-                WHERE LabelAppCrossRefEntity.packageName = backup_apps.packageName
-                    AND LabelAppCrossRefEntity.userId = backup_apps.userId
-            )
-        """
-    )
-    suspend fun deleteUninstalledAppsWithoutRevisions()
+    @Query("""
+        UPDATE PackageEntity SET extraInfo_lastBackupTime = $LATEST_BACKUP_TIME
+        WHERE indexInfo_opType = :opType AND (:userId IS NULL OR indexInfo_userId = :userId)
+            AND (:packageName IS NULL OR indexInfo_packageName = :packageName)
+            AND extraInfo_lastBackupTime != $LATEST_BACKUP_TIME
+    """)
+    suspend fun syncLastBackupTimes(opType: OpType, userId: Int? = null, packageName: String? = null)
 
     @Query(
         """

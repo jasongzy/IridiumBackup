@@ -132,11 +132,8 @@ class AppBackupRepository @Inject constructor(
         }
     }
 
-    suspend fun syncInstalledApps(userId: Int, apps: List<PackageEntity>) = database.withTransaction {
-        val names = apps.mapTo(mutableSetOf()) { it.packageName }
-        val removed = dao.getInstalledPackageNames(userId).filterNot(names::contains)
-        dao.replaceInstalledApps(userId, apps.map { it.toBackupApp() })
-        refreshArchivedMetadata(removed.map { AppKey(it, userId) })
+    suspend fun syncInstalledApps(userId: Int, packageName: String? = null) = database.withTransaction {
+        refreshArchivedMetadata(dao.syncInstalledApps(userId, packageName))
     }
 
     suspend fun updateAppNote(packageName: String, userId: Int, note: String) {
@@ -163,7 +160,7 @@ class AppBackupRepository @Inject constructor(
             packages.upsert(restore)
         }
         dao.recordRevision(
-            restore.toBackupApp(isInstalled = false),
+            restore.toArchivedApp(),
             restore.toRevision(
                 repositoryId = "${restore.indexInfo.cloud}:${restore.indexInfo.backupDir}",
                 contentMask = contentMask,
@@ -481,7 +478,7 @@ class AppBackupRepository @Inject constructor(
                 database.packageDao().replaceLocalRestoreIndex(backupDir, rebuilt.map { it.first })
                 val apps = rebuilt.sortedByDescending { (app, _) -> app.preserveId }
                     .distinctBy { (app, _) -> app.packageName to app.userId }
-                    .map { (app, _) -> app.toBackupApp(isInstalled = false) }
+                    .map { (app, _) -> app.toArchivedApp() }
                 dao.replaceRepositoryIndex(repositoryId, apps, revisions)
                 refreshArchivedMetadata((original + revisions).map { AppKey(it.packageName, it.userId) })
                 dao.deleteUninstalledAppsWithoutRevisions()
@@ -506,10 +503,10 @@ class AppBackupRepository @Inject constructor(
             val packages = database.packageDao()
             val stored = packages.query(app.packageName, OpType.RESTORE, app.userId, app.preserveId, "", backupDir)
             val previous = dao.getRevisions(revision.repositoryId, listOf(revision.artifactId)).singleOrNull()
-            dao.insertMissingApp(app.toBackupApp(isInstalled = false))
+            dao.insertMissingApp(app.toArchivedApp())
             packages.upsert(app.withRestoreState(stored))
             dao.upsertRevisions(listOf(previous?.let { revision.copy(id = it.id) } ?: revision))
-            dao.syncLastBackupTime(app.packageName, app.userId, OpType.BACKUP)
+            dao.syncLastBackupTimes(OpType.BACKUP, app.userId, app.packageName)
             refreshArchivedMetadata(listOf(AppKey(app.packageName, app.userId)))
             previous?.id to (previous == null || stored == null)
         }
@@ -686,7 +683,7 @@ class AppBackupRepository @Inject constructor(
         dao.upsertApps(apps)
     }
 
-    private fun PackageEntity.toBackupApp(isInstalled: Boolean = true) = BackupAppEntity(
+    private fun PackageEntity.toArchivedApp() = BackupAppEntity(
         packageName = packageName,
         userId = userId,
         label = packageInfo.label,
@@ -695,7 +692,7 @@ class AppBackupRepository @Inject constructor(
         firstInstallTime = packageInfo.firstInstallTime,
         lastUpdateTime = packageInfo.lastUpdateTime,
         isSystem = isSystemApp,
-        isInstalled = isInstalled,
+        isInstalled = false,
     )
 
     private fun PackageEntity.toRevision(

@@ -56,7 +56,7 @@ class BackupRecordingTest {
                 dataStates = app.dataStates.copy(userState = DataState.NotSelected),
             )
             packages.upsert(current)
-            repository.syncInstalledApps(0, listOf(current))
+            repository.syncInstalledApps(0)
             repository.updateAppNote(app.packageName, 0, "Current note")
             val currentMetadata = dao.getApp(app.packageName, 0)
 
@@ -85,7 +85,7 @@ class BackupRecordingTest {
             assertEquals(400L, repository.getRestoreSizeBytes("cloud:/backup", listOf(partial)))
 
             packages.deleteByIds(listOf(app.id))
-            repository.syncInstalledApps(0, emptyList())
+            repository.syncInstalledApps(0)
             repository.recordLegacyRevision(
                 revision.copy(indexInfo = revision.indexInfo.copy(preserveId = 2345), packageInfo = current.packageInfo), 2, 768,
             )

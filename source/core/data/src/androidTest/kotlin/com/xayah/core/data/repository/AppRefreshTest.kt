@@ -144,7 +144,7 @@ class AppRefreshTest {
             assertEquals(false, repository.scanScope.first().matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
             val former = app.copy(indexInfo = app.indexInfo.copy(userId = 10), packageInfo = app.packageInfo.copy(versionName = "2.0"))
             database.packageDao().upsert(former)
-            backups.syncInstalledApps(10, listOf(former))
+            backups.syncInstalledApps(10)
             backups.recordLegacyRevision(
                 former.copy(
                     indexInfo = former.indexInfo.copy(opType = OpType.RESTORE, preserveId = 42, backupDir = "/backup"),

@@ -5,7 +5,7 @@ import com.xayah.core.datastore.DashboardFilterPreference
 import com.xayah.core.datastore.LabelFilterMode
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Build
+import androidx.core.content.pm.PackageInfoCompat
 import com.xayah.core.data.R
 import com.xayah.core.data.util.archiveExclusions
 import com.xayah.core.data.util.srcDir
@@ -209,7 +209,7 @@ class AppsRepo @Inject constructor(
                 }
             }
             if (apps.isNotEmpty()) appsDao.upsert(apps)
-            syncInstalledApps(userId)
+            appBackupRepository.syncInstalledApps(userId)
         }
         labelsRepo.deleteOrphanedAppRefs()
     }
@@ -228,12 +228,7 @@ class AppsRepo @Inject constructor(
             }
             val changedApps = storedApps.filter { app ->
                 val info = scanned[app.packageName] ?: return@filter false
-                val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    info.longVersionCode
-                } else {
-                    info.versionCode.toLong()
-                }
-                app.packageInfo.versionCode != versionCode ||
+                app.packageInfo.versionCode != PackageInfoCompat.getLongVersionCode(info) ||
                     app.packageInfo.lastUpdateTime != info.lastUpdateTime ||
                     app.extraInfo.enabled != (info.applicationInfo?.enabled ?: false)
             }
@@ -264,7 +259,7 @@ class AppsRepo @Inject constructor(
                 updateApp(pm, app)
             }
             appsDao.update(updates)
-            syncInstalledApps(batch.userId)
+            appBackupRepository.syncInstalledApps(batch.userId)
         }
         labelsRepo.deleteOrphanedAppRefs()
     }
@@ -281,19 +276,7 @@ class AppsRepo @Inject constructor(
                 cloud = "",
                 backupDir = "",
             ),
-            packageInfo = PackageInfo(
-                info.applicationInfo?.loadLabel(pm).toString(),
-                versionName = info.versionName ?: "",
-                versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    info.longVersionCode
-                } else {
-                    info.versionCode.toLong()
-                },
-                flags = info.applicationInfo?.flags ?: 0,
-                firstInstallTime = info.firstInstallTime,
-                lastUpdateTime = info.lastUpdateTime,
-                isXposedModule = xposedModuleDetector.isModule(info),
-            ),
+            packageInfo = info.toAppMetadata(pm),
             extraInfo = PackageExtraInfo(
                 uid = info.applicationInfo?.uid ?: -1,
                 hasKeystore = false,
@@ -331,7 +314,7 @@ class AppsRepo @Inject constructor(
                 }
             }
             appsDao.update(updateList)
-            syncInstalledApps(userId)
+            appBackupRepository.syncInstalledApps(userId)
         }
     }
 
@@ -340,16 +323,18 @@ class AppsRepo @Inject constructor(
         val scope = scanScope.first()
         val apps = appsDao.queryFirstUpdatedApps(opType = OpType.BACKUP, firstUpdated = false)
             .filter { scope.includes(it.packageName, it.userId, it.isSystemApp) }
+        val updatedUsers = mutableSetOf<Int>()
         val updateList = mutableListOf<PackageUpdateEntity>()
         apps.forEachIndexed { index, pkg ->
             onUpdate(index, apps.size, pkg.packageName)
             val updateEntity = updateApp(pm, pkg)
             if (updateEntity != null) {
                 updateList.add(updateEntity)
+                updatedUsers.add(pkg.userId)
             }
         }
         appsDao.update(updateList)
-        appsDao.queryUserIds(OpType.BACKUP).forEach { syncInstalledApps(it) }
+        updatedUsers.forEach { appBackupRepository.syncInstalledApps(it) }
     }
 
     suspend fun updateLocalAppSizes(onUpdate: suspend (cur: Int, max: Int, content: String) -> Unit) {
@@ -363,18 +348,11 @@ class AppsRepo @Inject constructor(
         }
     }
 
-    private suspend fun syncInstalledApps(userId: Int) {
-        appBackupRepository.syncInstalledApps(
-            userId = userId,
-            apps = appsDao.queryPkgEntitiesByUserId(OpType.BACKUP, userId),
-        )
-    }
-
     suspend fun updateApp(pkg: PackageEntity) {
         val updateEntity = updateApp(context.packageManager, pkg)
         if (updateEntity != null) {
             appsDao.update(updateEntity)
-            syncInstalledApps(pkg.userId)
+            appBackupRepository.syncInstalledApps(pkg.userId, pkg.packageName)
         }
     }
 
@@ -387,7 +365,7 @@ class AppsRepo @Inject constructor(
 
     suspend fun removeUninstalledApp(packageName: String, userId: Int) {
         appsDao.deleteByPkgNames(OpType.BACKUP, userId, setOf(packageName))
-        syncInstalledApps(userId)
+        appBackupRepository.syncInstalledApps(userId, packageName)
         labelsRepo.deleteOrphanedAppRefs()
     }
 
@@ -400,19 +378,7 @@ class AppsRepo @Inject constructor(
         val uid = info.applicationInfo?.uid ?: -1
         return PackageUpdateEntity(
             id = pkg.id,
-            packageInfo = PackageInfo(
-                label = info.applicationInfo?.loadLabel(pm).toString(),
-                versionName = info.versionName ?: "",
-                versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    info.longVersionCode
-                } else {
-                    info.versionCode.toLong()
-                },
-                flags = info.applicationInfo?.flags ?: 0,
-                firstInstallTime = info.firstInstallTime,
-                lastUpdateTime = info.lastUpdateTime,
-                isXposedModule = xposedModuleDetector.isModule(info),
-            ),
+            packageInfo = info.toAppMetadata(pm),
             uid = uid,
             permissions = rootService.getPermissions(info) ?: pkg.extraInfo.permissions.takeIf { uid == pkg.extraInfo.uid }.orEmpty(),
             hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid, pkg.extraInfo),
@@ -421,6 +387,16 @@ class AppsRepo @Inject constructor(
             enabled = info.applicationInfo?.enabled ?: false,
         )
     }
+
+    private suspend fun android.content.pm.PackageInfo.toAppMetadata(pm: PackageManager) = PackageInfo(
+        label = applicationInfo?.loadLabel(pm)?.toString() ?: packageName,
+        versionName = versionName.orEmpty(),
+        versionCode = PackageInfoCompat.getLongVersionCode(this),
+        flags = applicationInfo?.flags ?: 0,
+        firstInstallTime = firstInstallTime,
+        lastUpdateTime = lastUpdateTime,
+        isXposedModule = xposedModuleDetector.isModule(this),
+    )
 
     private suspend fun installedPackagesByUser(): Map<Int, List<android.content.pm.PackageInfo>> {
         val users = rootService.getUsers()
