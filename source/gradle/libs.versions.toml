@@ -5,9 +5,9 @@ buildTools = "36.0.0"
 minSdk = "24"
 targetSdk = "36"
 # __(API)____(version)_(abi)
-versionCode = "29"
+versionCode = "30"
 versionCodeAlpha = "23"
-versionName = "1.4.4"
+versionName = "1.5.0"
 
 # libraries
 desugar-jdk-libs = "2.1.5"
