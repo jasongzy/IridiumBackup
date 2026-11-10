@@ -5,6 +5,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.room.withTransaction
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.AppBackupRepository
+import com.xayah.core.data.repository.AppsRepo
 import com.xayah.core.data.repository.requireBackupStorage
 import com.xayah.core.data.repository.importBlacklist
 import com.xayah.core.database.AppDatabase
@@ -56,6 +57,7 @@ class IndexViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val rootService: RemoteRootService,
     private val database: AppDatabase,
+    private val appsRepo: AppsRepo,
     private val cloudRepo: CloudRepository,
     private val labelsRepo: LabelsRepo,
     private val appBackupRepository: AppBackupRepository,
@@ -124,15 +126,18 @@ class IndexViewModel @Inject constructor(
                         }
                         requireNotNull(config.labelColors) { context.getString(R.string.config_file_may_be_broken) }.filterKeys(labelNames::contains)
                     } else null
-                    database.withTransaction {
-                        if (ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST in selected) database.importBlacklist(config.blacklist)
-                        if (ConstantUtil.CONFIGURATIONS_KEY_CLOUD in selected) cloudRepo.upsert(config.cloud)
-                        if (labelColors != null) {
-                            labelsRepo.addLabels(config.labels)
-                            labelsRepo.addLabelAppCrossRefs(config.labelAppRefs)
-                            labelsRepo.addLabelFileCrossRefs(config.labelFileRefs)
+                    val blacklist = config.blacklist.takeIf { ConstantUtil.CONFIGURATIONS_KEY_BLACKLIST in selected }
+                    val skipped = appsRepo.withInstalledBlacklistApps(blacklist?.apps.orEmpty()) { installed ->
+                        database.withTransaction {
+                            if (blacklist != null) database.importBlacklist(installed, blacklist.files)
+                            if (ConstantUtil.CONFIGURATIONS_KEY_CLOUD in selected) cloudRepo.upsert(config.cloud)
+                            if (labelColors != null) {
+                                labelsRepo.addLabels(config.labels)
+                                labelsRepo.addLabelAppCrossRefs(config.labelAppRefs)
+                                labelsRepo.addLabelFileCrossRefs(config.labelFileRefs)
+                            }
+                            if (ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES in selected) appBackupRepository.saveAppNotes(config.appNotes.orEmpty())
                         }
-                        if (ConstantUtil.CONFIGURATIONS_KEY_APP_NOTES in selected) appBackupRepository.saveAppNotes(config.appNotes.orEmpty())
                     }
                     if (labelColors != null) labelsRepo.setLabelColors(labelColors)
                     if (settings != null) {
@@ -141,7 +146,9 @@ class IndexViewModel @Inject constructor(
                     }
 
                     emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = context.getString(R.string.imported), duration = SnackbarDuration.Short))
+                    val message = if (skipped == 0) context.getString(R.string.imported)
+                        else context.resources.getQuantityString(R.plurals.blacklist_apps_skipped, skipped, skipped)
+                    emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = message, duration = SnackbarDuration.Short))
                 }
             }
         } catch (error: Exception) {

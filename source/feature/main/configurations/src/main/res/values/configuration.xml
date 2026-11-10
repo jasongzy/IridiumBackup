@@ -1,0 +1,6 @@
+<resources>
+    <plurals name="blacklist_apps_skipped">
+        <item quantity="one">Import complete · %d unavailable blacklist app skipped</item>
+        <item quantity="other">Import complete · %d unavailable blacklist apps skipped</item>
+    </plurals>
+</resources>

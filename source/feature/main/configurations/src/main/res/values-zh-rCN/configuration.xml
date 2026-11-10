@@ -1,0 +1,5 @@
+<resources>
+    <plurals name="blacklist_apps_skipped">
+        <item quantity="other">导入完成 · 已跳过 %d 个不可用的黑名单应用</item>
+    </plurals>
+</resources>

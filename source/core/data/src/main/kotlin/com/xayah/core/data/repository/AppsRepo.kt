@@ -17,6 +17,7 @@ import com.xayah.core.datastore.readLoadSystemApps
 import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.App
 import com.xayah.core.model.AppKey
+import com.xayah.core.model.BlacklistAppItem
 import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
@@ -229,7 +230,10 @@ class AppsRepo @Inject constructor(
             val changedApps = storedApps.filter { app ->
                 val info = scanned[app.packageName] ?: return@filter false
                 app.packageInfo.versionCode != PackageInfoCompat.getLongVersionCode(info) ||
+                    app.packageInfo.versionName != info.versionName.orEmpty() ||
+                    app.packageInfo.firstInstallTime != info.firstInstallTime ||
                     app.packageInfo.lastUpdateTime != info.lastUpdateTime ||
+                    app.extraInfo.uid != (info.applicationInfo?.uid ?: -1) ||
                     app.extraInfo.enabled != (info.applicationInfo?.enabled ?: false)
             }
             FastInitializationBatch(
@@ -398,10 +402,37 @@ class AppsRepo @Inject constructor(
         isXposedModule = xposedModuleDetector.isModule(this),
     )
 
+    private suspend fun activeUserIds() = rootService.getUsers().map { it.id }.also {
+        check(it.isNotEmpty()) { "Unable to list Android users" }
+    }
+
+    suspend fun withInstalledBlacklistApps(items: List<BlacklistAppItem>, apply: suspend (List<PackageEntity>) -> Unit): Int {
+        if (items.isEmpty()) {
+            apply(emptyList())
+            return 0
+        }
+        require(items.all { PathUtil.isValidPackageName(it.packageName) && it.userId >= 0 }) { "Invalid blacklist application" }
+        val requested = items.distinct()
+        return appInitializationMutex.withLock {
+            val active = activeUserIds().toSet()
+            val settings = settingsDataRepo.settingsData.first()
+            val installed = buildList {
+                for ((userId, group) in requested.groupBy { it.userId }) {
+                    if (userId !in active) continue
+                    val names = group.mapTo(hashSetOf()) { it.packageName }
+                    for (info in getInstalledPackages(userId)) if (info.packageName in names) {
+                        add(appsDao.query(info.packageName, OpType.BACKUP, userId)
+                            ?: initializeApp(settings, context.packageManager, userId, info))
+                    }
+                }
+            }
+            apply(installed)
+            requested.size - installed.size
+        }
+    }
+
     private suspend fun installedPackagesByUser(): Map<Int, List<android.content.pm.PackageInfo>> {
-        val users = rootService.getUsers()
-        check(users.isNotEmpty()) { "Unable to list Android users" }
-        val installed = users.associate { it.id to getInstalledPackages(it.id) }.toMutableMap()
+        val installed = activeUserIds().associateWith { getInstalledPackages(it) }.toMutableMap()
         for (userId in appsDao.getCachedInstalledUserIds(OpType.BACKUP)) installed.putIfAbsent(userId, emptyList())
         return installed
     }

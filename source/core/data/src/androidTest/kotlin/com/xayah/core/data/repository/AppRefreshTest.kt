@@ -19,6 +19,7 @@ import com.xayah.core.datastore.saveLoadSystemApps
 import com.xayah.core.datastore.saveCustomSUFile
 import com.xayah.core.model.CompressionType
 import com.xayah.core.model.OpType
+import com.xayah.core.model.BlacklistAppItem
 import com.xayah.core.model.PackageRestoreConfig
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStats
@@ -119,6 +120,7 @@ class AppRefreshTest {
             ).toPackageEntity("", "").apply {
                 indexInfo.opType = OpType.BACKUP
                 packageInfo.lastUpdateTime = info.lastUpdateTime
+                extraInfo.uid = info.applicationInfo!!.uid
                 extraInfo.firstUpdated = true
             }
             database.packageDao().upsert(app)
@@ -140,6 +142,12 @@ class AppRefreshTest {
                 assertEquals(enabled, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().extraInfo.enabled)
                 assertEquals(reads, detailsRead)
             }
+            info.applicationInfo!!.uid = 10002
+            repository.fastInitialize { _, _, _ -> }
+            assertEquals(10002, database.packageDao().query(info.packageName, OpType.BACKUP, 0)?.extraInfo?.uid)
+            info.firstInstallTime = 4321
+            repository.fastInitialize { _, _, _ -> }
+            assertEquals(4321L, database.packageDao().query(info.packageName, OpType.BACKUP, 0)?.packageInfo?.firstInstallTime)
             context.saveLoadSystemApps(true)
             assertEquals(false, repository.scanScope.first().matchesType(systemOnly, "other.app", 0, isSystem = false, fromBackup = false))
             val former = app.copy(indexInfo = app.indexInfo.copy(userId = 10), packageInfo = app.packageInfo.copy(versionName = "2.0"))
@@ -176,6 +184,19 @@ class AppRefreshTest {
             detailsAvailable = false
             repository.fullUpdate { _, _, _ -> }
             assertEquals(info.packageName, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().packageName)
+            val present = BlacklistAppItem(info.packageName, 0)
+            val absent = BlacklistAppItem("com.example.absent", 0)
+            val requested = listOf(present, absent, present.copy(userId = 10))
+            check(runCatching { repository.withInstalledBlacklistApps(requested) {} }.isFailure)
+            listAvailable = true
+            database.packageDao().deleteByIds(listOf(installed.id))
+            val skipped = repository.withInstalledBlacklistApps(requested) { database.importBlacklist(it, emptyList()) }
+            assertEquals(2, skipped)
+            val discovered = checkNotNull(database.packageDao().query(info.packageName, OpType.BACKUP, 0))
+            assertTrue(discovered.extraInfo.blocked)
+            assertEquals(info.applicationInfo!!.uid, discovered.extraInfo.uid)
+            assertEquals(info.versionName, discovered.packageInfo.versionName)
+            assertEquals(null, database.packageDao().query(absent.packageName, OpType.BACKUP, 0))
         } finally {
             context.saveLoadSystemApps(previousSystemApps)
             context.saveCustomSUFile(previousSu)

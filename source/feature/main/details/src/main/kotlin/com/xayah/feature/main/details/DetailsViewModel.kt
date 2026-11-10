@@ -62,8 +62,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -124,11 +122,9 @@ class DetailsViewModel @Inject constructor(
                 installedAppFlow.map { app -> app?.let { AppDetailsSource(it, true) } }
             }
             viewModelScope.launchOnDefault {
-                appFlow
-                    .filterNotNull()
-                    .filter { it.isInstalled }
-                    .distinctUntilChangedBy { Triple(it.app.packageName, it.app.userId, it.app.packageInfo.versionCode) }
-                    .collect { loadAppRuntimeInfo(it.app) }
+                installedAppFlow
+                    .distinctUntilChangedBy { app -> app?.let { it.extraInfo.uid to it.packageInfo } }
+                    .collect { app -> appRuntimeInfo.value = app?.let { loadAppRuntimeInfo(it) } ?: AppRuntimeInfo() }
             }
             combine(appFlow, isRefreshing, labelsRepo.getColoredLabelsFlow(), labelsRepo.getAppRefsFlow(), appRuntimeInfo) { source, isRefreshing, labels, refs, runtimeInfo ->
                 if (source != null) {
@@ -640,18 +636,12 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun loadAppRuntimeInfo(app: PackageEntity) {
-        val info = rootService.getPackageInfoAsUser(app.packageName, 0, app.userId)
-        val applicationInfo = info?.applicationInfo
-        val archiveAbis = rootService.getPackageSourceDir(app.packageName, app.userId)
-            .flatMap(::readApkAbis)
-            .distinct()
-        val nativeAbi = applicationInfo?.nativeLibraryDir?.substringAfterLast('/')?.toAndroidAbi()
-        appRuntimeInfo.emit(
-            AppRuntimeInfo(
-                architecture = archiveAbis.ifEmpty { listOfNotNull(nativeAbi) }.joinToString(),
-                targetSdk = applicationInfo?.targetSdkVersion ?: 0,
-            )
+    private suspend fun loadAppRuntimeInfo(app: PackageEntity): AppRuntimeInfo {
+        val info = rootService.getPackageInfoAsUser(app.packageName, 0, app.userId)?.applicationInfo ?: return AppRuntimeInfo()
+        val abis = (listOf(info.sourceDir) + info.splitSourceDirs.orEmpty()).flatMap(::readApkAbis).distinct()
+        return AppRuntimeInfo(
+            architecture = abis.ifEmpty { listOfNotNull(info.nativeLibraryDir?.substringAfterLast('/')?.toAndroidAbi()) }.joinToString(),
+            targetSdk = info.targetSdkVersion,
         )
     }
 
