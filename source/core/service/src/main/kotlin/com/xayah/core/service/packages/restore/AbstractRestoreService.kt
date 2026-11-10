@@ -120,8 +120,7 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
                 } else {
                     restore(type, userId, p, pkg, srcDir)
                 }
-                pkg.update(dataType = type, progress = 1f)
-                pkg.update(processingIndex = pkg.processingIndex + 1)
+                pkg.finishStep(type)
             }
             if (pkg.isSuccess && p.dataSelectedCount > 0) {
                 if (p.permissionSelected && mContext.readRestorePermissions().first()) {

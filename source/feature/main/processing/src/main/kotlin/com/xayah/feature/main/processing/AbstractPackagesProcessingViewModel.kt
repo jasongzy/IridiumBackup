@@ -73,28 +73,24 @@ abstract class AbstractPackagesProcessingViewModel(
     override val _dataItems: Flow<List<ProcessingDataCardItem>> = _taskId.flatMapLatest { id ->
         mTaskRepo.queryPackageFlow(id)
             .map { packages ->
-                val items = mutableListOf<ProcessingDataCardItem>()
                 packages.map {
-                    items.add(
-                        ProcessingDataCardItem(
-                            title = it.packageEntity.packageInfo.label,
-                            state = it.state,
-                            key = it.packageEntity.packageName,
-                            userId = it.packageEntity.userId,
-                            processingIndex = it.processingIndex,
-                            progress = (it.apkInfo.progress + it.userInfo.progress + it.userDeInfo.progress + it.dataInfo.progress + it.obbInfo.progress + it.mediaInfo.progress) / 6,
-                            items = listOf(
-                                it.apkInfo.toProcessingCardItem,
-                                it.userInfo.toProcessingCardItem,
-                                it.userDeInfo.toProcessingCardItem,
-                                it.dataInfo.toProcessingCardItem,
-                                it.obbInfo.toProcessingCardItem,
-                                it.mediaInfo.toProcessingCardItem,
-                            )
+                    ProcessingDataCardItem(
+                        title = it.packageEntity.packageInfo.label,
+                        state = it.state,
+                        key = it.packageEntity.packageName,
+                        userId = it.packageEntity.userId,
+                        processingIndex = it.processingIndex,
+                        progress = (it.apkInfo.progress + it.userInfo.progress + it.userDeInfo.progress + it.dataInfo.progress + it.obbInfo.progress + it.mediaInfo.progress) / 6,
+                        items = listOf(
+                            it.apkInfo.toProcessingCardItem,
+                            it.userInfo.toProcessingCardItem,
+                            it.userDeInfo.toProcessingCardItem,
+                            it.dataInfo.toProcessingCardItem,
+                            it.obbInfo.toProcessingCardItem,
+                            it.mediaInfo.toProcessingCardItem,
                         )
                     )
                 }
-                items
             }
             .flowOnIO()
     }

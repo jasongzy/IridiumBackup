@@ -52,6 +52,11 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
         mTaskDao.upsert(this)
     }
 
+    protected suspend fun TaskDetailPackageEntity.finishStep(type: DataType) {
+        set(type, progress = 1f)
+        update(processingIndex = processingIndex + 1)
+    }
+
     protected suspend fun preparePackage(option: KillAppOption, task: TaskDetailPackageEntity, userId: Int): Boolean {
         val name = task.packageEntity.packageName
         if (name == mContext.packageName) return true

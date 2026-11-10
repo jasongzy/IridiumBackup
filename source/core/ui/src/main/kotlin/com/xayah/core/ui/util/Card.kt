@@ -99,11 +99,3 @@ val ProcessingInfoEntity.toProcessingCardItem: ProcessingCardItem
             content = content
         )
     }
-
-fun MutableList<ProcessingCardItem>.addInfo(info: Info) {
-    add(info.toProcessingCardItem)
-}
-
-fun MutableList<ProcessingCardItem>.addInfo(info: ProcessingInfoEntity) {
-    add(info.toProcessingCardItem)
-}

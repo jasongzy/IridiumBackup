@@ -10,12 +10,10 @@ import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.ProcessingType
 import com.xayah.core.model.StorageMode
 import com.xayah.core.model.database.CloudEntity
-import com.xayah.core.model.database.TaskEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.AbstractProcessingServiceProxy
-import com.xayah.core.ui.model.ProcessingCardItem
 import com.xayah.core.ui.model.ProcessingDataCardItem
-import com.xayah.core.ui.util.addInfo
+import com.xayah.core.ui.util.toProcessingCardItem
 import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
@@ -176,38 +174,12 @@ abstract class AbstractProcessingViewModel(
     protected abstract val _dataItems: Flow<List<ProcessingDataCardItem>>
 
     protected val _taskId: MutableStateFlow<Long> = MutableStateFlow(-1)
-    private var _task: Flow<TaskEntity?> = _taskId.flatMapLatest { id -> mTaskRepo.queryTaskFlow(id).flowOnIO() }
-    private val _preItemsProgress: MutableStateFlow<Float> = MutableStateFlow(0F)
-    private var _preItems: Flow<List<ProcessingCardItem>> = _taskId.flatMapLatest { id ->
-        mTaskRepo.queryProcessingInfoFlow(id, ProcessingType.PREPROCESSING)
-            .map { infoList ->
-                _preItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size.coerceAtLeast(1)
-                val items = mutableListOf<ProcessingCardItem>()
-                infoList.forEach {
-                    items.addInfo(it)
-                }
-                items
-            }
-            .flowOnIO()
-    }
-    private val _postItemsProgress: MutableStateFlow<Float> = MutableStateFlow(0F)
-    private val _postItems: Flow<List<ProcessingCardItem>> = _taskId.flatMapLatest { id ->
-        mTaskRepo.queryProcessingInfoFlow(id, ProcessingType.POST_PROCESSING)
-            .map { infoList ->
-                _postItemsProgress.value = infoList.sumOf { it.progress.toDouble() }.toFloat() / infoList.size.coerceAtLeast(1)
-                val items = mutableListOf<ProcessingCardItem>()
-                infoList.forEach {
-                    items.addInfo(it)
-                }
-                items
-            }
-            .flowOnIO()
-    }
+    val task = _taskId.flatMapLatest { mTaskRepo.queryTaskFlow(it) }.stateInScope(null)
+    val preItems = processingItems(ProcessingType.PREPROCESSING)
+    val postItems = processingItems(ProcessingType.POST_PROCESSING)
+    val dataItems: StateFlow<List<ProcessingDataCardItem>> by lazy { _dataItems.stateInScope(emptyList()) }
 
-    val task: StateFlow<TaskEntity?> = _task.stateInScope(null)
-    val preItemsProgress: StateFlow<Float> = _preItemsProgress.stateInScope(0F)
-    val preItems: StateFlow<List<ProcessingCardItem>> = _preItems.stateInScope(listOf())
-    val dataItems: StateFlow<List<ProcessingDataCardItem>> by lazy { _dataItems.stateInScope(listOf()) }
-    val postItemsProgress: StateFlow<Float> = _postItemsProgress.stateInScope(0F)
-    val postItems: StateFlow<List<ProcessingCardItem>> = _postItems.stateInScope(listOf())
+    private fun processingItems(type: ProcessingType) = _taskId.flatMapLatest { id ->
+        mTaskRepo.queryProcessingInfoFlow(id, type).map { rows -> rows.map { it.toProcessingCardItem } }
+    }.flowOnIO().stateInScope(emptyList())
 }

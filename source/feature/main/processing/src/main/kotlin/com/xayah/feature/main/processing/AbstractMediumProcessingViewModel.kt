@@ -27,22 +27,18 @@ abstract class AbstractMediumProcessingViewModel(
     override val _dataItems: Flow<List<ProcessingDataCardItem>> = _taskId.flatMapLatest { id ->
         mTaskRepo.queryMediaFlow(id)
             .map { medium ->
-                val items = mutableListOf<ProcessingDataCardItem>()
                 medium.map {
-                    items.add(
-                        ProcessingDataCardItem(
-                            title = it.mediaEntity.name,
-                            state = it.state,
-                            key = it.mediaEntity.name,
-                            processingIndex = it.processingIndex,
-                            progress = it.mediaInfo.progress,
-                            items = listOf(
-                                it.mediaInfo.toProcessingCardItem,
-                            )
+                    ProcessingDataCardItem(
+                        title = it.mediaEntity.name,
+                        state = it.state,
+                        key = it.mediaEntity.name,
+                        processingIndex = it.processingIndex,
+                        progress = it.mediaInfo.progress,
+                        items = listOf(
+                            it.mediaInfo.toProcessingCardItem,
                         )
                     )
                 }
-                items
             }
             .flowOnIO()
     }

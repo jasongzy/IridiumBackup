@@ -50,6 +50,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import com.xayah.core.model.OperationState
+import com.xayah.core.ui.model.ProcessingCardItem
 import com.xayah.core.ui.component.AnimatedTextContainer
 import com.xayah.core.ui.component.BodyLargeText
 import com.xayah.core.ui.component.HeadlineMediumText
@@ -72,6 +73,8 @@ import com.xayah.core.ui.viewmodel.IndexUiEffect
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private fun List<ProcessingCardItem>.averageProgress() = sumOf { it.progress.toDouble() }.toFloat() / size.coerceAtLeast(1)
 
 internal suspend fun Lifecycle.countDownToScreenOff(deadline: Long, showMessage: suspend (Long) -> Unit, turnOff: suspend () -> Unit) {
     repeatOnLifecycle(Lifecycle.State.RESUMED) {
@@ -103,17 +106,15 @@ fun PageProcessing(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val task by viewModel.task.collectAsStateWithLifecycle()
-    val preItemsProgress by viewModel.preItemsProgress.collectAsStateWithLifecycle()
     val preItems by viewModel.preItems.collectAsStateWithLifecycle()
-    val postItemsProgress by viewModel.postItemsProgress.collectAsStateWithLifecycle()
     val postItems by viewModel.postItems.collectAsStateWithLifecycle()
     val dataItems by viewModel.dataItems.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
     val index = task?.processingIndex
     val currentItem = dataItems.getOrNull((index ?: 0) - 1)
     val segmentProgress = when (index) {
-        0 -> preItemsProgress
-        dataItems.size + 1 -> postItemsProgress
+        0 -> preItems.averageProgress()
+        dataItems.size + 1 -> postItems.averageProgress()
         dataItems.size + 2 -> 1f
         else -> currentItem?.progress ?: 0f
     }

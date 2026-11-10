@@ -221,8 +221,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                             mPackagesBackupUtil.backupData(revisionApp, pkg, type, dstDir)
                         }
                         if (result.isSuccess && pkg.get(type).state != OperationState.SKIP) onArchiveSaved(type, revisionApp, pkg, dstDir)
-                        pkg.update(dataType = type, progress = 1f)
-                        pkg.update(processingIndex = pkg.processingIndex + 1)
+                        pkg.finishStep(type)
                         revisionApp.dataStates = type.setSelected(revisionApp.dataStates, pkg.get(type).state == OperationState.DONE)
                     }
                     mPackagesBackupUtil.backupPermissions(revisionApp, current)
