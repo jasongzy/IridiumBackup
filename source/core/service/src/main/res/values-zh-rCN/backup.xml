@@ -1,4 +1,6 @@
 <resources>
+    <string name="check_permissions">检查权限</string>
+    <string name="permissions_not_restored">未能确认以下权限已恢复：</string>
     <string name="backup_revision_directory_failed">无法新建备份目录：%1$s</string>
     <string name="backup_no_content">所选项目中没有可恢复的文件</string>
     <string name="backup_metadata_failed">无法保存备份元数据</string>

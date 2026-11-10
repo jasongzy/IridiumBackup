@@ -32,6 +32,8 @@ import com.xayah.core.model.database.PackageDataStatesEntity
 import com.xayah.core.model.database.PackageDisplayStatsEntity
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageEntity
+import com.xayah.core.model.database.PackagePermission
+import com.xayah.core.model.database.PackagePermissionsEntity
 import com.xayah.core.model.database.PackageExtraInfo
 import com.xayah.core.model.database.PackageIndexInfo
 import com.xayah.core.model.database.PackageInfo
@@ -376,6 +378,13 @@ class AppsRepo @Inject constructor(
         }
     }
 
+    suspend fun refreshPermissions(app: PackageEntity): List<PackagePermission>? {
+        val info = rootService.getPackageInfoAsUser(app.packageName, PackageManager.GET_PERMISSIONS, app.userId) ?: return null
+        val permissions = rootService.getPermissions(info) ?: return null
+        appsDao.updatePermissions(PackagePermissionsEntity(app.id, permissions))
+        return permissions
+    }
+
     suspend fun removeUninstalledApp(packageName: String, userId: Int) {
         appsDao.deleteByPkgNames(OpType.BACKUP, userId, setOf(packageName))
         syncInstalledApps(userId)
@@ -405,7 +414,7 @@ class AppsRepo @Inject constructor(
                 isXposedModule = xposedModuleDetector.isModule(info),
             ),
             uid = uid,
-            permissions = rootService.getPermissions(packageInfo = info),
+            permissions = rootService.getPermissions(info) ?: pkg.extraInfo.permissions.takeIf { uid == pkg.extraInfo.uid }.orEmpty(),
             hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid, pkg.extraInfo),
             ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = pkg.userId),
             firstUpdated = true,

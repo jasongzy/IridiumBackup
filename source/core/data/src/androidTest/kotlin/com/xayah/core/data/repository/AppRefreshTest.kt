@@ -22,6 +22,7 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.PackageRestoreConfig
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageDataStats
+import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.model.toPackageEntity
 import com.xayah.core.rootservice.IRemoteRootService
 import com.xayah.core.rootservice.service.RemoteRootService
@@ -67,6 +68,7 @@ class AppRefreshTest {
             var usersAvailable = true
             var listAvailable = true
             var detailsAvailable = true
+            var permissions: List<PackagePermission>? = emptyList()
             val remote = Proxy.newProxyInstance(
                 IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java),
             ) { _, method, _ ->
@@ -85,7 +87,7 @@ class AppRefreshTest {
                         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                     }
                     "getPackageInfoAsUser" -> info.takeIf { detailsAvailable }?.also { detailsRead++ }
-                    "getPermissions" -> emptyList<Any>()
+                    "getPermissions" -> checkNotNull(permissions)
                     "getPackageSsaidAsUser" -> ""
                     else -> error("Unexpected root operation: ${method.name}")
                 }
@@ -164,6 +166,13 @@ class AppRefreshTest {
             listAvailable = false
             check(runCatching { repository.fastInitialize { _, _, _ -> } }.isFailure)
             check(runCatching { repository.fullInitialize { _, _, _ -> } }.isFailure)
+            val installed = database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single()
+            val granted = listOf(PackagePermission("android.permission.CAMERA", true))
+            permissions = granted
+            assertEquals(granted, repository.refreshPermissions(installed))
+            permissions = null
+            repository.fullUpdate { _, _, _ -> }
+            assertEquals(granted, database.packageDao().queryById(installed.id)?.extraInfo?.permissions)
             detailsAvailable = false
             repository.fullUpdate { _, _, _ -> }
             assertEquals(info.packageName, database.packageDao().queryPkgEntitiesByUserId(OpType.BACKUP, 0).single().packageName)

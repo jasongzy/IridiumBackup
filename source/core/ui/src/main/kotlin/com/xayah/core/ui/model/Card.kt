@@ -8,7 +8,9 @@ data class ProcessingCardItem(
     val title: String = "",
     val content: String = "",
     val log: String = "",
-)
+) {
+    val hasDiagnosticLog get() = log.isNotBlank() && (state == OperationState.ERROR || state == OperationState.DONE_WITH_WARNINGS)
+}
 
 data class ProcessingDataCardItem(
     val state: OperationState = OperationState.IDLE,

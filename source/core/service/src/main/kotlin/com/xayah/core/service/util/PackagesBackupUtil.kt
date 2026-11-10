@@ -220,12 +220,9 @@ class PackagesBackupUtil @Inject constructor(
 
     suspend fun backupPermissions(p: PackageEntity, packageInfo: PackageInfo) = run {
         log { "Backing up permissions..." }
-        p.extraInfo.permissions = rootService.getPermissions(packageInfo)
-        val permissions = p.extraInfo.permissions
-        log { "Permissions size: ${permissions.size}..." }
-        permissions.forEach {
-            log { "Permission name: ${it.name}, isGranted: ${it.isGranted}, op: ${it.op}, mode: ${it.mode}" }
-        }
+        val permissions = rootService.getPermissions(packageInfo)
+        p.extraInfo.permissions = permissions.orEmpty()
+        log { if (permissions == null) "Could not read permissions for ${p.packageName}" else "Permissions: ${permissions.size}" }
     }
 
     suspend fun backupSsaid(p: PackageEntity) = run {

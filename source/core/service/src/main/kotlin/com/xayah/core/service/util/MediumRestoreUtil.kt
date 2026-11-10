@@ -61,6 +61,7 @@ class MediumRestoreUtil @Inject constructor(
         val dst = m.path
         val dstDir = PathUtil.getParentPath(dst)
         var isSuccess: Boolean
+        var skippedEntries = 0
         val out = mutableListOf<String>()
 
         // Return if the archive doesn't exist.
@@ -83,8 +84,8 @@ class MediumRestoreUtil @Inject constructor(
                 out.addAll(extraction.result.out)
                 if (isSuccess) {
                     val restoredLinks = if (extraction.pendingLinks == 0) 0 else rootService.restoreArchiveLinks(linkDir, dstDir)
-                    val skippedLinks = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
-                    if (skippedLinks > 0) out.add(log { "Skipped $skippedLinks unsafe or conflicting archive entries." })
+                    skippedEntries = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
+                    if (skippedEntries > 0) out.add(log { "Skipped $skippedEntries unsafe or conflicting archive entries." })
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -97,10 +98,13 @@ class MediumRestoreUtil @Inject constructor(
         } else {
             isSuccess = false
             out.add(log { "Not exist: $src" })
-            t.updateInfo(state = OperationState.ERROR, log = out.toLineString())
-            return@finishArchiveStep ShellResult(code = -1, input = listOf(), out = out)
         }
-        t.updateInfo(state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
+        val state = when {
+            !isSuccess -> OperationState.ERROR
+            skippedEntries > 0 -> OperationState.DONE_WITH_WARNINGS
+            else -> OperationState.DONE
+        }
+        t.updateInfo(state = state, log = out.toLineString())
 
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }

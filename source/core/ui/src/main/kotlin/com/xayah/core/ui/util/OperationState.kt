@@ -30,7 +30,7 @@ val OperationState.icon: ImageVector
             ImageVector.vectorResource(id = R.drawable.ic_rounded_arrow_circle_down)
         }
 
-        OperationState.DONE -> {
+        OperationState.DONE, OperationState.DONE_WITH_WARNINGS -> {
             ImageVector.vectorResource(id = R.drawable.ic_rounded_check_circle)
         }
 
@@ -49,7 +49,7 @@ val OperationState.color: ThemedColorSchemeKeyTokens
             ThemedColorSchemeKeyTokens.SecondaryContainer
         }
 
-        OperationState.DONE -> {
+        OperationState.DONE, OperationState.DONE_WITH_WARNINGS -> {
             ThemedColorSchemeKeyTokens.PrimaryContainer
         }
 
@@ -70,7 +70,7 @@ val OperationState.containerColor: ThemedColorSchemeKeyTokens
             ThemedColorSchemeKeyTokens.Secondary
         }
 
-        OperationState.DONE -> {
+        OperationState.DONE, OperationState.DONE_WITH_WARNINGS -> {
             ThemedColorSchemeKeyTokens.Primary
         }
 

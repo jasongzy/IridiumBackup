@@ -78,7 +78,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.style.TextOverflow
-import com.xayah.core.common.util.toLineString
 import com.xayah.core.model.OpType
 import com.xayah.core.model.DataType
 import com.xayah.core.model.LabelPalette
@@ -962,21 +961,20 @@ private fun Info(app: PackageEntity, architecture: String, targetSdk: Int) {
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun Permissions(permissions: List<PackagePermission>, onClick: () -> Unit) {
-    val granted by remember(permissions) { mutableStateOf(permissions.filter { it.isGranted || it.isOpsAllowed }.map { it.name }) }
-    val denied by remember(permissions) { mutableStateOf(permissions.filter { it.isGranted.not() && it.isOpsAllowed.not() }.map { it.name }) }
+    val (granted, denied) = remember(permissions) { permissions.partition { it.isAllowed } }
     if (granted.isNotEmpty() || denied.isNotEmpty()) {
         Title(title = stringResource(id = R.string.permissions)) {
             if (granted.isNotEmpty()) {
                 Clickable(
                     title = stringResource(R.string.granted),
-                    value = granted.toLineString(),
+                    value = granted.joinToString("\n") { it.name },
                     onClick = onClick,
                 )
             }
             if (denied.isNotEmpty()) {
                 Clickable(
                     title = stringResource(R.string.denied),
-                    value = denied.toLineString(),
+                    value = denied.joinToString("\n") { it.name },
                     onClick = onClick,
                 )
             }

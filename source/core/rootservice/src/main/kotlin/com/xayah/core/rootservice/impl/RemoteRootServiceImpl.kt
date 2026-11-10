@@ -22,7 +22,6 @@ import android.os.ParcelFileDescriptor
 import android.os.ServiceManager
 import android.os.StatFs
 import android.os.UserHandle
-import android.os.UserHandleHidden
 import android.os.UserManagerHidden
 import android.system.Os
 import android.system.OsConstants
@@ -354,10 +353,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
         runCatching {
             packageManagerHidden.getPackageInfoAsUser(packageName, 0, userId).applicationInfo!!.uid
         }.getOrElse { -1 }
-    }
-
-    override fun getUserHandle(userId: Int): UserHandle = synchronized(lock) {
-        UserHandleHidden.of(userId)
     }
 
     override fun getUsers(): List<UserInfo> = synchronized(lock) {

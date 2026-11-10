@@ -343,11 +343,10 @@ class RemoteRootService(private val context: Context) {
     suspend fun getPackageInfoAsUser(packageName: String, flags: Int, userId: Int) =
         runCatching { getService().getPackageInfoAsUser(packageName, flags, userId) }.onFailure(onFailure).getOrNull()
 
-    suspend fun grantRuntimePermission(packageName: String, permName: String, user: UserHandle) =
-        runCatching { getService().grantRuntimePermission(packageName, permName, user) }.withLog()
-
-    suspend fun revokeRuntimePermission(packageName: String, permName: String, user: UserHandle) =
-        runCatching { getService().revokeRuntimePermission(packageName, permName, user) }.withLog()
+    suspend fun setPermissionGranted(packageName: String, permName: String, user: UserHandle, granted: Boolean) = runCatching {
+        if (granted) getService().grantRuntimePermission(packageName, permName, user)
+        else getService().revokeRuntimePermission(packageName, permName, user)
+    }.withLog()
 
     suspend fun getPermissionFlags(packageName: String, permName: String, user: UserHandle) =
         runCatching { getService().getPermissionFlags(packageName, permName, user) }.onFailure(onFailure).getOrElse { 0 }
@@ -363,8 +362,6 @@ class RemoteRootService(private val context: Context) {
 
     suspend fun getPackageUid(packageName: String, userId: Int): Int =
         runCatching { getService().getPackageUid(packageName, userId) }.onFailure(onFailure).getOrElse { -1 }
-
-    suspend fun getUserHandle(userId: Int): UserHandle? = runCatching { getService().getUserHandle(userId) }.onFailure(onFailure).getOrNull()
 
     suspend fun getUsers(): List<UserInfo> = runCatching { getService().users }.onFailure(onFailure).getOrElse { listOf() }
 
@@ -438,8 +435,8 @@ class RemoteRootService(private val context: Context) {
     suspend fun getApplicationEnabledSetting(packageName: String, userId: Int): Int? =
         runCatching { getService().getApplicationEnabledSetting(packageName, userId) }.onFailure(onFailure).getOrNull()
 
-    suspend fun getPermissions(packageInfo: PackageInfo): List<PackagePermission> =
-        runCatching { getService().getPermissions(packageInfo) }.onFailure(onFailure).getOrElse { listOf() }
+    suspend fun getPermissions(packageInfo: PackageInfo): List<PackagePermission>? =
+        runCatching { getService().getPermissions(packageInfo) }.onFailure(onFailure).getOrNull()
 
     suspend fun setOpsMode(code: Int, uid: Int, packageName: String?, mode: Int) =
         runCatching { getService().setOpsMode(code, uid, packageName, mode) }.withLog()

@@ -57,7 +57,7 @@ fun OperationState.StateView(enabled: Boolean = true, expanded: Boolean = false,
                 modifier = Modifier.size(SizeTokens.Level24),
                 imageVector = (
                         when (this) {
-                            OperationState.DONE -> ImageVector.vectorResource(id = R.drawable.ic_rounded_check_circle)
+                            OperationState.DONE, OperationState.DONE_WITH_WARNINGS -> ImageVector.vectorResource(id = R.drawable.ic_rounded_check_circle)
                             OperationState.ERROR -> ImageVector.vectorResource(id = R.drawable.ic_rounded_cancel)
                             OperationState.SKIP -> ImageVector.vectorResource(id = R.drawable.ic_rounded_not_started)
                             OperationState.UPLOADING -> ImageVector.vectorResource(id = R.drawable.ic_rounded_arrow_circle_up)

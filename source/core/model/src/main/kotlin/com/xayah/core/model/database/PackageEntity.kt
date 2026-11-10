@@ -27,14 +27,9 @@ data class PackagePermission @JvmOverloads constructor(
     var op: Int = AppOpsManagerHidden.OP_NONE,
     var mode: Int? = null,
 ) : Parcelable {
-    val isOpsAllowed: Boolean
-        get() = run {
-            var allowed = mode == AppOpsManager.MODE_ALLOWED
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                allowed = allowed || mode == AppOpsManager.MODE_FOREGROUND
-            }
-            allowed
-        }
+    val isAllowed: Boolean
+        get() = isGranted || mode == AppOpsManager.MODE_ALLOWED ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && mode == AppOpsManager.MODE_FOREGROUND)
 
     constructor(parcel: Parcel) : this(
         parcel.readString() ?: "",
@@ -314,6 +309,11 @@ data class PackageDataStatesEntity(
 data class PackageDisplayStatsEntity(
     var id: Long,
     @Embedded(prefix = "displayStats_") var displayStats: PackageDataStats,
+)
+
+data class PackagePermissionsEntity(
+    val id: Long,
+    @ColumnInfo(name = "extraInfo_permissions") val permissions: List<PackagePermission>,
 )
 
 // Part update entity

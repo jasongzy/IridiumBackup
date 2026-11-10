@@ -6,6 +6,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -23,10 +26,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.rounded.Circle
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
@@ -37,9 +42,9 @@ import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,9 +143,21 @@ fun ProcessingCard(
     processingIndex: Int,
     onActionBarClick: () -> Unit = {},
 ) {
-    val successCount by remember(items) { mutableIntStateOf(items.count { it.state == OperationState.DONE || it.state == OperationState.SKIP }) }
-    val failedCount by remember(items) { mutableIntStateOf(items.count { it.state == OperationState.ERROR }) }
-    val totalCount by remember(items.size) { mutableIntStateOf(items.size) }
+    val completedCount = items.count {
+        when (it.state) {
+            OperationState.DONE, OperationState.DONE_WITH_WARNINGS, OperationState.SKIP, OperationState.ERROR -> true
+            else -> false
+        }
+    }
+    var logIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    logIndex?.let(items::getOrNull)?.takeIf { it.hasDiagnosticLog }?.let { item ->
+        AlertDialog(
+            onDismissRequest = { logIndex = null },
+            title = { Text(item.title) },
+            text = { SelectionContainer { Text(item.log, Modifier.verticalScroll(rememberScrollState())) } },
+            confirmButton = { TextButton(text = stringResource(R.string.confirm), onClick = { logIndex = null }) },
+        )
+    }
 
     Card(
         modifier = modifier,
@@ -173,9 +190,9 @@ fun ProcessingCard(
                             }
                         }
 
-                        if (totalCount != 0) {
+                        if (items.isNotEmpty()) {
                             if (state != OperationState.IDLE) {
-                                LabelSmallText(text = "${successCount + failedCount}/${totalCount}", color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value.withState(enabled))
+                                LabelSmallText(text = "${completedCount}/${items.size}", color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value.withState(enabled))
                             }
                             if (state == OperationState.PROCESSING) {
                                 LoadingIndicator(
@@ -197,7 +214,8 @@ fun ProcessingCard(
                         items.forEachIndexed { index, item ->
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = enabled,
+                                enabled = enabled && item.hasDiagnosticLog,
+                                onClick = { logIndex = index },
                                 color = ThemedColorSchemeKeyTokens.Transparent.value.withState(enabled),
                             ) {
                                 Row(
@@ -208,11 +226,11 @@ fun ProcessingCard(
                                     item.state.StateView(enabled = enabled, expanded = false, isProcessing = processingIndex == index)
                                     TitleSmallText(modifier = Modifier.weight(1f), text = item.title, color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value.withState(enabled))
                                     LabelSmallText(text = item.content, color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value.withState(enabled))
-                                    Icon(
-                                        imageVector = Icons.Rounded.Circle,
-                                        contentDescription = null,
-                                        tint = ThemedColorSchemeKeyTokens.Transparent.value
-                                    )
+                                    if (item.hasDiagnosticLog) {
+                                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = stringResource(R.string.expand_details))
+                                    } else {
+                                        Spacer(Modifier.size(SizeTokens.Level24))
+                                    }
                                 }
                             }
                         }

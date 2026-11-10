@@ -8,6 +8,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.UserHandle
 import android.content.pm.ResolveInfo
 import android.graphics.Bitmap
 import android.os.Build
@@ -40,7 +41,6 @@ import com.xayah.core.model.database.LabelFileCrossRefEntity
 import com.xayah.core.model.database.MediaEntity
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.database.PackageEntity
-import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.model.database.PackageDataStats
 import com.xayah.core.model.database.PackageExtraInfo
 import com.xayah.core.model.database.PackageIndexInfo
@@ -104,10 +104,8 @@ class DetailsViewModel @Inject constructor(
     private var initialRefreshRequested = false
     private val _furtherOperations = MutableStateFlow<FurtherOperationsUiState>(FurtherOperationsUiState.Idle)
     val furtherOperations = _furtherOperations.asStateFlow()
-    private val _updatingPermission = MutableStateFlow<String?>(null)
+    private val _updatingPermission = MutableStateFlow(false)
     val updatingPermission = _updatingPermission.asStateFlow()
-    private val _permissionStates = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val permissionStates = _permissionStates.asStateFlow()
 
     val uiState: StateFlow<DetailsUiState> = when (target) {
         Target.Apps -> {
@@ -436,45 +434,30 @@ class DetailsViewModel @Inject constructor(
         }
     }
 
-    fun setPermission(permission: PackagePermission, granted: Boolean) {
-        if (_updatingPermission.value != null) return
+    fun refreshPermissions() {
         viewModelScope.launchOnDefault {
-            val app = (uiState.value as? Success.App)?.app ?: return@launchOnDefault
-            _updatingPermission.value = permission.name
+            refreshMutex.withLock {
+                val state = uiState.first { it !is Loading } as? Success.App ?: return@withLock
+                if (state.isInstalled) appsRepo.refreshPermissions(state.app)
+            }
+        }
+    }
+
+    fun setPermission(name: String, granted: Boolean) {
+        val app = (uiState.value as? Success.App)?.takeIf { it.isInstalled }?.app ?: return
+        if (!_updatingPermission.compareAndSet(false, true)) return
+        viewModelScope.launchOnDefault {
             try {
-                val user = rootService.getUserHandle(app.userId)
-                if (user == null) {
-                    showToast(R.string.permission_update_failed)
-                    return@launchOnDefault
-                }
-                if (granted) {
-                    rootService.grantRuntimePermission(app.packageName, permission.name, user)
-                } else {
-                    rootService.revokeRuntimePermission(app.packageName, permission.name, user)
-                }
-                if (permission.op != android.app.AppOpsManagerHidden.OP_NONE) {
-                    rootService.setOpsMode(
-                        permission.op,
-                        app.extraInfo.uid,
-                        app.packageName,
-                        if (granted) AppOpsManager.MODE_ALLOWED else AppOpsManager.MODE_IGNORED,
-                    )
-                }
-                appsRepo.updateApp(app)
-                val packageInfo = rootService.getPackageInfoAsUser(
-                    app.packageName,
-                    PackageManager.GET_PERMISSIONS,
-                    app.userId,
-                )
-                val updated = if (packageInfo == null) {
-                    null
-                } else {
-                    rootService.getPermissions(packageInfo).firstOrNull { it.name == permission.name }
-                }
-                val applied = updated != null && (updated.isGranted || updated.isOpsAllowed) == granted
-                if (updated != null) {
-                    _permissionStates.value = _permissionStates.value +
-                        (permission.name to (updated.isGranted || updated.isOpsAllowed))
+                val applied = refreshMutex.withLock {
+                    val info = rootService.getPackageInfoAsUser(app.packageName, PackageManager.GET_PERMISSIONS, app.userId)
+                    val uid = info?.applicationInfo?.uid ?: return@withLock false
+                    val current = rootService.getPermissions(info)?.firstOrNull { it.name == name } ?: return@withLock false
+                    val user = UserHandle.getUserHandleForUid(uid)
+                    if (current.isGranted != granted) rootService.setPermissionGranted(app.packageName, current.name, user, granted)
+                    if (current.op != android.app.AppOpsManagerHidden.OP_NONE) {
+                        rootService.setOpsMode(current.op, uid, app.packageName, if (granted) AppOpsManager.MODE_ALLOWED else AppOpsManager.MODE_IGNORED)
+                    }
+                    appsRepo.refreshPermissions(app)?.firstOrNull { it.name == name }?.isAllowed == granted
                 }
                 showToast(
                     when {
@@ -484,7 +467,7 @@ class DetailsViewModel @Inject constructor(
                     }
                 )
             } finally {
-                _updatingPermission.value = null
+                _updatingPermission.value = false
             }
         }
     }

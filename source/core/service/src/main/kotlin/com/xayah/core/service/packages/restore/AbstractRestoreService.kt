@@ -13,6 +13,9 @@ import com.xayah.core.model.ProcessingInfoType
 import com.xayah.core.model.ProcessingType
 import com.xayah.core.model.database.Info
 import com.xayah.core.model.database.PackageEntity
+import com.xayah.core.model.database.PackageDataStates.Companion.getSelected
+import com.xayah.core.model.util.get
+import com.xayah.core.rootservice.service.restorePermissions
 import com.xayah.core.model.database.ProcessingInfoEntity
 import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.service.R
@@ -121,7 +124,16 @@ internal abstract class AbstractRestoreService : AbstractPackagesService() {
                 pkg.update(processingIndex = pkg.processingIndex + 1)
             }
             if (pkg.isSuccess && p.dataSelectedCount > 0) {
-                if (mContext.readRestorePermissions().first()) mPackagesRestoreUtil.restorePermissions(userId, p)
+                if (p.permissionSelected && mContext.readRestorePermissions().first()) {
+                    val failed = mRootService.restorePermissions(p.packageName, userId, p.extraInfo.permissions)
+                    if (failed.isNotEmpty()) {
+                        val step = pkg.get(DataType.packageArchives.first { it != DataType.PACKAGE_APK && it.getSelected(p.dataStates) })
+                        val warning = mContext.getString(R.string.permissions_not_restored)
+                        step.state = OperationState.DONE_WITH_WARNINGS
+                        step.content = listOf(step.content, mContext.getString(R.string.check_permissions)).filter(String::isNotBlank).joinToString(" · ")
+                        step.log = listOf(warning, failed.joinToString("\n"), step.log).filter(String::isNotBlank).joinToString("\n")
+                    }
+                }
                 if (mContext.readRestoreSsaid().first()) mPackagesRestoreUtil.restoreSsaid(userId, p)
             }
 

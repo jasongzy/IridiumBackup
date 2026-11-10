@@ -1,9 +1,7 @@
 package com.xayah.core.service.util
 
 import com.xayah.core.util.archive.finishArchiveStep
-import android.app.AppOpsManagerHidden
 import android.content.Context
-import android.content.pm.PackageManager
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
@@ -140,6 +138,7 @@ class PackagesRestoreUtil @Inject constructor(
         val dstDir = packageRepository.getDataSrcDir(dataType, userId)
         val dst = packageRepository.getDataSrc(dstDir, packageName)
         var isSuccess = true
+        var skippedEntries = 0
         val out = mutableListOf<String>()
 
         if (!dataType.getSelected(p.dataStates)) {
@@ -212,8 +211,8 @@ class PackagesRestoreUtil @Inject constructor(
                             }
                             if (isSuccess) {
                                 val restoredLinks = if (extraction.pendingLinks == 0) 0 else rootService.restoreArchiveLinks(linkDir, dstDir)
-                                val skippedLinks = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
-                                if (skippedLinks > 0) out.add(log { "Skipped $skippedLinks unsafe or conflicting archive entries." })
+                                skippedEntries = extraction.skippedEntries + extraction.pendingLinks - restoredLinks
+                                if (skippedEntries > 0) out.add(log { "Skipped $skippedEntries unsafe or conflicting archive entries." })
                             }
                         }
                     } catch (e: CancellationException) {
@@ -230,36 +229,15 @@ class PackagesRestoreUtil @Inject constructor(
                     out.add(log { "Not exist: $src" })
                 }
             }
-            t.updateInfo(dataType = dataType, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
+            val state = when {
+                !isSuccess -> OperationState.ERROR
+                skippedEntries > 0 -> OperationState.DONE_WITH_WARNINGS
+                else -> OperationState.DONE
+            }
+            t.updateInfo(dataType = dataType, state = state, log = out.toLineString())
         }
 
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
-    }
-
-    suspend fun restorePermissions(userId: Int, p: PackageEntity) {
-        if (!p.permissionSelected || p.extraInfo.permissions.isEmpty()) return
-
-        val packageName = p.packageName
-        val info = rootService.getPackageInfoAsUser(packageName, PackageManager.GET_PERMISSIONS, userId)
-        val uid = info?.applicationInfo?.uid
-        val user = rootService.getUserHandle(userId)
-        if (info == null || uid == null || user == null) {
-            log { "Unable to restore permissions for $packageName (user $userId)." }
-            return
-        }
-
-        val requested = rootService.getPermissions(info).associateBy { it.name }
-        for (saved in p.extraInfo.permissions) {
-            val current = requested[saved.name] ?: continue
-            if (current.isGranted != saved.isGranted) {
-                if (saved.isGranted) rootService.grantRuntimePermission(packageName, saved.name, user)
-                else rootService.revokeRuntimePermission(packageName, saved.name, user)
-            }
-            val mode = saved.mode
-            if (mode != null && current.op != AppOpsManagerHidden.OP_NONE && current.op == saved.op) {
-                rootService.setOpsMode(current.op, uid, packageName, mode)
-            }
-        }
     }
 
     suspend fun restoreSsaid(userId: Int, p: PackageEntity) = run {

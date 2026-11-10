@@ -69,7 +69,8 @@ enum class OperationState {
     DOWNLOADING,
     SKIP,
     DONE,
-    ERROR
+    ERROR,
+    DONE_WITH_WARNINGS
 }
 
 enum class ProcessingType {

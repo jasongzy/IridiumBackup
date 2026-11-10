@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xayah.core.ui.component.InnerBottomSpacer
 import com.xayah.core.ui.component.InnerTopSpacer
 import com.xayah.core.ui.component.SecondaryLargeTopBar
+import com.xayah.core.ui.component.SetOnResume
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,7 +33,7 @@ fun PermissionEditorRoute(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val updatingPermission by viewModel.updatingPermission.collectAsStateWithLifecycle()
-    val permissionStates by viewModel.permissionStates.collectAsStateWithLifecycle()
+    SetOnResume { viewModel.refreshPermissions() }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     val app = (uiState as? DetailsUiState.Success.App)?.app
     val permissions = app?.extraInfo?.permissions.orEmpty()
@@ -52,15 +53,14 @@ fun PermissionEditorRoute(
             InnerTopSpacer(innerPadding)
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(permissions, key = { it.name }) { permission ->
-                    val granted = permissionStates[permission.name]
-                        ?: (permission.isGranted || permission.isOpsAllowed)
-                    val enabled = updatingPermission == null
+                    val granted = permission.isAllowed
+                    val enabled = !updatingPermission
                     ListItem(
                         modifier = Modifier.toggleable(
                             value = granted,
                             enabled = enabled,
                             role = Role.Switch,
-                            onValueChange = { viewModel.setPermission(permission, it) },
+                            onValueChange = { viewModel.setPermission(permission.name, it) },
                         ),
                         headlineContent = { Text(permission.name) },
                         trailingContent = {
