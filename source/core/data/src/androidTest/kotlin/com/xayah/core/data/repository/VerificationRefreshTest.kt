@@ -4,6 +4,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.os.Binder
 import android.os.Bundle
+import android.os.Looper
 import android.os.Parcel
 import android.os.ParcelFileDescriptor
 import androidx.room.Room
@@ -35,6 +36,7 @@ import com.xayah.core.util.localBackupSaveDir
 import java.io.File
 import java.lang.reflect.Proxy
 import java.security.MessageDigest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -168,7 +170,9 @@ class VerificationRefreshTest {
                 val configFile = File(PathUtil.getPackageRestoreConfigDst(revisionDir.path))
                 val manifestFile = File(PathUtil.getBackupManifestDst(revisionDir.path))
                 val metadata = listOf(configFile, manifestFile).associateWith(File::readBytes)
-                assertEquals(BackupVerificationStatus.VALID, repository.inspectRevision(revision).status)
+                val checked = repository.inspectRevision(revision)
+                assertEquals(BackupVerificationStatus.VALID, checked.status)
+                assertEquals(configFile.length() + 3L, checked.revision.sizeBytes)
                 metadata.forEach { (file, bytes) -> assertArrayEquals(bytes, file.readBytes()) }
                 assertEquals(
                     listOf(
@@ -316,11 +320,16 @@ class VerificationRefreshTest {
             assertEquals(revision.id, repository.rebuildLocalIndex { _, _, _ -> }.single().revision.id)
             assertEquals("Newer copy", revisions.getApp(config.packageName, 0)?.label)
             val removed = revisions.getRevisions(":${secondRoot.path}").single()
-            val deleting = launch {
-                afterMutation = { cancel() }
+            var deletedOnMainThread: Boolean? = null
+            val deleting = launch(Dispatchers.Main) {
+                afterMutation = {
+                    deletedOnMainThread = Looper.myLooper() == Looper.getMainLooper()
+                    cancel()
+                }
                 repository.deleteRevision(removed)
             }
             deleting.join()
+            assertEquals(false, deletedOnMainThread)
             check(deleting.isCancelled)
             afterMutation = null
             assertEquals(false, revisions.hasRevision(removed.id))

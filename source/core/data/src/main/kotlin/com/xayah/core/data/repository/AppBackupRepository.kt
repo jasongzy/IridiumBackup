@@ -258,8 +258,6 @@ class AppBackupRepository @Inject constructor(
                 issues.none { it.type == VerificationIssueType.METADATA_MISMATCH || it.fileName == "apk.${type.suffix}" }
             }
             if (issues.isEmpty()) {
-                val size = manifest.files.orEmpty().sumOf(BackupManifestFile::sizeBytes)
-                if (revision.sizeBytes != size) dao.updateRevisionSize(revision.id, size)
                 findLegacyRevision(revision)?.let { restore ->
                     val stats = manifest.displayStats(restore.indexInfo.compressionType)
                     if (restore.displayStats != stats) packageRepository.updateDisplayStats(restore.id, stats)
@@ -399,8 +397,10 @@ class AppBackupRepository @Inject constructor(
             }
         }
         onInspected(manifest, issues)
+        val size = if (issues.isEmpty()) manifest.files.orEmpty().sumOf(BackupManifestFile::sizeBytes) else revision.sizeBytes
+        if (size != revision.sizeBytes) dao.updateRevisionSize(revision.id, size)
         return VerificationResult(
-            revision = revision,
+            revision = revision.copy(sizeBytes = size),
             appLabel = appLabel,
             status = if (issues.isEmpty()) BackupVerificationStatus.VALID else BackupVerificationStatus.DAMAGED,
             issues = issues,
@@ -590,10 +590,10 @@ class AppBackupRepository @Inject constructor(
         }
     }
 
-    private suspend fun removeRevision(revision: BackupRevisionEntity): Boolean {
-        if (!hasValidArtifactId(revision) || !dao.hasRevision(revision.id)) return false
+    private suspend fun removeRevision(revision: BackupRevisionEntity): Boolean = withContext(Dispatchers.IO) {
+        if (!hasValidArtifactId(revision) || !dao.hasRevision(revision.id)) return@withContext false
         val packageEntity = findLegacyRevision(revision)
-        return finishArchiveStep {
+        finishArchiveStep {
             val deleted = if (packageEntity != null) {
                 packageRepository.deleteArchives(packageEntity)
             } else {
