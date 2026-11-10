@@ -19,9 +19,12 @@ import com.xayah.libpickyou.parcelables.DirChildrenParcelable
 import com.xayah.libpickyou.parcelables.FileParcelable
 import com.xayah.libpickyou.ui.model.PickerType
 import net.schmizz.sshj.SSHClient
+import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.Response.StatusCode
 import net.schmizz.sshj.sftp.SFTPClient
+import net.schmizz.sshj.sftp.SFTPException
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.password.PasswordFinder
 import net.schmizz.sshj.userauth.password.Resource
@@ -37,18 +40,18 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         msg()
     }
 
-    private fun <T> withSFTPClient(block: (client: SFTPClient) -> T) = run {
-        if (sftpClient == null) throw NullPointerException("SFTPClient is null.")
-        block(sftpClient!!)
-    }
+    private fun <T> withSFTPClient(block: (SFTPClient) -> T) = block(checkNotNull(sftpClient))
 
     override fun connect() {
         val connection = SSHClient()
         sshClient = connection
         try {
             connection.apply {
+                connectTimeout = CONNECT_TIMEOUT_MS
+                timeout = CONNECT_TIMEOUT_MS
                 addHostKeyVerifier(PromiscuousVerifier())
                 connect(entity.host, extra.port)
+                socket.soTimeout = 0
 
                 when (extra.mode) {
                     SFTPAuthMode.PASSWORD -> {
@@ -122,6 +125,7 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
                 }
             }
         }
+        checkTransferSize(dstPath, srcFileSize, bytes)
         onUploading(bytes, bytes)
     }
 
@@ -130,9 +134,11 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         val dstPath = "${dst}/$name"
         log { "download: $src to $dstPath" }
         val bytes = withSFTPClient { it.open(src, setOf(OpenMode.READ)) }.use { remote ->
+            val attributes = remote.fetchAttributes()
+            val size = if (attributes.has(FileAttributes.Flag.SIZE)) attributes.size else -1L
             remote.RemoteFileInputStream().use { input ->
-                CountingOutputStreamImpl(File(dstPath).outputStream(), remote.length(), onDownloading).use { output ->
-                    input.copyTo(output)
+                CountingOutputStreamImpl(File(dstPath).outputStream(), size, onDownloading).use { output ->
+                    input.copyTo(output).also { checkTransferSize(src, size, it) }
                 }
             }
         }
@@ -144,45 +150,23 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         withSFTPClient { it.rm(src) }
     }
 
-    override fun removeDirectory(src: String) {
+    override fun removeEmptyDirectory(src: String) {
         log { "removeDirectory: $src" }
         withSFTPClient { it.rmdir(src) }
     }
 
-    override fun clearEmptyDirectoriesRecursively(src: String) = withSFTPClient { client ->
-        val emptyDirs = mutableListOf<String>()
-        val paths = mutableListOf(src)
-
-        while (paths.isNotEmpty()) {
-            val dir = paths.removeAt(0)
-            val files = client.ls(dir)
-            if (files.isEmpty()) {
-                emptyDirs.add(dir)
-            } else {
-                for (file in files) {
-                    val path = "${dir}/${file.name}"
-                    if (file.isDirectory) {
-                        paths.add(path)
-                    }
-                }
-            }
-        }
-
-        // Remove reversed empty dirs.
-        for (path in emptyDirs.reversed()) removeDirectory(path)
-    }
-
     override fun deleteRecursively(src: String) {
-        withSFTPClient {
-            for (item in it.ls(src)) {
-                if (item.isDirectory) {
-                    deleteRecursively(item.path)
-                } else {
-                    deleteFile(item.path)
-                }
+        withSFTPClient { client ->
+            if (client.lstat(src).type != FileMode.Type.DIRECTORY) {
+                client.rm(src)
+                return@withSFTPClient
             }
-
-            removeDirectory(src)
+            for (item in client.ls(src)) {
+                check(item.name.isNotEmpty() && item.name != "." && item.name != ".." && '/' !in item.name)
+                val child = "${src.trimEnd('/')}/${item.name}"
+                if (item.isDirectory) deleteRecursively(child) else client.rm(child)
+            }
+            client.rmdir(src)
         }
     }
 
@@ -220,9 +204,15 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         return pathParcelableList
     }
 
-    override fun exists(src: String): Boolean = runCatching { withSFTPClient { it.statExistence(src) } != null }.getOrElse { false }
-
-    override fun size(src: String): Long = runCatching { withSFTPClient { it.size(src) } }.getOrElse { 0 }
+    override fun exists(src: String): Boolean = withSFTPClient { client ->
+        try {
+            client.lstat(src)
+            true
+        } catch (e: SFTPException) {
+            if (e.statusCode != StatusCode.NO_SUCH_FILE && e.statusCode != StatusCode.NO_SUCH_PATH) throw e
+            false
+        }
+    }
 
     override suspend fun testConnection() {
         connect()

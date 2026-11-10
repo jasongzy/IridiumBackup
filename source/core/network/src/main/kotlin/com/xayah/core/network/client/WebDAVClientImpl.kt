@@ -19,13 +19,23 @@ import com.xayah.libpickyou.parcelables.FileParcelable
 import com.xayah.libpickyou.ui.model.PickerType
 import com.xayah.libsardine.DavResource
 import com.xayah.libsardine.impl.OkHttpSardine
+import okhttp3.Credentials
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.RequestBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import okio.Buffer
 import okio.BufferedSink
 import okio.ForwardingSink
 import okio.buffer
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserException
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File
+import java.io.IOException
+import java.net.ProtocolException
 import java.util.concurrent.TimeUnit
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
@@ -42,20 +52,47 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         msg()
     }
 
-    private fun getPath(path: String) = "${entity.host.trimEnd('/')}/${path.trimStart('/')}"
-
-    private fun withClient(block: (client: OkHttpSardine) -> Unit) = run {
-        if (client == null) throw NullPointerException("Client is null.")
-        block(client!!)
+    private fun getPath(path: String): String {
+        val url = entity.host.toHttpUrl().newBuilder()
+        for (segment in path.split('/').filter(String::isNotEmpty)) {
+            require(segment != "." && segment != "..") { "Invalid WebDAV path: $path" }
+            url.addPathSegment(segment)
+        }
+        return url.build().toString()
     }
 
+    private fun <T> withClient(block: (OkHttpSardine) -> T): T = block(checkNotNull(client))
+
     override fun connect() {
+        val origin = entity.host.toHttpUrl()
+        val authorization = Credentials.basic(entity.user, entity.pass)
+        var authenticationRequested = false
+        fun isAccountOrigin(url: HttpUrl) = url.scheme == origin.scheme && url.host == origin.host && url.port == origin.port
         val builder = OkHttpClient.Builder()
-            .connectTimeout(0, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.SECONDS)
-            .writeTimeout(0, TimeUnit.SECONDS)
+            .connectTimeout(CONNECT_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+            .readTimeout(IO_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+            .writeTimeout(IO_TIMEOUT_MS.toLong(), TimeUnit.MILLISECONDS)
+            .authenticator { _, response ->
+                val request = response.request
+                if (!isAccountOrigin(request.url) || request.header("Authorization") != null) null
+                else {
+                    authenticationRequested = true
+                    request.newBuilder().header("Authorization", authorization).build()
+                }
+            }
+            .addNetworkInterceptor { chain ->
+                val request = chain.request()
+                val method = chain.call().request().method
+                if (request.method != method) {
+                    throw ProtocolException("WebDAV redirect changed $method to ${request.method}")
+                }
+                chain.proceed(request)
+            }
             .addInterceptor { chain ->
                 var request = chain.request()
+                if (authenticationRequested && isAccountOrigin(request.url)) {
+                    request = request.newBuilder().header("Authorization", authorization).build()
+                }
                 val requestBody = request.body
                 val onUpload = uploadProgress
                 if (request.method == "PUT" && requestBody != null && onUpload != null) {
@@ -79,7 +116,7 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
                         }
                     }).build()
                 }
-                chain.proceed(request)
+                checkCollectionResult(chain.proceed(request))
             }
         if (extra.insecure) {
             try {
@@ -102,7 +139,6 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         }
 
         client = OkHttpSardine(builder.build()).apply {
-            setCredentials(entity.user, entity.pass)
             list(entity.host)
         }
     }
@@ -111,8 +147,43 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         client = null
     }
 
+    private fun checkCollectionResult(response: Response): Response {
+        val method = response.request.method
+        if (response.code != 207 || (method != "DELETE" && method != "MOVE")) return response
+        return response.use {
+            try {
+                val xml = XmlPullParserFactory.newInstance().apply { isNamespaceAware = true }.newPullParser()
+                xml.setInput(it.body!!.byteStream(), null)
+                xml.nextTag()
+                xml.require(XmlPullParser.START_TAG, "DAV:", "multistatus")
+                var href = ""
+                var code: Int? = null
+                while (xml.next() != XmlPullParser.END_DOCUMENT) {
+                    if (xml.namespace != "DAV:") continue
+                    if (xml.eventType == XmlPullParser.START_TAG && xml.depth == 2 && xml.name == "response") {
+                        href = ""
+                        code = null
+                    } else if (xml.eventType == XmlPullParser.START_TAG && xml.depth == 3) {
+                        when (xml.name) {
+                            "href" -> href = xml.nextText()
+                            "status" -> code = xml.nextText().substringAfter(' ', "").substringBefore(' ').toIntOrNull()
+                        }
+                    } else if (xml.eventType == XmlPullParser.END_TAG && xml.depth == 2 && xml.name == "response") {
+                        if (code == null || code !in 200..299) {
+                            val path = it.request.url.resolve(href)?.encodedPath ?: it.request.url.encodedPath
+                            throw IOException("WebDAV $method failed: $path (${code ?: "invalid status"})")
+                        }
+                    }
+                }
+            } catch (e: XmlPullParserException) {
+                throw IOException("Invalid WebDAV $method response", e)
+            }
+            it.newBuilder().body("".toResponseBody()).build()
+        }
+    }
+
     override fun mkdir(dst: String) = withClient { client ->
-        log { "mkdir: ${getPath(dst)}" }
+        log { "mkdir: $dst" }
         client.createDirectory(getPath(dst))
     }
 
@@ -127,14 +198,14 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
     }
 
     override fun renameTo(src: String, dst: String) = withClient { client ->
-        log { "renameTo: from ${getPath(src)} to ${getPath(dst)}" }
+        log { "renameTo: from $src to $dst" }
         client.move(getPath(src), getPath(dst), false)
     }
 
     override fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit) = withClient { client ->
         val name = PathUtil.getFileName(src)
-        val dstPath = "${getPath(dst)}/$name"
-        log { "upload: $src to $dstPath" }
+        val dstPath = getPath("$dst/$name")
+        log { "upload: $src to $dst/$name" }
         val srcFile = File(src)
         uploadProgress = onUploading
         try {
@@ -148,7 +219,7 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
     override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
         val name = PathUtil.getFileName(src)
         val dstPath = "${dst}/$name"
-        log { "download: ${getPath(src)} to $dstPath" }
+        log { "download: $src to $dstPath" }
         val bytes = client.get(getPath(src)).use { input ->
             CountingOutputStreamImpl(File(dstPath).outputStream(), -1, onDownloading).use { output ->
                 input.copyTo(output)
@@ -158,117 +229,51 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
     }
 
     override fun deleteFile(src: String) = withClient { client ->
-        log { "deleteFile: ${getPath(src)}" }
+        log { "deleteFile: $src" }
         client.delete(getPath(src))
     }
 
-    override fun removeDirectory(src: String) = withClient { client ->
-        log { "removeDirectory: ${getPath(src)}" }
-        client.delete(getPath(src))
-    }
+    // WebDAV DELETE always removes the entire collection.
+    override fun removeEmptyDirectory(src: String) = Unit
 
-    private fun clearEmptyDirectoriesRecursivelyInternal(src: String): Boolean {
-        var isEmpty = true
-        withClient { client ->
-            val resources: List<DavResource> = client.list(src)
+    override fun deleteRecursively(src: String) = deleteFile(src)
 
-            for (res in resources) {
-                if (!res.isDirectory) {
-                    isEmpty = false
-                } else {
-                    if (clearEmptyDirectoriesRecursivelyInternal(res.path).not()) {
-                        isEmpty = false
-                    }
-                }
-            }
-
-            if (isEmpty) {
-                client.delete(src)
-            }
-
+    private fun listResources(src: String): Pair<DavResource, List<DavResource>> {
+        val url = getPath(src)
+        val path = url.toHttpUrl().toUri().path.trimEnd('/')
+        val resources = withClient { it.list(url) }
+        val self = resources.firstOrNull { it.path.trimEnd('/') == path } ?: throw IOException("Incomplete WebDAV listing: $src")
+        val children = resources.filter {
+            it !== self && it.path.trimEnd('/').substringBeforeLast('/', "") == path && it.name.isNotEmpty() && it.name != "." && it.name != ".."
         }
-        return isEmpty
+        return self to children
     }
-
-
-    override fun clearEmptyDirectoriesRecursively(src: String) {
-        clearEmptyDirectoriesRecursivelyInternal(getPath(src))
-    }
-
-    override fun deleteRecursively(src: String) = removeDirectory(src)
 
     override fun listFiles(src: String): DirChildrenParcelable {
         val files = mutableListOf<FileParcelable>()
         val directories = mutableListOf<FileParcelable>()
-        withClient { client ->
-            val resources = client.list(getPath(src))
-            for ((index, resource) in resources.withIndex()) {
-                if (index == 0) continue
-                val creationTime = runCatching { resource.creation.time }.getOrDefault(0)
-                val fileParcelable = FileParcelable(resource.name, creationTime)
-                if (resource.isDirectory) directories.add(fileParcelable)
-                else files.add(fileParcelable)
-            }
+        for (resource in listResources(src).second) {
+            val item = FileParcelable(resource.name, resource.creation?.time ?: 0L)
+            if (resource.isDirectory) directories.add(item) else files.add(item)
         }
         files.sortBy { it.name }
         directories.sortBy { it.name }
         return DirChildrenParcelable(files = files, directories = directories)
     }
 
-    private fun walkFileTreeRecursively(src: String): List<PathParcelable> {
-        val pathParcelableList = mutableListOf<PathParcelable>()
-        val files = listFiles(src)
-        for (i in files.files) {
-            pathParcelableList.add(PathParcelable("${src}/${i.name}"))
-        }
-        for (i in files.directories) {
-            pathParcelableList.addAll(walkFileTreeRecursively("${src}/${i.name}"))
-        }
-        return pathParcelableList
-    }
-
-    override fun walkFileTree(src: String): List<PathParcelable> {
-        val pathParcelableList = mutableListOf<PathParcelable>()
-        withClient { client ->
-            val srcFile = client.list(getPath(src))[0]
-            if (srcFile.isDirectory) {
-                pathParcelableList.addAll(walkFileTreeRecursively(src))
-            } else {
-                pathParcelableList.add(PathParcelable(src))
+    override fun walkFileTree(src: String): List<PathParcelable> = buildList {
+        fun walk(path: String) {
+            val (self, children) = listResources(path)
+            if (!self.isDirectory) add(PathParcelable(path))
+            for (child in children) {
+                val entry = "${path.trimEnd('/')}/${child.name}"
+                if (child.isDirectory) walk(entry) else add(PathParcelable(entry))
             }
         }
-        return pathParcelableList
+        walk(src)
     }
 
-    override fun exists(src: String): Boolean = runCatching { withClient { client -> client.list(getPath(src)) } }.isSuccess
-
-    private fun sizeRecursively(src: String): Long {
-        var size = 0L
-        withClient { client ->
-            val files = listFiles(src)
-            for (i in files.files) {
-                size += client.list(getPath("${src}/${i.name}"))[0].contentLength
-            }
-            for (i in files.directories) {
-                size("${src}/${i.name}")
-            }
-        }
-        return size
-    }
-
-    override fun size(src: String): Long {
-        var size = 0L
-        withClient { client ->
-            val srcFile = client.list(getPath(src))[0]
-            size += if (srcFile.isDirectory) {
-                sizeRecursively(src)
-            } else {
-                srcFile.contentLength
-            }
-        }
-        log { "size: $size, $src" }
-        return size
-    }
+    override fun exists(src: String): Boolean = withClient { it.exists(getPath(src)) }
 
     override suspend fun testConnection() {
         connect()

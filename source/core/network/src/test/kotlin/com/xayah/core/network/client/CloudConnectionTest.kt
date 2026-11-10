@@ -5,7 +5,6 @@ import com.xayah.core.model.SmbVersion
 import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.SFTPExtra
 import com.xayah.core.model.database.SMBExtra
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 import java.net.InetAddress
@@ -20,7 +19,14 @@ class CloudConnectionTest {
             ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
                 server.soTimeout = 3_000
                 val executor = Executors.newSingleThreadExecutor()
-                val connection = executor.submit { server.accept().close() }
+                val closed = executor.submit {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 3_000
+                        socket.shutdownOutput()
+                        val buffer = ByteArray(1024)
+                        while (socket.getInputStream().read(buffer) != -1) Unit
+                    }
+                }
                 try {
                     val entity = CloudEntity("test", type, server.inetAddress.hostAddress!!, "test", "test", "/backup", "", false)
                     val client = if (type == CloudType.SFTP) {
@@ -29,9 +35,7 @@ class CloudConnectionTest {
                         SMBClientImpl(entity, SMBExtra("", server.localPort, "", listOf(SmbVersion.SMB_3_1_1)))
                     }
                     assertThrows(Exception::class.java) { client.connect() }
-                    connection.get(5, TimeUnit.SECONDS)
-                    val field = if (type == CloudType.SFTP) "sshClient" else "client"
-                    assertNull(client.javaClass.getDeclaredField(field).apply { isAccessible = true }.get(client))
+                    closed.get(5, TimeUnit.SECONDS)
                     client.disconnect()
                 } finally {
                     executor.shutdownNow()

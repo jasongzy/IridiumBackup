@@ -27,6 +27,9 @@ class FTPClientTest {
 
     private class Server(val accepted: Boolean) : FTPClient() {
         var bytes = byteArrayOf(1, 2, 3)
+        var advertisedSize: Long? = null
+        override fun getSize(pathname: String) = advertisedSize?.toString()
+
         lateinit var uploadStream: InputStream
         lateinit var downloadStream: OutputStream
 
@@ -74,10 +77,11 @@ class FTPClientTest {
         override fun mlistFile(pathname: String) = FTPFile().apply {
             name = pathname.substringAfterLast('/')
             type = FTPFile.DIRECTORY_TYPE
-        }
+        }.takeUnless { pathname.endsWith("/absent") }
 
         override fun listFiles(pathname: String): Array<FTPFile> {
             if (denied) return emptyArray()
+            if (pathname == "/invalid") return arrayOf(FTPFile().apply { name = "../outside" })
             val children = when (pathname) {
                 "/backup" -> """
                     -rw-r--r-- 1 user group 3 Jan 01 2026 .hidden.tar
@@ -119,6 +123,8 @@ class FTPClientTest {
         val server = Server(accepted = false)
         assertThrows(IOException::class.java) { client(server).download("/backup/app.tar", temporary.root.path) { _, _ -> } }
         assertThrows(IOException::class.java) { server.downloadStream.write(0) }
+        val short = Server(accepted = true).apply { advertisedSize = 10 }
+        assertThrows(IOException::class.java) { client(short).download("/backup/app.tar", temporary.root.path) { _, _ -> } }
     }
 
     @Test
@@ -172,42 +178,69 @@ class FTPClientTest {
     fun rejectsFailedListingsInsteadOfTreatingThemAsEmptyDirectories() {
         val server = ListingServer().apply { denied = true }
         val client = client(server)
+        assertThrows(IOException::class.java) { client.exists("/backup/absent") }
         assertThrows(IOException::class.java) { client.listFiles("/backup") }
         assertThrows(IOException::class.java) { client.deleteRecursively("/backup") }
         assertEquals(emptyList<String>(), server.deletedFiles)
         assertEquals(emptyList<String>(), server.deletedDirectories)
+        server.denied = false
+        assertFalse(client.exists("/backup/absent"))
+        assertThrows(IOException::class.java) { client.deleteRecursively("/invalid") }
+        assertEquals(emptyList<String>(), server.deletedFiles)
     }
 
-    @Test
-    fun rejectedLoginClosesConnectionAndKeepsCredentialsOutOfError() {
+    private fun runFtpSession(loginReply: String, test: (FTPClientImpl) -> Unit): List<String> =
         ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { server ->
             server.soTimeout = 3_000
             val executor = Executors.newSingleThreadExecutor()
-            val exchange = executor.submit {
+            val exchange = executor.submit<List<String>> {
                 server.accept().use { socket ->
                     socket.soTimeout = 3_000
                     val input = socket.getInputStream().bufferedReader()
                     val output = socket.getOutputStream().bufferedWriter()
                     fun reply(text: String) { output.write("$text\r\n"); output.flush() }
                     reply("220 Test FTP")
-                    assertEquals("FEAT", input.readLine())
-                    reply("502 Not implemented")
-                    assertEquals("USER test-user", input.readLine())
-                    reply("331 Password required")
-                    assertEquals("PASS test-password", input.readLine())
-                    reply("530 Login failed")
-                    assertEquals(null, input.readLine())
+                    input.lineSequence().onEach { command ->
+                        reply(when (command.substringBefore(' ')) {
+                            "FEAT" -> "502 Not implemented"
+                            "USER" -> "331 Password required"
+                            "PASS" -> loginReply
+                            "QUIT" -> "221 Bye"
+                            else -> "200 OK"
+                        })
+                    }.toList()
                 }
             }
             try {
                 val entity = CloudEntity("test", CloudType.FTP, server.inetAddress.hostAddress!!, "test-user", "test-password", "/backup", "", false)
-                val error = assertThrows(LoginException::class.java) { FTPClientImpl(entity, FTPExtra(server.localPort)).connect() }
-                assertFalse(error.message.orEmpty().contains(entity.pass))
-                assertFalse(error.message.orEmpty().contains(entity.user))
+                test(FTPClientImpl(entity, FTPExtra(server.localPort)))
                 exchange.get(5, TimeUnit.SECONDS)
             } finally {
                 executor.shutdownNow()
             }
         }
+
+    @Test
+    fun refusesMultilinePathsBeforeSendingAnyCommand() {
+        val sent = runFtpSession("230 Logged in") { client ->
+            client.connect()
+            try {
+                assertThrows(IOException::class.java) { client.mkdir("folder\r\nNOOP") }
+                client.mkdir("valid folder")
+            } finally {
+                client.disconnect()
+            }
+        }
+        assertEquals(listOf("MKD valid folder"), sent.filter { it.startsWith("MKD ") || it == "NOOP" })
+    }
+
+    @Test
+    fun rejectedLoginClosesConnectionAndKeepsCredentialsOutOfError() {
+        val sent = runFtpSession("530 Login failed") { client ->
+            val error = assertThrows(LoginException::class.java) { client.connect() }
+            assertFalse(error.message.orEmpty().contains("test-password"))
+            assertFalse(error.message.orEmpty().contains("test-user"))
+        }
+        assertEquals(listOf("USER test-user", "PASS test-password"), sent.filter { it.startsWith("USER ") || it.startsWith("PASS ") })
     }
 }

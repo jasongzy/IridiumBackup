@@ -25,6 +25,7 @@ import org.apache.commons.net.ftp.FTPReply
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.time.Duration
 import javax.security.auth.login.LoginException
 
 class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra) : CloudClient {
@@ -35,16 +36,21 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         msg()
     }
 
-    private fun withClient(block: (client: FTPClient) -> Unit) = run {
-        if (client == null) throw NullPointerException("Client is null.")
-        block(client!!)
-    }
+    private fun <T> withClient(block: (FTPClient) -> T): T = block(checkNotNull(client))
 
     override fun connect() {
-        val connection = FTPClient()
+        val connection = object : FTPClient() {
+            override fun sendCommand(command: String, args: String?): Int {
+                if (args != null && ('\r' in args || '\n' in args)) throw IOException("FTP command arguments cannot contain line breaks")
+                return super.sendCommand(command, args)
+            }
+        }
         try {
             connection.apply {
                 autodetectUTF8 = true
+                connectTimeout = CONNECT_TIMEOUT_MS
+                defaultTimeout = IO_TIMEOUT_MS
+                dataTimeout = Duration.ofMillis(IO_TIMEOUT_MS.toLong())
                 connect(entity.host, extra.port)
                 if (login(entity.user, entity.pass).not()) throw LoginException("FTP login failed ($replyCode).")
                 enterLocalPassiveMode()
@@ -107,7 +113,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         val srcFileSize = srcFile.length()
         val bytes = CountingInputStreamImpl(FileInputStream(srcFile), srcFileSize, onUploading).use { stream ->
             if (!client.storeFile(dstPath, stream)) throw IOException("FTP upload failed (${client.replyCode}): $dstPath")
-            if (stream.byteCount != srcFileSize) throw IOException("Incomplete FTP upload: $dstPath")
+            checkTransferSize(dstPath, srcFileSize, stream.byteCount)
             stream.byteCount
         }
         onUploading(bytes, bytes)
@@ -118,8 +124,10 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         val dstPath = "$dst/$name"
         log { "download: $src to $dstPath" }
         val dstFile = File(dstPath)
-        val bytes = CountingOutputStreamImpl(dstFile.outputStream(), -1, onDownloading).use { stream ->
+        val size = client.getSize(src)?.trim()?.toLongOrNull() ?: -1L
+        val bytes = CountingOutputStreamImpl(dstFile.outputStream(), size, onDownloading).use { stream ->
             if (!client.retrieveFile(src, stream)) throw IOException("FTP download failed (${client.replyCode}): $src")
+            checkTransferSize(src, size, stream.byteCount)
             stream.byteCount
         }
         onDownloading(bytes, bytes)
@@ -130,7 +138,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         if (client.deleteFile(src).not()) throw IOException("Failed to delete file: $src.")
     }
 
-    override fun removeDirectory(src: String) = withClient { client ->
+    override fun removeEmptyDirectory(src: String) = withClient { client ->
         log { "removeDirectory: $src" }
         if (client.removeDirectory(src).not()) throw IOException("Failed to remove dir: $src.")
     }
@@ -138,55 +146,20 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
     private fun FTPClient.listDirectory(src: String): List<FTPFile> {
         val files = listFiles(src)
         if (!FTPReply.isPositiveCompletion(replyCode)) throw IOException("FTP listing failed ($replyCode): $src")
-        return files.filterNot { it.name == "." || it.name == ".." }
-    }
-
-    override fun clearEmptyDirectoriesRecursively(src: String) = withClient { client ->
-        val srcFile = listFile(src)
-        if (srcFile.isDirectory) {
-            val emptyDirs = mutableListOf<String>()
-            val paths = mutableListOf(src)
-
-            while (paths.isNotEmpty()) {
-                val dir = paths.removeAt(0)
-                val files = client.listDirectory(dir)
-                if (files.isEmpty()) {
-                    emptyDirs.add(dir)
-                } else {
-                    for (file in files) {
-                        val path = "${dir}/${file.name}"
-                        if (file.isDirectory) {
-                            paths.add(path)
-                        }
-                    }
-                }
-            }
-
-            // Remove reversed empty dirs.
-            for (path in emptyDirs.reversed()) removeDirectory(path)
-        }
-    }
-
-    private fun listFile(src: String): FTPFile {
-        var srcFile: FTPFile? = null
-        withClient { client ->
-            srcFile = client.mlistFile(src)
-            if (srcFile == null) {
-                srcFile = client.listDirectory(runCatching { PathUtil.getParentPath(src) }.getOrElse { "." })
-                    .firstOrNull { it.name == PathUtil.getFileName(src) }
+        return files.filterNot { it.name == "." || it.name == ".." }.also { children ->
+            if (children.any { it.name.isNullOrEmpty() || '/' in it.name || '\r' in it.name || '\n' in it.name }) {
+                throw IOException("Invalid FTP listing: $src")
             }
         }
-        if (srcFile != null) {
-            return srcFile!!
-        } else {
-            throw IOException("$src not found.")
-        }
     }
 
-    /**
-     * Actually this is not a recursive function,
-     * just keep this name to make it easier to understand.
-     */
+    private fun findFile(src: String): FTPFile? = withClient { client ->
+        client.mlistFile(src) ?: client.listDirectory(PathUtil.getParentPath(src).ifEmpty { "." })
+            .firstOrNull { it.name == PathUtil.getFileName(src) }
+    }
+
+    private fun listFile(src: String): FTPFile = findFile(src) ?: throw IOException("$src not found.")
+
     override fun deleteRecursively(src: String) = withClient { client ->
         val srcFile = listFile(src)
         if (srcFile.isDirectory.not()) {
@@ -212,7 +185,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
             }
 
             // Remove reversed empty dirs.
-            for (path in dirs.reversed()) removeDirectory(path)
+            for (path in dirs.reversed()) removeEmptyDirectory(path)
         }
     }
 
@@ -253,27 +226,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         return pathParcelableList
     }
 
-    override fun exists(src: String): Boolean = runCatching { listFile(src) }.isSuccess
-
-    override fun size(src: String): Long {
-        var size = 0L
-        withClient { client ->
-            val srcFile = listFile(src)
-            if (srcFile.isDirectory.not()) {
-                size += client.getSize(src)?.toLongOrNull() ?: 0
-            } else {
-                val files = listFiles(src)
-                for (i in files.files) {
-                    size += client.getSize("${src}/${i.name}")?.toLongOrNull() ?: 0
-                }
-                for (i in files.directories) {
-                    size("${src}/${i.name}")
-                }
-            }
-        }
-        log { "size: $size, $src" }
-        return size
-    }
+    override fun exists(src: String): Boolean = findFile(src) != null
 
     override suspend fun testConnection() {
         connect()

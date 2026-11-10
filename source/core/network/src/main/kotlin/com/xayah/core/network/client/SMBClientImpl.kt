@@ -2,7 +2,10 @@ package com.xayah.core.network.client
 
 import android.content.Context
 import com.hierynomus.msdtyp.AccessMask
+import com.hierynomus.mserref.NtStatus
 import com.hierynomus.msfscc.FileAttributes
+import com.hierynomus.msfscc.fileinformation.FileStandardInformation
+import com.hierynomus.mssmb2.SMBApiException
 import com.hierynomus.mssmb2.SMB2CreateDisposition
 import com.hierynomus.mssmb2.SMB2CreateOptions
 import com.hierynomus.mssmb2.SMB2Dialect
@@ -29,7 +32,6 @@ import com.xayah.core.rootservice.parcelables.PathParcelable
 import com.xayah.core.util.GsonUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.toPathList
 import com.xayah.core.util.withMainContext
 import com.xayah.libpickyou.PickYouLauncher
@@ -128,19 +130,13 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         }
     }
 
-    override fun exists(src: String): Boolean {
-        var exists = false
-        withDiskShare { diskShare ->
-            if (diskShare.fileExists(src)) {
-                exists = true
-                return@withDiskShare
-            }
-            if (diskShare.folderExists(src)) {
-                exists = true
-                return@withDiskShare
-            }
+    override fun exists(src: String): Boolean = withDiskShare { disk ->
+        try {
+            disk.fileExists(src) || disk.folderExists(src)
+        } catch (e: SMBApiException) {
+            if (e.statusCode != NtStatus.STATUS_NO_SUCH_FILE.value) throw e
+            false
         }
-        return exists
     }
 
     override fun mkdir(dst: String) = withDiskShare { diskShare ->
@@ -164,7 +160,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
             setOf(AccessMask.DELETE),
             setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
             SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OPEN_IF,
+            SMB2CreateDisposition.FILE_OPEN,
             setOf(SMB2CreateOptions.FILE_RANDOM_ACCESS)
         )
     }
@@ -183,30 +179,23 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
     private fun openFileOnWrite(src: String): com.hierynomus.smbj.share.File = withDiskShare { diskShare ->
         diskShare.openFile(
             src,
-            setOf(AccessMask.FILE_WRITE_DATA, AccessMask.FILE_WRITE_ATTRIBUTES, AccessMask.FILE_WRITE_EA, AccessMask.DELETE),
+            setOf(AccessMask.FILE_WRITE_DATA, AccessMask.FILE_WRITE_ATTRIBUTES, AccessMask.FILE_WRITE_EA),
             setOf(FileAttributes.FILE_ATTRIBUTE_NORMAL),
             SMB2ShareAccess.ALL,
-            SMB2CreateDisposition.FILE_OPEN_IF,
+            SMB2CreateDisposition.FILE_OVERWRITE_IF,
             setOf(SMB2CreateOptions.FILE_RANDOM_ACCESS)
         )
     }
 
-    override fun renameTo(src: String, dst: String): Unit = withDiskShare { diskShare ->
+    override fun renameTo(src: String, dst: String) {
         log { "renameTo: from $src to $dst" }
-        if (diskShare.folderExists(src)) {
-            val dir = openOnRename(src)
-            dir.rename(dst.replace("/", SymbolUtil.BACKSLASH.toString()), false)
-        } else if (diskShare.fileExists(src)) {
-            val file = openOnRename(src)
-            file.rename(dst, false)
-        }
+        openOnRename(src).use { it.rename(dst.replace('/', '\\'), false) }
     }
 
     override fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit) = run {
         val name = PathUtil.getFileName(src)
         val dstPath = "$dst/$name"
         log { "upload: $src to $dstPath" }
-        deleteFile(dstPath)
         val srcFile = File(src)
         val srcFileSize = srcFile.length()
         val bytes = srcFile.inputStream().use { input ->
@@ -216,6 +205,7 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
                 }
             }
         }
+        checkTransferSize(dstPath, srcFileSize, bytes)
         onUploading(bytes, bytes)
     }
 
@@ -224,8 +214,10 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         val dstPath = "$dst/$name"
         log { "download: $src to $dstPath" }
         val bytes = openFileOnRead(src).use { remote ->
-            CountingOutputStreamImpl(File(dstPath).outputStream(), -1, onDownloading).use { output ->
+            val size = remote.getFileInformation(FileStandardInformation::class.java).endOfFile
+            CountingOutputStreamImpl(File(dstPath).outputStream(), size, onDownloading).use { output ->
                 remote.read(output)
+                checkTransferSize(src, size, output.byteCount)
                 output.byteCount
             }
         }
@@ -239,41 +231,14 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         }
     }
 
-    override fun removeDirectory(src: String) = withDiskShare { diskShare ->
+    override fun removeEmptyDirectory(src: String) = withDiskShare { diskShare ->
         log { "removeDirectory: $src" }
-        diskShare.rmdir(src, true)
-    }
-
-    private fun clearEmptyDirectoriesRecursivelyInternal(src: String): Boolean {
-        var isEmpty = true
-
-        withDiskShare { diskShare ->
-            if (diskShare.folderExists(src)) {
-                val files = listFiles(src)
-                if (files.files.isNotEmpty()) {
-                    isEmpty = false
-                }
-                for (i in files.directories) {
-                    if (clearEmptyDirectoriesRecursivelyInternal("${src}/${i.name}").not()) {
-                        isEmpty = false
-                    }
-                }
-                if (isEmpty) {
-                    removeDirectory(src)
-                }
-            }
-        }
-        return isEmpty
-    }
-
-
-    override fun clearEmptyDirectoriesRecursively(src: String) {
-        clearEmptyDirectoriesRecursivelyInternal(src)
+        diskShare.rmdir(src, false)
     }
 
     override fun deleteRecursively(src: String) = withDiskShare { diskShare ->
         if (diskShare.fileExists(src)) deleteFile(src)
-        else if (diskShare.folderExists(src)) removeDirectory(src)
+        else if (diskShare.folderExists(src)) diskShare.rmdir(src, true)
         else throw IOException("$src not found.")
     }
 
@@ -320,25 +285,6 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
             }
         }
         return pathParcelableList
-    }
-
-    override fun size(src: String): Long {
-        var size = 0L
-        withDiskShare { diskShare ->
-            if (diskShare.folderExists(src)) {
-                val files = listFiles(src)
-                for (i in files.files) {
-                    size += diskShare.getFileInformation("${src}/${i.name}").standardInformation.endOfFile
-                }
-                for (i in files.directories) {
-                    size("${src}/${i.name}")
-                }
-            } else if (diskShare.fileExists(src)) {
-                size += diskShare.getFileInformation(src).standardInformation.endOfFile
-            }
-        }
-        log { "size: $size, $src" }
-        return size
     }
 
     override suspend fun testConnection() {

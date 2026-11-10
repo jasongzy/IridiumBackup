@@ -30,6 +30,9 @@ tasks.matching {
 android {
     namespace = "com.xayah.databackup"
     compileSdk = libs.versions.compileSdk.get().toInt()
+    compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+    }
 
     defaultConfig {
         applicationId = "com.jasongzy.databackup"
@@ -108,6 +111,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.lifecycle.runtime.ktx)

@@ -258,12 +258,7 @@ class PackageRepository @Inject constructor(
                     val src = "$remoteArchivesPackagesDir/$relativeDir"
                     if (client.exists(src)) client.deleteRecursively(src)
                     val packageDir = "${remoteArchivesPackagesDir}/${p.packageName}"
-                    if (client.exists(packageDir)) {
-                        val children = client.listFiles(packageDir)
-                        if (children.files.isEmpty() && children.directories.isEmpty()) {
-                            client.removeDirectory(packageDir)
-                        }
-                    }
+                    runCatching { client.removeEmptyDirectory(packageDir) }
                 }
             }.onFailure(rootService.onFailure).isSuccess
         }
