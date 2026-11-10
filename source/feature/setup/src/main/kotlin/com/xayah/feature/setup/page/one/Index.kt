@@ -66,7 +66,6 @@ fun PageOne() {
                     onClick = {
                         viewModel.launchOnIO {
                             viewModel.emitIntent(IndexUiIntent.ValidateRoot)
-                            viewModel.emitIntent(IndexUiIntent.ValidateAbi)
                             viewModel.emitIntent(IndexUiIntent.ValidateNotification(context = context))
                         }
                     }

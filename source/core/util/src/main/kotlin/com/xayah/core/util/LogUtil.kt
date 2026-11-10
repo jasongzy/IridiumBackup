@@ -35,6 +35,7 @@ object LogUtil {
         log("Model:      ${Build.MODEL}")
         log("ABIs:       ${Build.SUPPORTED_ABIS.firstOrNull() ?: ""}")
         log("SDK:        ${Build.VERSION.SDK_INT}")
+        if (!BuildConfigUtil.DEBUG) return
         log("Global Namespace:     ${BaseUtil.readLink("1")}")
         log("Namespace:            ${BaseUtil.readLink("self")}")
         log("SU:                   ${BaseUtil.readSuVersion(context.readCustomSUFile().first())}")

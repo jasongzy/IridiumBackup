@@ -24,9 +24,6 @@ dependencies {
     // libsu
     implementation(libs.libsu.core)
 
-    // zip4j
-    implementation(libs.zip4j)
-
     // Apache commons codec
     implementation(libs.apache.commons.codec)
 

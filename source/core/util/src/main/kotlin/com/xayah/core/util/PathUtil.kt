@@ -28,7 +28,6 @@ const val BinArchiveName = "bin.zip"
 fun Context.filesDir(): String = filesDir.path
 fun Context.logDir(): String = "${filesDir()}/$LogRelativeDir"
 fun Context.binDir(): String = "${filesDir()}/$BinRelativeDir"
-fun Context.binArchivePath(): String = "${filesDir()}/$BinArchiveName"
 fun Context.iconDir(): String = "${filesDir()}/$IconRelativeDir"
 fun Context.tmpApksDir(): String = "${filesDir()}/$TmpRelativeDir/$ApksRelativeDir"
 fun Context.localBackupSaveDir(): String = runBlocking { readBackupSavePath().first() }

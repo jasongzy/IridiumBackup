@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.xayah.core.util.NotificationUtil
+import com.xayah.core.util.command.BaseUtil
 import dagger.hilt.android.HiltAndroidApp
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.Security
@@ -19,6 +20,7 @@ class DataBackupApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         application = this
+        BaseUtil.configureShell(this)
         setupBouncyCastle()
         NotificationUtil.createChannels(this)
     }

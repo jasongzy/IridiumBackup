@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
 import androidx.compose.material3.ExperimentalMaterial3Api
-import com.topjohnwu.superuser.Shell
 import com.xayah.core.common.util.BuildConfigUtil
 import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
@@ -59,10 +58,7 @@ class IndexViewModel @Inject constructor(
                 mutex.withLock {
                     if (rootState.value == EnvState.Idle || rootState.value == EnvState.Failed) {
                         _rootState.value = EnvState.Processing
-                        runCatching {
-                            BaseUtil.initializeEnvironment(context = context)
-                        }
-                        _rootState.value = if (runCatching { Shell.getShell().isRoot }.getOrElse { false }) EnvState.Succeed else EnvState.Failed
+                        _rootState.value = if (BaseUtil.hasRoot()) EnvState.Succeed else EnvState.Failed
                     }
                 }
             }
@@ -75,7 +71,7 @@ class IndexViewModel @Inject constructor(
                         val deviceABI = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
                         val isSupported = buildABI == UNIVERSAL_ABI || buildABI in Build.SUPPORTED_ABIS
                         if (isSupported) {
-                            _abiState.value = if (runCatching { BaseUtil.releaseBase(context = context) }.getOrElse { false }) {
+                            _abiState.value = if (runCatching { BaseUtil.ensureBinaries(context) }.getOrDefault(false)) {
                                 emitState(state.copy(abiErr = ""))
                                 EnvState.Succeed
                             } else {

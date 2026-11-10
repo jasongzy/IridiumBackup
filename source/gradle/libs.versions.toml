@@ -31,7 +31,6 @@ okhttp = "4.12.0"
 retrofit = "2.9.0"
 libsu = "6.0.0"
 work-manager = "2.10.0"
-zip4j = "2.11.5"
 kotlinx-coroutines-core-jvm = "1.8.0"
 room = "2.6.1"
 coil-compose = "2.4.0"
@@ -110,7 +109,6 @@ retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit
 retrofit-converter-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "retrofit" }
 libsu-core = { module = "com.github.topjohnwu.libsu:core", version.ref = "libsu" }
 libsu-service = { module = "com.github.topjohnwu.libsu:service", version.ref = "libsu" }
-zip4j = { module = "net.lingala.zip4j:zip4j", version.ref = "zip4j" }
 google-services = { module = "com.google.gms:google-services", version.ref = "google-services" }
 firebase-crashlytics-gradle = { module = "com.google.firebase:firebase-crashlytics-gradle", version.ref = "firebase-crashlytics-gradle" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }

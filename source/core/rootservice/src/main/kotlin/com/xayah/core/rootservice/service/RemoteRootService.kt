@@ -19,7 +19,6 @@ import android.os.UserHandle
 import android.provider.Settings
 import androidx.core.graphics.drawable.toDrawable
 import com.google.gson.reflect.TypeToken
-import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ipc.RootService
 import com.xayah.core.model.database.PackagePermission
 import com.xayah.core.rootservice.IRemoteRootService
@@ -33,6 +32,7 @@ import com.xayah.core.rootservice.util.withMainContext
 import com.xayah.core.util.GsonUtil
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.PathUtil
+import com.xayah.core.util.command.BaseUtil
 import com.xayah.core.util.model.ShellResult
 import com.xayah.core.util.withLog
 import kotlinx.coroutines.CancellationException
@@ -129,7 +129,7 @@ class RemoteRootService(private val context: Context) {
         val pending = mutex.withLock {
             mService?.takeIf { it.asBinder().isBinderAlive }?.let { return@withMainContext it }
             binding?.takeUnless { it.isCompleted } ?: run {
-                check(withIOContext { Shell.getShell().isRoot }) { context.getString(R.string.root_access_unavailable) }
+                check(BaseUtil.hasRoot()) { context.getString(R.string.root_access_unavailable) }
                 bindService()
             }
         }
