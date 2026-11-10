@@ -1,10 +1,13 @@
 package com.xayah.core.service.packages.backup
 
 import android.annotation.SuppressLint
+import android.content.pm.PackageManager
+import androidx.core.content.pm.PackageInfoCompat
+import com.xayah.core.datastore.readCustomSUFile
+import com.xayah.core.util.command.PackageUtil
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.requireMountedBackupVolume
 import com.xayah.core.data.repository.AppBackupRepository
-import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.datastore.readKillAppOption
 import com.xayah.core.model.DataType
@@ -28,6 +31,7 @@ import com.xayah.core.service.R
 import com.xayah.core.util.command.BackupServiceSettings
 import com.xayah.core.service.packages.AbstractPackagesService
 import com.xayah.core.service.util.PackagesBackupUtil
+import com.xayah.core.service.util.apkSources
 import com.xayah.core.util.DateUtil
 import com.xayah.core.util.NotificationUtil
 import com.xayah.core.util.PathUtil
@@ -40,7 +44,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 
 internal abstract class AbstractBackupService : AbstractPackagesService() {
-    protected abstract val mPackageRepo: PackageRepository
     protected abstract val mConfigsDir: String
 
     private val backupRequest get() = checkNotNull(packageRequest as? PackageTaskRequest.Backup) { mContext.getString(R.string.package_request_expired) }
@@ -106,7 +109,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
 
     protected open suspend fun onTargetDirsCreated() {}
     protected open suspend fun createRemoteRevisionDirectory(relativeDir: String) {}
-    abstract suspend fun backup(type: DataType, p: PackageEntity, previous: PackageEntity?, t: TaskDetailPackageEntity, dstDir: String)
+    protected open suspend fun onArchiveSaved(type: DataType, p: PackageEntity, t: TaskDetailPackageEntity, dstDir: String) {}
     protected open suspend fun onConfigSaved(path: String, archivesRelativeDir: String): Boolean = true
     protected open suspend fun onManifestSaved(path: String, archivesRelativeDir: String): Boolean = true
     protected open suspend fun onAppIconSaved(path: String, packageName: String): Boolean = true
@@ -118,7 +121,6 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
     private suspend fun reserveRevisionDirectory(app: PackageEntity): String? {
         val relativeDir = PathUtil.getPackageArchiveRelativeDir(app.packageName, app.userId, app.preserveId) ?: return null
         val directory = "$mAppsDir/$relativeDir"
-        mContext.requireMountedBackupVolume(mRootDir)
         if (!mRootService.mkdirs(PathUtil.getParentPath(directory)) || !mRootService.createDirectory(directory)) return null
         var reserved = false
         try {
@@ -160,10 +162,20 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
         log { "Task count: ${mPkgEntities.size}." }
 
         val killAppOption = mContext.readKillAppOption().first()
+        val su = mContext.readCustomSUFile().first()
         log { "Kill app option: $killAppOption" }
 
         mPkgEntities.forEach { pkg ->
             currentCoroutineContext().ensureActive()
+            mContext.requireMountedBackupVolume(mRootDir)
+            val installedApp = pkg.packageEntity
+            val current = mRootService.getPackageInfoAsUser(installedApp.packageName, PackageManager.GET_PERMISSIONS, installedApp.userId)
+            val info = current?.applicationInfo
+            if (current == null || info == null) {
+                failPackage(pkg, mContext.getString(R.string.backup_package_unavailable, installedApp.packageName, installedApp.userId))
+                return@forEach
+            }
+            val apks = if (installedApp.apkSelected) current.apkSources() else emptyMap()
             var pendingArchiveDir: String? = null
             var serviceRepairs = emptyList<suspend () -> Unit>()
             val pause = if (killAppOption == KillAppOption.OPTION_III) {
@@ -183,19 +195,20 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                 log { "Current package: ${pkg.packageEntity.packageName} (user ${pkg.packageEntity.userId})" }
 
                 pkg.update(state = OperationState.PROCESSING)
-                val installedApp = pkg.packageEntity
                 val revisionCreatedAt = DateUtil.getTimestamp()
                 val revisionApp = installedApp.copy(
                     indexInfo = installedApp.indexInfo.copy(preserveId = revisionCreatedAt),
-                    packageInfo = installedApp.packageInfo.copy(),
-                    extraInfo = installedApp.extraInfo.copy(),
+                    packageInfo = installedApp.packageInfo.copy(
+                        versionName = current.versionName.orEmpty(), versionCode = PackageInfoCompat.getLongVersionCode(current), flags = info.flags,
+                    ),
+                    extraInfo = installedApp.extraInfo.copy(uid = info.uid),
                     dataStates = installedApp.dataStates.copy(),
                     storageStats = installedApp.storageStats.copy(),
                     dataStats = PackageDataStats(),
                     displayStats = PackageDataStats(),
                 )
                 val repositoryId = "${mTaskEntity.cloud}:${mTaskEntity.backupDir}"
-                val previousRevision = mAppBackupRepository.getLatestReusableLegacyRevision(revisionApp, repositoryId)
+                val previousArchive = mAppBackupRepository.findReusableApkArchive(revisionApp, repositoryId, apks.keys)
                 val relativeDir = withContext(NonCancellable) {
                     reserveRevisionDirectory(revisionApp).also { pendingArchiveDir = it }
                 }
@@ -203,13 +216,23 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                     val dstDir = "$mAppsDir/$relativeDir"
                     for (type in DataType.packageArchives) {
                         currentCoroutineContext().ensureActive()
-                        backup(type, revisionApp, previousRevision, pkg, dstDir)
+                        val result = if (type == DataType.PACKAGE_APK) {
+                            mPackagesBackupUtil.backupApk(revisionApp, apks, previousArchive, pkg, dstDir)
+                        } else {
+                            mPackagesBackupUtil.backupData(revisionApp, pkg, type, dstDir)
+                        }
+                        if (result.isSuccess && pkg.get(type).state != OperationState.SKIP) onArchiveSaved(type, revisionApp, pkg, dstDir)
+                        pkg.update(dataType = type, progress = 1f)
+                        pkg.update(processingIndex = pkg.processingIndex + 1)
                         revisionApp.dataStates = type.setSelected(revisionApp.dataStates, pkg.get(type).state == OperationState.DONE)
                     }
-                    mPackagesBackupUtil.backupPermissions(p = revisionApp)
+                    mPackagesBackupUtil.backupPermissions(revisionApp, current)
                     mPackagesBackupUtil.backupSsaid(p = revisionApp)
 
                     if (pkg.isSuccess) {
+                        if (revisionApp.dataSelectedCount > 0) {
+                            revisionApp.extraInfo.hasKeystore = PackageUtil.hasKeystore(su, info.uid, installedApp.extraInfo)
+                        }
                         revisionApp.extraInfo.lastBackupTime = revisionCreatedAt
                         val restoreEntity = revisionApp.copy(
                             id = 0,
@@ -224,7 +247,7 @@ internal abstract class AbstractBackupService : AbstractPackagesService() {
                         val configSaved = mRootService.writeJson(data = restoreEntity.toRestoreConfig(), dst = configDst).isSuccess &&
                             onConfigSaved(path = configDst, archivesRelativeDir = revisionApp.archivesRelativeDir)
                         val manifest = if (configSaved) {
-                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir, knownFiles = uploadedManifestFiles)
+                            mAppBackupRepository.writeManifest(revisionApp, revisionCreatedAt, dstDir, knownFiles = uploadedManifestFiles, apkEntries = apks.keys)
                         } else {
                             null
                         }

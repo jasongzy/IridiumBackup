@@ -36,17 +36,6 @@ class PackageRestoreConfigTest {
     }
 
     @Test
-    fun apkReuseRequiresMatchingVersionsAndContent() {
-        val previous = config().toPackageEntity("", "/backup")
-        assertTrue(previous.canReuseApkFrom(previous))
-        assertFalse(previous.copy(packageInfo = previous.packageInfo.copy(versionName = "other")).canReuseApkFrom(previous))
-        assertFalse(previous.copy(packageInfo = previous.packageInfo.copy(versionCode = 2)).canReuseApkFrom(previous))
-        assertFalse(previous.copy(indexInfo = previous.indexInfo.copy(compressionType = CompressionType.TAR)).canReuseApkFrom(previous))
-        assertFalse(previous.copy(dataStates = previous.dataStates.copy(apkState = DataState.NotSelected)).canReuseApkFrom(previous))
-        assertFalse(previous.canReuseApkFrom(previous.copy(dataStates = previous.dataStates.copy(apkState = DataState.NotSelected))))
-    }
-
-    @Test
     fun restoringTwoProfilesOnlyConflictsWhenTheyShareADestination() {
         val owner = config().toPackageEntity("", "/backup")
         val profile = config().copy(userId = 10).toPackageEntity("", "/backup")

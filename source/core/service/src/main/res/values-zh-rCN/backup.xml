@@ -10,4 +10,5 @@
     <string name="processing_service_bind_failed">无法连接任务服务</string>
     <string name="processing_service_disconnected">任务服务已断开</string>
     <string name="processing_service_timeout">连接任务服务超时</string>
+    <string name="backup_package_unavailable">无法读取 Android 用户 %2$d 下的 %1$s，请刷新应用列表后重试。</string>
 </resources>

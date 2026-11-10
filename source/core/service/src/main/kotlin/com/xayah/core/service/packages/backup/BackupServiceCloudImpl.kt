@@ -78,25 +78,15 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
         mClient.mkdir(directory)
     }
 
-    override suspend fun backup(type: DataType, p: PackageEntity, previous: PackageEntity?, t: TaskDetailPackageEntity, dstDir: String) {
-        val remoteAppDir = getRemoteAppDir(p.archivesRelativeDir)
-        val result = if (type == DataType.PACKAGE_APK) {
-            mPackagesBackupUtil.backupApk(p, null, t, dstDir)
+    override suspend fun onArchiveSaved(type: DataType, p: PackageEntity, t: TaskDetailPackageEntity, dstDir: String) {
+        val path = mPackageRepo.getArchiveDst(dstDir, type, p.indexInfo.compressionType)
+        val file = mAppBackupRepository.getManifestFile(path)
+        if (file == null) {
+            t.update(dataType = type, state = OperationState.ERROR, log = "Unable to read backup file metadata: $path")
         } else {
-            mPackagesBackupUtil.backupData(p = p, t = t, dataType = type, dstDir = dstDir)
+            mPackagesBackupUtil.upload(client = mClient, p = p, t = t, dataType = type, srcDir = dstDir, dstDir = getRemoteAppDir(p.archivesRelativeDir))
+            if (t.get(type).state == OperationState.DONE) uploadedManifestFiles += file
         }
-        if (result.isSuccess && t.get(type).state != OperationState.SKIP) {
-            val path = mPackageRepo.getArchiveDst(dstDir, type, p.indexInfo.compressionType)
-            val file = mAppBackupRepository.getManifestFile(path)
-            if (file == null) {
-                t.update(dataType = type, state = OperationState.ERROR, log = "Unable to read backup file metadata: $path")
-            } else {
-                mPackagesBackupUtil.upload(client = mClient, p = p, t = t, dataType = type, srcDir = dstDir, dstDir = remoteAppDir)
-                if (t.get(type).state == OperationState.DONE) uploadedManifestFiles += file
-            }
-        }
-        t.update(dataType = type, progress = 1f)
-        t.update(processingIndex = t.processingIndex + 1)
     }
 
     override suspend fun onConfigSaved(path: String, archivesRelativeDir: String): Boolean {
@@ -126,7 +116,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     override suspend fun clear() = clearCloudWorkspace(mRootDir, if (::mClient.isInitialized) mClient else null)
 
     @Inject
-    override lateinit var mPackageRepo: PackageRepository
+    lateinit var mPackageRepo: PackageRepository
 
     @Inject
     override lateinit var mPackagesBackupUtil: PackagesBackupUtil

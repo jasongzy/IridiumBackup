@@ -2,13 +2,9 @@ package com.xayah.core.service.packages.backup
 
 import com.xayah.core.data.repository.AppBackupRepository
 import com.xayah.core.data.repository.requireBackupStorage
-import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.database.dao.TaskDao
-import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.TaskType
-import com.xayah.core.model.database.PackageEntity
-import com.xayah.core.model.database.TaskDetailPackageEntity
 import com.xayah.core.model.database.TaskEntity
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.util.CommonBackupUtil
@@ -45,22 +41,6 @@ internal class BackupServiceLocalImpl @Inject constructor() : AbstractBackupServ
             isProcessing = true,
         )
     }
-
-    override suspend fun backup(type: DataType, p: PackageEntity, previous: PackageEntity?, t: TaskDetailPackageEntity, dstDir: String) {
-        if (type == DataType.PACKAGE_APK) {
-            val previousArchive = previous?.let {
-                mPackageRepo.getArchiveDst("$mAppsDir/${it.archivesRelativeDir}", type, it.indexInfo.compressionType)
-            }
-            mPackagesBackupUtil.backupApk(p, previousArchive, t, dstDir)
-        } else {
-            mPackagesBackupUtil.backupData(p = p, t = t, dataType = type, dstDir = dstDir)
-        }
-        t.update(dataType = type, progress = 1f)
-        t.update(processingIndex = t.processingIndex + 1)
-    }
-
-    @Inject
-    override lateinit var mPackageRepo: PackageRepository
 
     @Inject
     override lateinit var mPackagesBackupUtil: PackagesBackupUtil

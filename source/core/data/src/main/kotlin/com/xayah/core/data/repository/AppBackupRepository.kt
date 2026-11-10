@@ -171,18 +171,17 @@ class AppBackupRepository @Inject constructor(
         )
     }
 
-    suspend fun getLatestReusableLegacyRevision(app: PackageEntity, repositoryId: String): PackageEntity? {
+    suspend fun findReusableApkArchive(app: PackageEntity, repositoryId: String, apkEntries: Set<String>): String? {
         if (!app.apkSelected || !repositoryId.startsWith(':') || !context.readFastSameVersionBackup().first()) return null
         val revision = dao.getLatestApkRevision(app.packageName, app.userId, repositoryId) ?: return null
-        val previous = findLegacyRevision(revision) ?: return null
-        if (!app.canReuseApkFrom(previous)) return null
+        if (app.packageInfo.versionName != revision.appVersionName || app.packageInfo.versionCode != revision.appVersionCode) return null
         val revisionDir = getLocalRevisionDir(revision) ?: return null
         val manifest = rootService.readJson<BackupManifest>(PathUtil.getBackupManifestDst(revisionDir)) ?: return null
-        if (!manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return null
+        if (manifest.apkEntries != apkEntries || !manifest.matchesRevision(revision) || !manifest.hasValidFileEntries()) return null
         val file = manifest.files.orEmpty().firstOrNull { it.name == "apk.${app.indexInfo.compressionType.suffix}" } ?: return null
         val path = "$revisionDir/${file.name}"
         if (rootService.fileLength(path) != file.sizeBytes || rootService.calculateSHA256(path) != file.sha256) return null
-        return previous
+        return path
     }
 
     suspend fun getManifestFile(path: String): BackupManifestFile? {
@@ -198,6 +197,7 @@ class AppBackupRepository @Inject constructor(
         note: String = "",
         knownFiles: List<BackupManifestFile> = emptyList(),
         titaniumSource: TitaniumSource? = null,
+        apkEntries: Set<String>? = null,
     ): BackupManifest? {
         val archives = DataType.packageArchives.filter { it.getSelected(app.dataStates) }
         if (archives.isEmpty()) return null
@@ -214,6 +214,7 @@ class AppBackupRepository @Inject constructor(
             note = note.trim(),
             files = files,
             titaniumSource = titaniumSource,
+            apkEntries = apkEntries?.takeIf { app.apkSelected },
         )
         return manifest.takeIf { it.hasValidFileEntries() && rootService.writeJson(it, PathUtil.getBackupManifestDst(revisionDir)).isSuccess }
     }

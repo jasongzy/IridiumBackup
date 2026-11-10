@@ -82,9 +82,8 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
         t.update(processingIndex = t.processingIndex + 1)
     }
 
-    override suspend fun onConfigSaved(path: String, archivesRelativeDir: String) {
-        mCloudRepo.upload(client = mClient, src = path, dstDir = getRemoteFileDir(archivesRelativeDir))
-    }
+    override suspend fun onConfigSaved(path: String, archivesRelativeDir: String) =
+        mCloudRepo.upload(client = mClient, src = path, dstDir = getRemoteFileDir(archivesRelativeDir)).isSuccess
 
     override suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) =
         uploadBackupFile(mCloudRepo, mClient, path, mRemotePath, entity)

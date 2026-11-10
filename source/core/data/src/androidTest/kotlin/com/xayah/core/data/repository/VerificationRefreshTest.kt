@@ -185,6 +185,15 @@ class VerificationRefreshTest {
             dao.upsert(restore)
             database.appBackupDao().upsertApps(listOf(AppKey(revision.packageName, revision.userId).toBackupApp()))
             database.appBackupDao().insertRevision(revision)
+            val baseOnly = setOf("base.apk")
+            assertNull(repository.findReusableApkArchive(installed, revision.repositoryId, baseOnly))
+            root.writeJson(original.copy(apkEntries = baseOnly), manifestPath)
+            assertEquals(File(revisionDir, "apk.tar").path, repository.findReusableApkArchive(installed, revision.repositoryId, baseOnly))
+            assertNull(repository.findReusableApkArchive(installed, revision.repositoryId, baseOnly + "split_config.apk"))
+            for (version in listOf(installed.packageInfo.copy(versionName = "2.0"), installed.packageInfo.copy(versionCode = 2))) {
+                assertNull(repository.findReusableApkArchive(installed.copy(packageInfo = version), revision.repositoryId, baseOnly))
+            }
+            root.writeJson(original, manifestPath)
             val apk = File(revisionDir, "apk.tar")
             apk.writeText("damaged")
             val damaged = repository.inspectRevision(revision)

@@ -84,7 +84,7 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
     protected open suspend fun createDirectory(path: String): Boolean = mRootService.mkdirs(path)
     protected open suspend fun onFileDirCreated(archivesRelativeDir: String): Boolean = true
     abstract suspend fun backup(m: MediaEntity, r: MediaEntity?, t: TaskDetailMediaEntity, dstDir: String)
-    protected open suspend fun onConfigSaved(path: String, archivesRelativeDir: String) {}
+    protected open suspend fun onConfigSaved(path: String, archivesRelativeDir: String): Boolean = true
     protected open suspend fun onItselfSaved(path: String, entity: ProcessingInfoEntity) {}
     protected open suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) {}
 
@@ -122,33 +122,33 @@ internal abstract class AbstractBackupService : AbstractMediumService() {
             val m = media.mediaEntity
             mContext.requireMountedBackupVolume(mRootDir)
             val dstDir = "${mFilesDir}/${m.archivesRelativeDir}"
-            var restoreEntity = mMediaDao.query(OpType.RESTORE, m.preserveId, m.name, m.indexInfo.compressionType, mTaskEntity.cloud, mTaskEntity.backupDir)
+            val previous = mMediaDao.query(OpType.RESTORE, m.preserveId, m.name, m.indexInfo.compressionType, mTaskEntity.cloud, mTaskEntity.backupDir)
             if (createDirectory(dstDir) && onFileDirCreated(archivesRelativeDir = m.archivesRelativeDir)) {
-                backup(m = m, r = restoreEntity, t = media, dstDir = dstDir)
+                backup(m = m, r = previous, t = media, dstDir = dstDir)
 
                 if (media.isSuccess) {
-                    // Save config
-                    m.extraInfo.lastBackupTime = DateUtil.getTimestamp()
-                    val id = restoreEntity?.id ?: 0
-                    restoreEntity = m.copy(
-                        id = id,
+                    val backedUp = m.copy(extraInfo = m.extraInfo.copy(lastBackupTime = DateUtil.getTimestamp()))
+                    val restoreEntity = backedUp.copy(
+                        id = previous?.id ?: 0,
                         indexInfo = m.indexInfo.copy(opType = OpType.RESTORE, cloud = mTaskEntity.cloud, backupDir = mTaskEntity.backupDir),
-                        extraInfo = m.extraInfo.copy(existed = true, activated = false)
+                        extraInfo = backedUp.extraInfo.copy(existed = true, activated = false)
                     )
                     val configDst = PathUtil.getMediaRestoreConfigDst(dstDir = dstDir)
-                    mRootService.writeJson(data = restoreEntity, dst = configDst)
-                    onConfigSaved(path = configDst, archivesRelativeDir = m.archivesRelativeDir)
-                    mMediaDao.upsert(restoreEntity)
-                    mMediaDao.upsert(m)
-                    media.update(mediaEntity = m)
-                    mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
-                } else {
-                    mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
+                    if (mRootService.writeJson(data = restoreEntity, dst = configDst).isSuccess &&
+                        onConfigSaved(configDst, m.archivesRelativeDir)
+                    ) {
+                        mMediaDao.upsert(restoreEntity)
+                        mMediaDao.upsert(backedUp)
+                        media.update(mediaEntity = backedUp)
+                    } else {
+                        media.update(state = OperationState.ERROR, log = mContext.getString(R.string.backup_metadata_failed))
+                    }
                 }
             } else {
                 media.update(progress = 1f, state = OperationState.ERROR)
-                mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
             }
+            if (media.isSuccess) mTaskEntity.update(successCount = mTaskEntity.successCount + 1)
+            else mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1)
             media.update(state = if (media.isSuccess) OperationState.DONE else OperationState.ERROR)
             mTaskEntity.update(processingIndex = mTaskEntity.processingIndex + 1)
         }

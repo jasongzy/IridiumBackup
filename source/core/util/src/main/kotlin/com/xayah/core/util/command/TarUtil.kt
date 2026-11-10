@@ -4,7 +4,11 @@ import com.xayah.core.common.util.toSpaceString
 import com.xayah.core.util.shellQuote
 import com.xayah.core.util.SymbolUtil
 import com.xayah.core.util.model.ShellResult
+import android.system.Os
+import kotlinx.coroutines.CancellationException
+import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 internal fun ShellResult.acceptFileChangedWarnings(): ShellResult = apply {
     val errors = out.filterNot { it.startsWith("Total bytes written:") }
@@ -19,11 +23,25 @@ internal fun ShellResult.acceptFileChangedWarnings(): ShellResult = apply {
 object Tar {
     private suspend fun execute(vararg args: String): ShellResult = BaseUtil.execute("tar", *args)
 
-    suspend fun compressInCur(cur: String, src: String, dst: String, extra: String): ShellResult {
-        val command = mutableListOf("cd", shellQuote(cur), "&&", "tar", "--totals", "-cpf", "-", src)
-        if (extra.isNotEmpty()) command += listOf("|", extra)
-        command += listOf(">", shellQuote(dst))
-        return BaseUtil.execute(*command.toTypedArray())
+    suspend fun compressApks(cache: File, sources: Map<String, String>, dst: String, extra: String): ShellResult {
+        require(sources.isNotEmpty() && sources.keys.all { it.endsWith(".apk") && File(it).name == it })
+        val directory = File(cache, "apk-${UUID.randomUUID()}")
+        if (!directory.mkdir()) return ShellResult(-1, emptyList(), listOf("Unable to create APK workspace"))
+        try {
+            for ((name, path) in sources) Os.symlink(path, File(directory, name).path)
+            val command = mutableListOf("tar", "-chf", "-", "-C", shellQuote(directory.path), "--")
+            command += sources.keys.map { shellQuote("./$it") }
+            if (extra.isNotEmpty()) command += listOf("|", extra)
+            command += listOf(">", shellQuote(dst))
+            return BaseUtil.execute(*command.toTypedArray())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return ShellResult(-1, emptyList(), listOf(e.message ?: e.javaClass.simpleName))
+        } finally {
+            sources.keys.forEach { File(directory, it).delete() }
+            directory.delete()
+        }
     }
 
     suspend fun compress(exclusionList: List<String>, h: String, srcDir: String, src: String, dst: String, extra: String): ShellResult =

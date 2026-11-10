@@ -32,6 +32,7 @@ data class BackupManifest(
     val note: String? = null,
     val files: List<BackupManifestFile>?,
     val titaniumSource: TitaniumSource? = null,
+    val apkEntries: Set<String>? = null,
 )
 
 data class TitaniumSource(val apkMd5: String?, val hasData: Boolean)

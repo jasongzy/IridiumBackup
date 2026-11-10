@@ -462,7 +462,8 @@ class TitaniumImportRepository @Inject constructor(
                 "Unable to write app metadata"
             }
             reserve(PathUtil.getBackupManifestDst(output))
-            val manifest = checkNotNull(appBackupRepository.writeManifest(app, createdAt, output, existing?.note ?: note, retained, candidate.source)) {
+            val apkEntries = if (retained.any { it.name == "apk.${compression.suffix}" }) existing?.apkEntries else setOf("base.apk")
+            val manifest = checkNotNull(appBackupRepository.writeManifest(app, createdAt, output, existing?.note ?: note, retained, candidate.source, apkEntries)) {
                 "Unable to write the backup manifest"
             }
             if (createdDestination) {
@@ -549,16 +550,14 @@ class TitaniumImportRepository @Inject constructor(
         compressionArgs: String,
         reserve: suspend (String) -> Unit,
     ): String {
-        val apkDir = "$stage/apk"
-        check(rootService.mkdirs(apkDir))
-        val apk = "$apkDir/base.apk"
+        val apk = "$stage/base.apk"
         check(shell("busybox gzip -dc ${shellQuote(source)} > ${shellQuote(apk)}")) { "Invalid APK archive" }
         check(shell("busybox unzip -t ${shellQuote(apk)} >/dev/null")) { "Invalid APK" }
         val actualMd5 = BaseUtil.execute("md5sum ${shellQuote(apk)}").outString.substringBefore(' ').trim()
         check(actualMd5.equals(expectedMd5, ignoreCase = true)) { "APK checksum mismatch" }
         val target = "$destination/${DataType.PACKAGE_APK.type}.${compression.suffix}"
         reserve(target)
-        check(Tar.compressInCur(apkDir, "./*.apk", target, compressionArgs).isSuccess) { "Unable to convert the APK" }
+        check(Tar.compressApks(context.cacheDir, mapOf("base.apk" to apk), target, compressionArgs).isSuccess) { "Unable to convert the APK" }
         return apk
     }
 

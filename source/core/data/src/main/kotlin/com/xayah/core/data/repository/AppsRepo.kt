@@ -428,7 +428,7 @@ class AppsRepo @Inject constructor(
             } ?: pkg.storageStats,
             uid = uid,
             permissions = rootService.getPermissions(packageInfo = info),
-            hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid),
+            hasKeystore = PackageUtil.hasKeystore(context.readCustomSUFile().first(), uid, pkg.extraInfo),
             ssaid = rootService.getPackageSsaidAsUser(packageName = info.packageName, uid = uid, userId = userId),
             firstUpdated = true,
             enabled = info.applicationInfo?.enabled ?: false,

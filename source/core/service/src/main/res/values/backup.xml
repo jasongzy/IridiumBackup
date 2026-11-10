@@ -10,4 +10,5 @@
     <string name="processing_service_bind_failed">Unable to connect to the task service</string>
     <string name="processing_service_disconnected">The task service disconnected</string>
     <string name="processing_service_timeout">Timed out connecting to the task service</string>
+    <string name="backup_package_unavailable">Couldn’t read %1$s for Android user %2$d. Refresh the app list and try again.</string>
 </resources>

@@ -285,11 +285,6 @@ data class PackageEntity(
         return copy(id = stored.id, extraInfo = extraInfo.copy(activated = stored.extraInfo.activated, blocked = stored.extraInfo.blocked), dataStates = states)
     }
 
-    fun canReuseApkFrom(previous: PackageEntity): Boolean =
-        apkSelected && previous.apkSelected && packageName == previous.packageName && userId == previous.userId &&
-            packageInfo.versionName == previous.packageInfo.versionName && packageInfo.versionCode == previous.packageInfo.versionCode &&
-            indexInfo.compressionType == previous.indexInfo.compressionType
-
     val pkgUserKey: String
         get() = "${packageName}-${userId}"
 }

@@ -1,7 +1,8 @@
 package com.xayah.core.service.util
 
 import android.content.Context
-import android.content.pm.PackageManager
+import android.content.pm.PackageInfo
+import android.net.Uri
 import com.xayah.core.common.util.toLineString
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.data.repository.PackageRepository
@@ -29,7 +30,17 @@ import com.xayah.core.util.model.ShellResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
+import java.io.File
 import javax.inject.Inject
+
+internal fun PackageInfo.apkSources(): Map<String, String> = buildMap {
+    val info = requireNotNull(applicationInfo)
+    put("base.apk", info.sourceDir)
+    info.splitSourceDirs.orEmpty().forEachIndexed { index, path ->
+        val split = splitNames?.getOrNull(index) ?: File(path).nameWithoutExtension
+        put("split_${index + 1}_${Uri.encode(split)}.apk", path)
+    }
+}
 
 class PackagesBackupUtil @Inject constructor(
     @ApplicationContext val context: Context,
@@ -109,73 +120,39 @@ class PackagesBackupUtil @Inject constructor(
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }
 
-    private suspend fun getPackageSourceDir(packageName: String, userId: Int) = rootService.getPackageSourceDir(packageName, userId).let { list ->
-        if (list.isNotEmpty()) PathUtil.getParentPath(list[0]) else ""
-    }
-
     suspend fun backupApk(
         p: PackageEntity,
+        sources: Map<String, String>,
         previousArchive: String?,
         t: TaskDetailPackageEntity,
         dstDir: String,
-    ): ShellResult = run {
-        log { "Backing up apk..." }
-
+    ): ShellResult {
         val dataType = DataType.PACKAGE_APK
-        val packageName = p.packageName
-        val userId = p.userId
-        val ct = p.indexInfo.compressionType
-        val dst = packageRepository.getArchiveDst(dstDir = dstDir, dataType = dataType, ct = ct)
-        var isSuccess: Boolean
-        val out = mutableListOf<String>()
-        val srcDir = getPackageSourceDir(packageName = packageName, userId = userId)
-
-        if (!dataType.getSelected(p.dataStates)) {
-            isSuccess = true
+        if (!p.apkSelected) {
             t.updateInfo(dataType = dataType, state = OperationState.SKIP)
-        } else {
-            if (srcDir.isNotEmpty()) {
-                val sizeBytes = rootService.calculateSize(srcDir)
-                t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = sizeBytes)
-                val previousArchiveValid = previousArchive != null && commonBackupUtil.testArchive(
-                    src = previousArchive,
-                    ct = ct,
-                ).isSuccess
-                val reusedArchive = if (previousArchiveValid) {
-                    val archive = checkNotNull(previousArchive)
-                    rootService.createHardLink(archive, dst) ||
-                        rootService.copyTo(archive, dst, overwrite = true)
-                } else {
-                    false
-                }
-                if (reusedArchive) {
-                    isSuccess = true
-                    p.setDataBytes(dataType, sizeBytes)
-                    p.setDisplayBytes(dataType, rootService.calculateSize(dst))
-                    out.add(log { "Reused APK archive from the latest matching version." })
-                } else {
-                    Tar.compressInCur(cur = srcDir, src = "./*.apk", dst = dst, extra = ct.getCompressPara(context.readCompressionLevel().first()))
-                        .also { result ->
-                            isSuccess = result.isSuccess
-                            out.addAll(result.out)
-                        }
-                    commonBackupUtil.testArchive(src = dst, ct = ct).also { result ->
-                        isSuccess = isSuccess && result.isSuccess
-                        out.addAll(result.out)
-                        if (result.isSuccess) {
-                            p.setDataBytes(dataType, sizeBytes)
-                            p.setDisplayBytes(dataType, rootService.calculateSize(dst))
-                        }
-                    }
-                }
-            } else {
-                isSuccess = false
-                out.add(log { "Failed to get apk path of $packageName." })
-            }
-            t.updateInfo(dataType = dataType, state = if (isSuccess) OperationState.DONE else OperationState.ERROR, log = out.toLineString())
+            return ShellResult(0, emptyList(), emptyList())
         }
-
-        ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
+        log { "Backing up apk..." }
+        val ct = p.indexInfo.compressionType
+        val dst = packageRepository.getArchiveDst(dstDir, dataType, ct)
+        val size = sources.values.sumOf { rootService.calculateSize(it) }
+        t.updateInfo(dataType = dataType, state = OperationState.PROCESSING, bytes = size)
+        val reused = previousArchive != null && commonBackupUtil.testArchive(previousArchive, ct).isSuccess &&
+            (rootService.createHardLink(previousArchive, dst) || rootService.copyTo(previousArchive, dst, overwrite = true))
+        val result = if (reused) {
+            ShellResult(0, emptyList(), listOf(log { "Reused APK archive from the latest matching version." }))
+        } else {
+            val archive = Tar.compressApks(context.cacheDir, sources, dst, ct.getCompressPara(context.readCompressionLevel().first()))
+            if (archive.isSuccess) {
+                commonBackupUtil.testArchive(dst, ct).let { it.copy(out = archive.out + it.out) }
+            } else archive
+        }
+        if (result.isSuccess) {
+            p.setDataBytes(dataType, size)
+            p.setDisplayBytes(dataType, rootService.calculateSize(dst))
+        }
+        t.updateInfo(dataType = dataType, state = if (result.isSuccess) OperationState.DONE else OperationState.ERROR, log = result.outString)
+        return result
     }
 
     /**
@@ -251,16 +228,9 @@ class PackagesBackupUtil @Inject constructor(
         ShellResult(code = if (isSuccess) 0 else -1, input = listOf(), out = out)
     }
 
-    suspend fun backupPermissions(p: PackageEntity) = run {
+    suspend fun backupPermissions(p: PackageEntity, packageInfo: PackageInfo) = run {
         log { "Backing up permissions..." }
-
-        val packageName = p.packageName
-        val userId = p.userId
-
-        val packageInfo = rootService.getPackageInfoAsUser(packageName, PackageManager.GET_PERMISSIONS, userId)
-        packageInfo?.apply {
-            p.extraInfo.permissions = rootService.getPermissions(packageInfo = this)
-        }
+        p.extraInfo.permissions = rootService.getPermissions(packageInfo)
         val permissions = p.extraInfo.permissions
         log { "Permissions size: ${permissions.size}..." }
         permissions.forEach {

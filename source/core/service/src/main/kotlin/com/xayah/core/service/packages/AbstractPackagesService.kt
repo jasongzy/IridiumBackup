@@ -66,14 +66,18 @@ internal abstract class AbstractPackagesService : AbstractProcessingService() {
             throw e
         } catch (e: Exception) {
             val detail = mContext.getString(R.string.package_stop_failed, name, e.message ?: e.javaClass.simpleName)
-            val failed = DataType.packageArchives.firstOrNull { it.getSelected(task.packageEntity.dataStates) } ?: DataType.PACKAGE_APK
-            DataType.packageArchives.forEach { type ->
-                task.set(type, state = if (type == failed) OperationState.ERROR else OperationState.SKIP, log = detail.takeIf { type == failed })
-            }
-            task.update(state = OperationState.ERROR, processingIndex = DataType.packageArchives.size)
-            mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1, processingIndex = mTaskEntity.processingIndex + 1)
+            failPackage(task, detail)
             false
         }
+    }
+
+    protected suspend fun failPackage(task: TaskDetailPackageEntity, detail: String) {
+        val failed = DataType.packageArchives.firstOrNull { it.getSelected(task.packageEntity.dataStates) } ?: DataType.PACKAGE_APK
+        DataType.packageArchives.forEach { type ->
+            task.set(type, state = if (type == failed) OperationState.ERROR else OperationState.SKIP, log = detail.takeIf { type == failed })
+        }
+        task.update(state = OperationState.ERROR, processingIndex = DataType.packageArchives.size)
+        mTaskEntity.update(failureCount = mTaskEntity.failureCount + 1, processingIndex = mTaskEntity.processingIndex + 1)
     }
 
     protected abstract val mRootDir: String
