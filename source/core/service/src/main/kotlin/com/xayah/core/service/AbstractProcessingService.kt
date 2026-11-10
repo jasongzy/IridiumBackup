@@ -13,9 +13,7 @@ import androidx.core.content.ContextCompat
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.database.dao.TaskDao
 import com.xayah.core.datastore.ConstantUtil.DEFAULT_IDLE_TIMEOUT
-import com.xayah.core.datastore.readAutoScreenOff
 import com.xayah.core.datastore.readScreenOffTimeout
-import com.xayah.core.datastore.saveScreenOffCountDown
 import com.xayah.core.datastore.saveScreenOffTimeout
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.PackageTaskRequest
@@ -46,6 +44,12 @@ import kotlinx.coroutines.withContext
 import java.io.IOException
 
 internal abstract class AbstractProcessingService : Service() {
+    private companion object {
+        var clearPreviousTasks = true
+    }
+
+    var onServiceDestroyed: (() -> Unit)? = null
+
     override fun onBind(intent: Intent): IBinder {
         NotificationUtil.cancel(this, NotificationUtil.RESULT_ID)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -59,6 +63,7 @@ internal abstract class AbstractProcessingService : Service() {
     override fun onDestroy() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+        onServiceDestroyed?.invoke()
     }
 
     protected suspend fun completeNotification(title: String, content: String) = withMainContext {
@@ -146,7 +151,6 @@ internal abstract class AbstractProcessingService : Service() {
     protected val mNotificationBuilder by lazy { NotificationUtil.getProgressNotificationBuilder(mContext, NotificationUtil.Channel.BackupRestore) }
     private val mPreprocessingEntities: MutableList<ProcessingInfoEntity> = mutableListOf()
     private val mPostProcessingEntities: MutableList<ProcessingInfoEntity> = mutableListOf()
-    private var mIsInitialized: Boolean = false
     private var cleanupResult: Boolean? = null
     private val screenMutex = Mutex()
     protected var mStartTimestamp: Long = 0
@@ -161,27 +165,24 @@ internal abstract class AbstractProcessingService : Service() {
     @SuppressLint("StringFormatInvalid")
     suspend fun initialize(cloudName: String?, backupDir: String?, request: PackageTaskRequest?): Long {
         mMutex.withLock {
-            if (mIsInitialized.not()) {
-                requestedCloudName = cloudName
-                requestedBackupDir = backupDir
-                packageRequest = request
+            requestedCloudName = cloudName
+            requestedBackupDir = backupDir
+            packageRequest = request
+            if (clearPreviousTasks) {
                 mTaskDao.deleteAllTasks()
-                mTaskDao.upsert(mTaskEntity).apply {
-                    // Initialize task id.
-                    mTaskEntity.id = this
-                }
-
-                try {
-                    onInitializingPreprocessingEntities(mPreprocessingEntities)
-                    onInitializingPostProcessingEntities(mPostProcessingEntities)
-                    onInitializing()
-                } catch (error: Exception) {
-                    withContext(NonCancellable) { mTaskDao.deleteTask(mTaskEntity.id) }
-                    throw error
-                }
-
-                mIsInitialized = true
+                clearPreviousTasks = false
             }
+            mTaskEntity.id = mTaskDao.upsert(mTaskEntity)
+
+            try {
+                onInitializingPreprocessingEntities(mPreprocessingEntities)
+                onInitializingPostProcessingEntities(mPostProcessingEntities)
+                onInitializing()
+            } catch (error: Exception) {
+                withContext(NonCancellable) { mTaskDao.deleteTask(mTaskEntity.id) }
+                throw error
+            }
+
             return mTaskEntity.id
         }
     }
@@ -192,10 +193,6 @@ internal abstract class AbstractProcessingService : Service() {
             mTaskEntity.update(startTimestamp = mStartTimestamp)
             log { "Preprocessing is starting." }
             beforePreprocessing()
-
-            if (mContext.readAutoScreenOff().first()) {
-                mContext.saveScreenOffCountDown(3)
-            }
 
             mPreprocessingEntities.forEach {
                 currentCoroutineContext().ensureActive()
@@ -267,7 +264,6 @@ internal abstract class AbstractProcessingService : Service() {
     }
 
     private suspend fun restoreDisplay() {
-        mContext.saveScreenOffCountDown(0)
         val saved = mContext.readScreenOffTimeout().first()
         if (saved == DEFAULT_IDLE_TIMEOUT) return
         try {

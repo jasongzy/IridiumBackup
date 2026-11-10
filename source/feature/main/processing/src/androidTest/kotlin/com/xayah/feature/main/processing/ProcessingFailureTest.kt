@@ -4,8 +4,12 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.SystemClock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.data.repository.CloudRepository
@@ -35,11 +39,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotSame
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -72,10 +75,6 @@ class ProcessingFailureTest {
         context, root, repository, proxy(context), proxy(context),
     ) {
         override val _dataItems = flowOf(emptyList<ProcessingDataCardItem>())
-
-        fun setTaskId(id: Long) {
-            _taskId.value = id
-        }
 
         suspend fun submitSetup(onReady: suspend () -> Unit) = finishSetup(uiState.value, onReady)
 
@@ -129,6 +128,38 @@ class ProcessingFailureTest {
     }
 
     @Test
+    fun screenOffAppliesOnlyToThePageVisibleAtTheDeadline() = runBlocking(Dispatchers.Main) {
+        fun page() = object : LifecycleOwner {
+            override val lifecycle = LifecycleRegistry(this).apply { currentState = Lifecycle.State.RESUMED }
+        }
+        val foreground = page()
+        val background = page()
+        val shown = CompletableDeferred<Unit>()
+        val turnedOff = CompletableDeferred<Unit>()
+        var backgroundMessages = 0
+        var backgroundRequests = 0
+        val deadline = SystemClock.elapsedRealtime() + 1_000
+        try {
+            launch { foreground.lifecycle.countDownToScreenOff(deadline, {}) { turnedOff.complete(Unit) } }
+            launch {
+                background.lifecycle.countDownToScreenOff(deadline, { backgroundMessages++; shown.complete(Unit) }) { backgroundRequests++ }
+            }
+            withTimeout(5_000) {
+                shown.await()
+                background.lifecycle.currentState = Lifecycle.State.STARTED
+                turnedOff.await()
+                background.lifecycle.currentState = Lifecycle.State.RESUMED
+                yield()
+            }
+            assertEquals(1, backgroundMessages)
+            assertEquals(0, backgroundRequests)
+        } finally {
+            foreground.lifecycle.currentState = Lifecycle.State.DESTROYED
+            background.lifecycle.currentState = Lifecycle.State.DESTROYED
+        }
+    }
+
+    @Test
     fun initializationFailureIsAnInspectableTerminalState() = runBlocking {
         val binding = BindingContext(context)
         val model = create(binding)
@@ -139,14 +170,25 @@ class ProcessingFailureTest {
     }
 
     @Test
-    fun processingNeverStartsANewServiceForAnExistingTask() = runBlocking {
-        val binding = BindingContext(context)
-        val model = create(binding)
-        model.setTaskId(1)
-        model.emitIntent(ProcessingUiIntent.Process)
-        assertEquals(OperationState.ERROR, model.uiState.value.state)
-        assertFalse(binding.bound.isCompleted)
-        assertEquals(context.getString(com.xayah.core.service.R.string.processing_service_disconnected), model.uiState.value.failure)
+    fun aSecondTaskCannotBindOrReleaseTheRunningTask() = runBlocking {
+        val firstBinding = BindingContext(context, acceptBinding = true)
+        val first = create(firstBinding)
+        first.initialize(autoStart = true)
+        withTimeout(5_000) { firstBinding.bound.await() }
+
+        val secondBinding = BindingContext(context)
+        val second = create(secondBinding)
+        second.initialize(autoStart = true)
+        val failure = withTimeout(5_000) { second.uiState.first { it.state == OperationState.ERROR } }
+        assertEquals(context.getString(com.xayah.core.service.R.string.processing_task_busy), failure.failure)
+        second.emitIntent(ProcessingUiIntent.Exit)
+        assertFalse(secondBinding.bound.isCompleted)
+        assertEquals(0, firstBinding.unbindCount)
+
+        first.emitIntent(ProcessingUiIntent.Exit)
+        assertEquals(1, firstBinding.unbindCount)
+        create(secondBinding).initialize(autoStart = true)
+        withTimeout(5_000) { secondBinding.bound.await() }
     }
 
     @Test
@@ -165,16 +207,15 @@ class ProcessingFailureTest {
     }
 
     @Test
-    fun clearingAnOlderScreenPreservesTheCurrentRootErrorCallback() = runBlocking {
-        create()
-        create()
-        val current = root.onFailure
-        withContext(Dispatchers.Main) {
-            stores[0].clear()
-            assertSame(current, root.onFailure)
-            stores[1].clear()
-            assertNotSame(current, root.onFailure)
+    fun closingAProcessingScreenRestoresThePreviousRootErrorHandler() = runBlocking {
+        val messages = mutableListOf<String>()
+        root.observeFailures { messages += it.message.orEmpty() }.use {
+            create()
+            withContext(Dispatchers.Main) { stores.single().clear() }
+            root.onFailure(IOException("root unavailable"))
         }
+        root.onFailure(IOException("unused"))
+        assertEquals(listOf("root unavailable"), messages)
     }
 
     @Test

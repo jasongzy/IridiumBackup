@@ -61,7 +61,13 @@ class RemoteRootService(private val context: Context) {
     }
     val gsonUtil by lazy { GsonUtil() }
 
-    var onFailure: (Throwable) -> Unit = {}
+    private val failureHandlers = mutableListOf<(Throwable) -> Unit>()
+    val onFailure: (Throwable) -> Unit get() = synchronized(failureHandlers) { failureHandlers.lastOrNull() ?: {} }
+
+    fun observeFailures(handler: (Throwable) -> Unit): AutoCloseable {
+        synchronized(failureHandlers) { failureHandlers.add(handler) }
+        return AutoCloseable { synchronized(failureHandlers) { failureHandlers.remove(handler) } }
+    }
 
     class RemoteRootService : RootService() {
         init {

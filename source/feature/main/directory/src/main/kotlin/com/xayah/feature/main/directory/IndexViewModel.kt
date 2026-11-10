@@ -32,14 +32,8 @@ class IndexViewModel @Inject constructor(
     private val directoryRepo: DirectoryRepository,
 ) : BaseViewModel<IndexUiState, IndexUiIntent, IndexUiEffect>(IndexUiState(updating = true)) {
     init {
-        val onRootFailure: (Throwable) -> Unit = {
-            val msg = it.message
-            if (msg != null)
-                emitEffectOnIO(IndexUiEffect.ShowSnackbar(message = msg))
-        }
-        rootService.onFailure = onRootFailure
-        addCloseable(AutoCloseable {
-            if (rootService.onFailure === onRootFailure) rootService.onFailure = {}
+        addCloseable(rootService.observeFailures { error ->
+            error.message?.let { emitEffectOnIO(IndexUiEffect.ShowSnackbar(message = it)) }
         })
     }
 

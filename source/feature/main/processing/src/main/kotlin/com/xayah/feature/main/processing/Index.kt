@@ -1,6 +1,7 @@
 package com.xayah.feature.main.processing
 
 import android.annotation.SuppressLint
+import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.ExperimentalAnimationApi
@@ -44,8 +45,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.xayah.core.datastore.saveScreenOffCountDown
+import androidx.lifecycle.repeatOnLifecycle
 import com.xayah.core.model.OperationState
 import com.xayah.core.ui.component.AnimatedTextContainer
 import com.xayah.core.ui.component.BodyLargeText
@@ -68,6 +71,18 @@ import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+internal suspend fun Lifecycle.countDownToScreenOff(deadline: Long, showMessage: suspend (Long) -> Unit, turnOff: suspend () -> Unit) {
+    repeatOnLifecycle(Lifecycle.State.RESUMED) {
+        val remaining = deadline - SystemClock.elapsedRealtime()
+        if (remaining <= 0) return@repeatOnLifecycle
+        val message = launch { showMessage((remaining + 999) / 1000) }
+        delay(remaining)
+        message.cancel()
+        turnOff()
+    }
+}
 
 @OptIn(ExperimentalAnimationGraphicsApi::class)
 @SuppressLint("StringFormatInvalid")
@@ -108,34 +123,24 @@ fun PageProcessing(
         index >= stageCount -> 1f
         else -> (index + segmentProgress) / stageCount
     }
-    val screenOffCountDown by viewModel.screenOffCountDown.collectAsStateWithLifecycle()
-
     LaunchedEffect(viewModel, autoStart) {
         viewModel.initialize(autoStart)
     }
 
     val exitState by viewModel.exitState.collectAsStateWithLifecycle()
-    LaunchedEffect(screenOffCountDown, uiState.state, exitState) {
-        if (screenOffCountDown != 0) {
-            if (uiState.state != OperationState.PROCESSING || exitState != AbstractProcessingViewModel.ExitState.IDLE) {
-                context.saveScreenOffCountDown(0)
-            } else {
-                viewModel.launchOnIO {
-                    viewModel.emitEffect(IndexUiEffect.DismissSnackbar)
-                    viewModel.emitEffect(
-                        IndexUiEffect.ShowSnackbar(
-                            type = SnackbarType.Success,
-                            message = context.getString(R.string.args_screen_off_in_seconds, screenOffCountDown),
-                            duration = SnackbarDuration.Indefinite
-                        )
-                    )
-                }
-                delay(screenOffCountDown * 1000L)
-                viewModel.emitEffectOnIO(IndexUiEffect.DismissSnackbar)
-                context.saveScreenOffCountDown(0)
-                viewModel.emitIntent(ProcessingUiIntent.TurnOffScreen)
-            }
-        }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val screenOffAt = uiState.screenOffAt
+    LaunchedEffect(lifecycle, screenOffAt, uiState.state, exitState) {
+        if (screenOffAt == null || uiState.state != OperationState.PROCESSING || exitState != AbstractProcessingViewModel.ExitState.IDLE) return@LaunchedEffect
+        lifecycle.countDownToScreenOff(screenOffAt, showMessage = { seconds ->
+            viewModel.emitEffect(
+                IndexUiEffect.ShowSnackbar(
+                    type = SnackbarType.Success,
+                    message = context.getString(R.string.args_screen_off_in_seconds, seconds),
+                    duration = SnackbarDuration.Indefinite,
+                )
+            )
+        }) { viewModel.emitIntent(ProcessingUiIntent.TurnOffScreen) }
     }
 
     LaunchedEffect(exitState) {

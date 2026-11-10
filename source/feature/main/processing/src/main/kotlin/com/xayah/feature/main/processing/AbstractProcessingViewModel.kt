@@ -1,9 +1,10 @@
 package com.xayah.feature.main.processing
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.TaskRepository
-import com.xayah.core.datastore.readScreenOffCountDown
+import com.xayah.core.datastore.readAutoScreenOff
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.PackageTaskRequest
 import com.xayah.core.model.ProcessingType
@@ -26,15 +27,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import java.util.concurrent.atomic.AtomicReference
 
 data class IndexUiState(
     val state: OperationState,
@@ -43,6 +45,7 @@ data class IndexUiState(
     val cloudEntity: CloudEntity?,
     val backupDir: String? = null,
     val failure: String? = null,
+    val screenOffAt: Long? = null,
 ) : UiState
 
 open class ProcessingUiIntent : UiIntent {
@@ -71,15 +74,28 @@ abstract class AbstractProcessingViewModel(
 
     private val _exitState = MutableStateFlow(ExitState.IDLE)
     val exitState: StateFlow<ExitState> = _exitState
-    private val processingJob = AtomicReference<Job?>()
-    private var initializationJob: Job? = null
+    private val startRequested = CompletableDeferred<Unit>()
+    private var taskJob: Job? = null
     protected var confirmedRequest: PackageTaskRequest? = null
 
     fun initialize(autoStart: Boolean) {
-        if (initializationJob != null || _exitState.value != ExitState.IDLE) return
-        initializationJob = launchOnIO {
-            val state = uiState.value
-            val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
+        if (taskJob != null || _exitState.value != ExitState.IDLE) return
+        taskJob = launchOnIO {
+            try {
+                runTask(autoStart)
+                // Keep the result available until its screen closes.
+                if (_taskId.value >= 0) awaitCancellation()
+            } finally {
+                val id = _taskId.value
+                if (id >= 0) withContext(NonCancellable) { mTaskRepo.deleteTask(id) }
+            }
+        }
+    }
+
+    private suspend fun runTask(autoStart: Boolean) {
+        val state = uiState.value
+        val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
+        try {
             try {
                 val restoreSource = (confirmedRequest as? PackageTaskRequest.Restore)?.packages?.firstOrNull()?.indexInfo
                 _taskId.value = service.initialize(
@@ -87,13 +103,20 @@ abstract class AbstractProcessingViewModel(
                     restoreSource?.backupDir ?: state.backupDir,
                     confirmedRequest,
                 )
-            } catch (error: Exception) {
+                if (!autoStart) startRequested.await()
+                val screenOffAt = if (mContext.readAutoScreenOff().first()) SystemClock.elapsedRealtime() + 3_000 else null
+                emitState(uiState.value.copy(state = OperationState.PROCESSING, screenOffAt = screenOffAt))
+                service.preprocessing()
+                service.processing()
+                service.postProcessing()
+            } finally {
                 releaseService(service)
-                if (error is CancellationException) throw error
-                fail(error)
-                return@launchOnIO
             }
-            if (autoStart) emitIntent(ProcessingUiIntent.Process)
+            emitState(uiState.value.copy(state = OperationState.DONE))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            fail(e)
         }
     }
 
@@ -113,55 +136,21 @@ abstract class AbstractProcessingViewModel(
     open suspend fun onOtherEvent(state: IndexUiState, intent: ProcessingUiIntent) {}
 
     init {
-        val onRootFailure: (Throwable) -> Unit = {
-            val msg = it.message
-            if (msg != null)
-                emitEffectOnIO(IndexUiEffect.ShowSnackbar(message = msg))
-        }
-        mRootService.onFailure = onRootFailure
-        addCloseable(AutoCloseable {
-            if (mRootService.onFailure === onRootFailure) mRootService.onFailure = {}
+        addCloseable(mRootService.observeFailures { error ->
+            error.message?.let { emitEffectOnIO(IndexUiEffect.ShowSnackbar(message = it)) }
         })
     }
 
     override suspend fun onEvent(state: IndexUiState, intent: ProcessingUiIntent) {
         when (intent) {
             is ProcessingUiIntent.Process -> {
-                if (state.state != OperationState.IDLE || _taskId.value < 0 || _exitState.value != ExitState.IDLE) return
-                val job = currentCoroutineContext().job
-                if (!processingJob.compareAndSet(null, job)) return
-                emitState(state.copy(state = OperationState.PROCESSING))
-                val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
-                try {
-                    try {
-                        service.preprocessing()
-                        service.processing()
-                        service.postProcessing()
-                    } finally {
-                        releaseService(service)
-                    }
-                    emitState(uiState.value.copy(state = OperationState.DONE))
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    fail(error)
-                } finally {
-                    processingJob.compareAndSet(job, null)
-                }
+                if (state.state == OperationState.IDLE && _taskId.value >= 0 && _exitState.value == ExitState.IDLE) startRequested.complete(Unit)
             }
 
             is ProcessingUiIntent.Exit -> {
                 if (!_exitState.compareAndSet(ExitState.IDLE, ExitState.WAITING)) return
                 try {
-                    initializationJob?.cancel()
-                    processingJob.get()?.cancelAndJoin()
-                    initializationJob?.join()
-                    withMainContext {
-                        if (state.storageType == StorageMode.Cloud) mCloudService.destroyService(true)
-                        else mLocalService.destroyService(true)
-                    }
-                    val id = _taskId.value
-                    if (id >= 0) mTaskRepo.deleteTask(id)
+                    taskJob?.cancelAndJoin()
                     _exitState.value = ExitState.COMPLETE
                 } catch (e: CancellationException) {
                     throw e
@@ -174,7 +163,7 @@ abstract class AbstractProcessingViewModel(
             is ProcessingUiIntent.TurnOffScreen -> {
                 if (uiState.value.state == OperationState.PROCESSING && _exitState.value == ExitState.IDLE) {
                     val service = if (state.storageType == StorageMode.Cloud) mCloudService else mLocalService
-                    service.turnOffScreen()
+                    withContext(Dispatchers.IO) { service.turnOffScreen() }
                 }
             }
 
@@ -214,7 +203,6 @@ abstract class AbstractProcessingViewModel(
             }
             .flowOnIO()
     }
-    private val _screenOffCountDown = mContext.readScreenOffCountDown().flowOnIO()
 
     val task: StateFlow<TaskEntity?> = _task.stateInScope(null)
     val preItemsProgress: StateFlow<Float> = _preItemsProgress.stateInScope(0F)
@@ -222,5 +210,4 @@ abstract class AbstractProcessingViewModel(
     val dataItems: StateFlow<List<ProcessingDataCardItem>> by lazy { _dataItems.stateInScope(listOf()) }
     val postItemsProgress: StateFlow<Float> = _postItemsProgress.stateInScope(0F)
     val postItems: StateFlow<List<ProcessingCardItem>> = _postItems.stateInScope(listOf())
-    val screenOffCountDown: StateFlow<Int> = _screenOffCountDown.stateInScope(0)
 }
