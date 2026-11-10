@@ -295,7 +295,7 @@ class PackagesRestoreUtil @Inject constructor(
         t: TaskDetailPackageEntity,
         dataType: DataType,
         srcDir: String,
-        onDownloaded: suspend (p: PackageEntity, t: TaskDetailPackageEntity, dataType: DataType, path: String) -> Unit
+        onDownloaded: suspend (dir: String) -> Unit
     ) = run {
         val ct = p.indexInfo.compressionType
         val src = packageRepository.getArchiveDst(dstDir = srcDir, dataType = dataType, ct = ct)
@@ -305,25 +305,14 @@ class PackagesRestoreUtil @Inject constructor(
         } else {
             t.updateInfo(dataType = dataType, state = OperationState.DOWNLOADING)
 
-            if (client.exists(src)) {
-                cloudRepository.download(client = client,
-                    src = src,
-                    onDownloading = { written, _ -> t.updateInfo(dataType = dataType, content = written.toDouble().formatSize()) },
-                    onDownloaded = {
-                        onDownloaded(p, t, dataType, PathUtil.getParentPath(it))
-                    }
-                ).apply {
-                    t.updateInfo(
-                        dataType = dataType,
-                        log = (t.get(dataType).log + "\n${outString}").trim(),
-                    )
-                    if (isSuccess.not()) {
-                        t.updateInfo(dataType = dataType, state = OperationState.ERROR)
-                    }
-                }
-            } else {
-                t.updateInfo(dataType = dataType, state = OperationState.ERROR, log = log { "Remote archive not found: $src" })
-            }
+            val result = cloudRepository.download(client, src, onDownloading = { written, _ ->
+                t.updateInfo(dataType = dataType, content = written.toDouble().formatSize())
+            }) { onDownloaded(PathUtil.getParentPath(it)) }
+            t.updateInfo(
+                dataType = dataType,
+                state = if (result.isSuccess) null else OperationState.ERROR,
+                log = (t.get(dataType).log + "\n" + result.outString).trim(),
+            )
         }
     }
 }

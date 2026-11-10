@@ -42,8 +42,6 @@ class MediumRestoreUtil @Inject constructor(
         msg
     }
 
-    private fun TaskDetailMediaEntity.getLog() = mediaInfo.log
-
     private suspend fun TaskDetailMediaEntity.updateInfo(
         state: OperationState? = null,
         bytes: Long? = null,
@@ -115,33 +113,19 @@ class MediumRestoreUtil @Inject constructor(
         client: CloudClient,
         m: MediaEntity,
         t: TaskDetailMediaEntity,
-        dataType: DataType,
         srcDir: String,
-        onDownloaded: suspend (m: MediaEntity, t: TaskDetailMediaEntity, path: String) -> Unit
+        onDownloaded: suspend (dir: String) -> Unit
     ) = run {
         val ct = m.indexInfo.compressionType
         val src = mediaRepository.getArchiveDst(dstDir = srcDir, ct = ct)
 
         t.updateInfo(state = OperationState.DOWNLOADING)
-        if (client.exists(src)) {
-            cloudRepository.download(client = client,
-                src = src,
-                onDownloading = { written, _ -> t.updateInfo(content = written.toDouble().formatSize()) },
-                onDownloaded = {
-                    onDownloaded(m, t, PathUtil.getParentPath(it))
-                }
-            ).apply {
-                t.updateInfo(log = (t.getLog() + "\n${outString}").trim())
-                if (isSuccess.not()) {
-                    t.updateInfo(state = OperationState.ERROR)
-                }
-            }
-        } else {
-            if (dataType == DataType.PACKAGE_USER || dataType == DataType.PACKAGE_APK) {
-                t.updateInfo(state = OperationState.ERROR, log = log { "Failed to connect to cloud or file not exist: $src" })
-            } else {
-                t.updateInfo(state = OperationState.SKIP, log = log { "Failed to connect to cloud or file not exist, skip: $src" })
-            }
-        }
+        val result = cloudRepository.download(client, src, onDownloading = { written, _ ->
+            t.updateInfo(content = written.toDouble().formatSize())
+        }) { onDownloaded(PathUtil.getParentPath(it)) }
+        t.updateInfo(
+            state = if (result.isSuccess) null else OperationState.ERROR,
+            log = (t.mediaInfo.log + "\n" + result.outString).trim(),
+        )
     }
 }

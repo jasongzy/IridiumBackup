@@ -1,9 +1,11 @@
 package com.xayah.core.data.repository
 
+import android.os.Binder
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
 import com.xayah.core.database.AppDatabase
 import com.xayah.core.network.client.CloudClient
+import com.xayah.core.rootservice.IRemoteRootService
 import com.xayah.core.rootservice.service.RemoteRootService
 import java.io.File
 import java.lang.reflect.Proxy
@@ -20,7 +22,41 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class CloudDownloadTest {
+class CloudTransferTest {
+    @Test
+    fun aStagedFileCleanupFailureDoesNotUndoACompletedUpload() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val workspace = File(context.cacheDir, "cloud-cleanup-test").apply { mkdirs() }
+        try {
+            val staged = File(workspace, "config.json").apply { writeText("backup") }
+            val binder = Binder()
+            val service = Proxy.newProxyInstance(IRemoteRootService::class.java.classLoader, arrayOf(IRemoteRootService::class.java)) { _, method, _ ->
+                when (method.name) {
+                    "asBinder" -> binder
+                    "removeEntry" -> false
+                    else -> error("Unexpected root operation: ${method.name}")
+                }
+            }
+            val root = RemoteRootService(context).apply {
+                javaClass.getDeclaredField("mService").apply { isAccessible = true }.set(this, service)
+            }
+            var uploaded: String? = null
+            val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
+                check(method.name == "upload")
+                uploaded = File(args!![0] as String).readText()
+                null
+            } as CloudClient
+            val result = CloudRepository(context, root, database.cloudDao()).upload(client, staged.path, "/backup")
+            assertTrue(result.isSuccess)
+            assertEquals("backup", uploaded)
+            assertTrue(staged.exists())
+        } finally {
+            database.close()
+            workspace.deleteRecursively()
+        }
+    }
+
     @Test
     fun cancellationStopsTheTransferBeforeExtraction() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

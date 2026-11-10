@@ -77,7 +77,7 @@ class CloudRepository @Inject constructor(
                 { bytes, total -> update(if (total == 0L) 100 else (100.0 * bytes / total).toInt().coerceIn(0, 100)) }
             }
             transfer(progress) { client.upload(src, dstDir, it) }
-            check(rootService.removeEntry(src)) { "Unable to release staged file: $src" }
+            if (!rootService.removeEntry(src)) log { "Unable to release staged file: $src" }
             ShellResult(0, emptyList(), listOf("Uploaded $src"))
         } catch (e: CancellationException) {
             throw e

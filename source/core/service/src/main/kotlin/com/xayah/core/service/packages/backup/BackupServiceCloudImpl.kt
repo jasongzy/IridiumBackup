@@ -127,13 +127,7 @@ internal class BackupServiceCloudImpl @Inject constructor() : AbstractBackupServ
     override suspend fun onConfigsSaved(path: String, entity: ProcessingInfoEntity) =
         uploadBackupFile(mCloudRepo, mClient, path, mRemoteConfigsDir, entity)
 
-    override suspend fun clear() {
-        try {
-            mRootService.deleteRecursively(mRootDir)
-        } finally {
-            if (::mClient.isInitialized) mClient.disconnect()
-        }
-    }
+    override suspend fun clear() = clearCloudWorkspace(mRootDir, if (::mClient.isInitialized) mClient else null)
 
     @Inject
     override lateinit var mPackageRepo: PackageRepository

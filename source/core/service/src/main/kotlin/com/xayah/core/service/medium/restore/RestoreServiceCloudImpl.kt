@@ -5,7 +5,6 @@ import com.xayah.core.data.repository.MediaRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.dao.MediaDao
 import com.xayah.core.database.dao.TaskDao
-import com.xayah.core.model.DataType
 import com.xayah.core.model.OpType
 import com.xayah.core.model.OperationState
 import com.xayah.core.model.TaskType
@@ -23,10 +22,7 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreService() {
-    override suspend fun clear() {
-        mRootService.deleteRecursively(mRootDir)
-        if (::mClient.isInitialized) mClient.disconnect()
-    }
+    override suspend fun clear() = clearCloudWorkspace(mRootDir, if (::mClient.isInitialized) mClient else null)
 
     override val mTAG: String = "RestoreServiceCloudImpl"
 
@@ -78,8 +74,8 @@ internal class RestoreServiceCloudImpl @Inject constructor() : AbstractRestoreSe
         if (m.path.isEmpty()) {
             t.update(state = OperationState.ERROR, log = "Path is empty.")
         } else {
-            mMediumRestoreUtil.download(client = mClient, m = m, t = t, dataType = DataType.PACKAGE_MEDIA, srcDir = remoteFileDir) { mM, mT, mPath ->
-                mMediumRestoreUtil.restoreMedia(m = mM, t = mT, srcDir = mPath)
+            mMediumRestoreUtil.download(client = mClient, m = m, t = t, srcDir = remoteFileDir) { dir ->
+                mMediumRestoreUtil.restoreMedia(m = m, t = t, srcDir = dir)
             }
         }
 

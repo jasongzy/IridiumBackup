@@ -285,6 +285,14 @@ internal abstract class AbstractProcessingService : Service() {
         mContext.saveScreenOffTimeout(DEFAULT_IDLE_TIMEOUT)
     }
 
+    protected suspend fun clearCloudWorkspace(path: String, client: CloudClient?) {
+        try {
+            check(mRootService.deleteRecursively(path)) { "Unable to clear cloud workspace: $path" }
+        } finally {
+            client?.disconnect()
+        }
+    }
+
     suspend fun cleanup(): Boolean = withContext(NonCancellable) {
         screenMutex.withLock {
             cleanupResult ?: runCatchingOnService {

@@ -8,12 +8,24 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.platform.app.InstrumentationRegistry
+import com.xayah.core.data.repository.CloudRepository
+import com.xayah.core.data.repository.PackageRepository
 import com.xayah.core.data.repository.TaskRepository
 import com.xayah.core.database.AppDatabase
+import com.xayah.core.model.CompressionType
+import com.xayah.core.model.DataType
 import com.xayah.core.model.OperationState
+import com.xayah.core.model.PackageRestoreConfig
+import com.xayah.core.model.database.PackageDataStates
+import com.xayah.core.model.database.PackageDataStats
+import com.xayah.core.model.database.TaskDetailPackageEntity
+import com.xayah.core.model.toPackageEntity
+import com.xayah.core.network.client.CloudClient
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.service.AbstractProcessingServiceProxy
+import com.xayah.core.service.util.PackagesRestoreUtil
 import com.xayah.core.ui.model.ProcessingDataCardItem
+import com.xayah.core.util.PathUtil
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -30,7 +42,9 @@ import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import java.io.IOException
+import java.lang.reflect.Proxy
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalCoroutinesApi::class)
 class ProcessingFailureTest {
@@ -82,6 +96,36 @@ class ProcessingFailureTest {
     fun close() = runBlocking {
         withContext(Dispatchers.Main) { stores.forEach { it.clear() } }
         database.close()
+    }
+
+    @Test
+    fun cloudRestoreReportsTheFailedArchiveAndReadsTheNextOne() = runBlocking {
+        val cloud = CloudRepository(context, root, database.cloudDao())
+        val packages = PackageRepository(context, root, cloud, database.packageDao(), PathUtil(context))
+        val restore = PackagesRestoreUtil(context, root, database.taskDao(), packages, cloud)
+        val app = PackageRestoreConfig(
+            packageName = "test.app", userId = 0, createdAt = 1, compressionType = CompressionType.TAR,
+            label = "Test", versionName = "1", versionCode = 1, isSystemApp = false, hasKeystore = false,
+            permissions = emptyList(), ssaid = "", dataStates = PackageDataStates(),
+            dataStats = PackageDataStats(), displayStats = PackageDataStats(),
+        ).toPackageEntity("cloud", "/backup")
+        val task = TaskDetailPackageEntity(id = 1, taskId = 1, packageEntity = app)
+        val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
+            if (method.name != "download") throw SecurityException("Listing not permitted")
+            val path = args!![0] as String
+            check(!path.endsWith("/user.tar")) { "Archive missing: $path" }
+            File(args[1] as String, "user_de.tar").writeText("data")
+        } as CloudClient
+        restore.download(client, app, task, DataType.PACKAGE_USER, "/backup") { error("Missing archive reached restore") }
+        assertEquals(OperationState.ERROR, task.userInfo.state)
+        assertTrue(task.userInfo.log.contains("Archive missing: /backup/user.tar"))
+        var contents: String? = null
+        restore.download(client, app, task, DataType.PACKAGE_USER_DE, "/backup") { dir ->
+            contents = File(dir, "user_de.tar").readText()
+            task.userDeInfo.state = OperationState.DONE
+        }
+        assertEquals("data", contents)
+        assertEquals(OperationState.DONE, task.userDeInfo.state)
     }
 
     @Test
