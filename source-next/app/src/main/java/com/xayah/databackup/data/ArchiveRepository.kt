@@ -12,6 +12,7 @@ import com.xayah.databackup.entity.restore.RestoreSource
 import com.xayah.databackup.entity.restore.RestoreSourceInfo
 import com.xayah.databackup.entity.restore.RestoreState
 import com.xayah.databackup.rootservice.RemoteRootService
+import com.xayah.databackup.service.archive.ArchiveRecordPaths
 import com.xayah.databackup.service.restore.RestoreMetadataHelper
 import com.xayah.databackup.service.restore.RestoreRecordId
 import com.xayah.databackup.service.restore.archive.ArchiveRestorePaths
@@ -23,21 +24,22 @@ class ArchiveRepository {
     suspend fun loadRestoreState(config: BackupConfig): RestoreState = withContext(Dispatchers.IO) {
         require(config.path.isNotBlank()) { "Archive path is empty" }
         check(RemoteRootService.exists(config.path)) { "Archive is unavailable" }
+        val recordUserId = UserHandleHidden.getUserId(Process.myUid())
         val files = buildMap {
-            for (relative in ArchiveRestorePaths.structuredFileRelativePaths) {
+            for ((metadataPath, relative) in ArchiveRecordPaths.getRelativePaths(recordUserId)) {
                 val path = "${config.path}/$relative"
                 if (RemoteRootService.exists(path)) {
-                    put(relative, RemoteRootService.readText(path))
+                    put(metadataPath, RemoteRootService.readText(path))
                 }
             }
         }
-        // Archive keeps one backup per package; restore it to the user running DataBackup.
-        val userId = UserHandleHidden.getUserId(Process.myUid())
         val apps = mutableMapOf<String, App>()
         val sources = mutableMapOf<String, List<BackupSourcePath>>()
         for (directory in RemoteRootService.listFilePaths(path = PathHelper.getBackupAppsDir(config.path), listFiles = false, listDirs = true)) {
-            val packageName = PathHelper.getChildPath(directory.path)
-            val paths = ArchiveRestorePaths.getAppArchivePaths(config.path, packageName).filterKeys { RemoteRootService.exists(it) }
+            val source = ArchiveRestorePaths.parseAppDirectory(PathHelper.getChildPath(directory.path)) ?: continue
+            val packageName = source.packageName
+            val userId = source.userId
+            val paths = ArchiveRestorePaths.getAppArchivePaths(config.path, packageName, source.userId).filterKeys { RemoteRootService.exists(it) }
             if (paths.isEmpty()) {
                 continue
             }
@@ -57,7 +59,7 @@ class ArchiveRepository {
             sources[id] = paths.map { (path, category) -> BackupSourcePath(path, category) }
         }
         val inventory = RestoreMetadataHelper().deserializeInventory(files).copy(
-            usersMap = mapOf(userId to userId.toString()),
+            usersMap = apps.values.map { it.userId }.distinct().associateWith { it.toString() },
             apps = apps,
             appSources = sources,
             availableAppParts = sources.mapValues { (_, paths) -> paths.map { it.category }.toSet() },

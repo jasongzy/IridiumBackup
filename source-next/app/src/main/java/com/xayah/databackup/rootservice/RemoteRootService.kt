@@ -6,6 +6,7 @@ import android.app.ActivityManagerHidden
 import android.app.ActivityThread
 import android.content.ComponentName
 import android.content.Context
+import android.content.ContextHidden
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.ApplicationInfo
@@ -33,6 +34,7 @@ import com.xayah.databackup.database.entity.AppInfo
 import com.xayah.databackup.database.entity.AppStorage
 import com.xayah.databackup.database.entity.Info
 import com.xayah.databackup.database.entity.Storage
+import com.xayah.databackup.entity.backup.ApkInstallSource
 import com.xayah.databackup.entity.restore.RestoreProgressCallback
 import com.xayah.databackup.entity.rustic.requireFullSnapshotId
 import com.xayah.databackup.parcelables.ArchiveOperationResultParcelable
@@ -41,8 +43,9 @@ import com.xayah.databackup.parcelables.FilePathParcelable
 import com.xayah.databackup.parcelables.StatFsParcelable
 import com.xayah.databackup.rootservice.install.ApkInstallConnection
 import com.xayah.databackup.rootservice.install.ApkInstallSession
+import com.xayah.databackup.service.archive.ArchiveRecordPaths
 import com.xayah.databackup.service.archive.ArchiveStreamHelper
-import com.xayah.databackup.service.restore.ApkInstallProcess
+import com.xayah.databackup.service.restore.ApkInstallProcess.Companion.SYSTEM_PACKAGE_NAME
 import com.xayah.databackup.service.restore.RestoreNetworksHelper
 import com.xayah.databackup.service.restore.archive.ArchiveRestoreAppHelper
 import com.xayah.databackup.service.restore.archive.ArchiveRestoreMessagesHelper
@@ -179,8 +182,9 @@ object RemoteRootService {
             mApkInstallSession = null
         }
 
-        private fun getApkInstaller(userId: Int): ApkInstallProcess =
-            checkNotNull(mApkInstallSession) { "No active APK install session" }.getInstaller(userId)
+        private fun installApks(userId: Int, packageName: String, apks: List<File>, source: ApkInstallSource?) {
+            checkNotNull(mApkInstallSession) { "No active APK install session" }.install(userId, packageName, apks, source)
+        }
 
 
         fun onBind() {
@@ -321,6 +325,22 @@ object RemoteRootService {
             return NativeLib.calculateTreeSize(path)
         }
 
+        override fun getApkInstallSource(packageName: String, userId: Int): String {
+            val manager = mSystemContext.castTo<ContextHidden>()
+                .createPackageContextAsUser(SYSTEM_PACKAGE_NAME, 0, UserHandleHidden.of(userId)).packageManager
+            val source = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val info = manager.getInstallSourceInfo(packageName)
+                ApkInstallSource(
+                    initiatingPackageName = info.initiatingPackageName,
+                    installingPackageName = info.installingPackageName,
+                    originatingPackageName = info.originatingPackageName
+                )
+            } else {
+                ApkInstallSource(installingPackageName = manager.getInstallerPackageName(packageName))
+            }
+            return source.serialize()
+        }
+
         override fun getPackageSourceDir(packageName: String, userId: Int): List<String> {
             val sourceDirList = mutableListOf<String>()
             val packageInfo = mPackageManagerHidden.getPackageInfoAsUser(packageName, 0, userId)
@@ -425,13 +445,13 @@ object RemoteRootService {
         ) = synchronized(mLock) {
             require(packageName != mContext.packageName) { "Cannot restore DataBackup while it is running" }
             require(mUserManager.users.any { it.id == userId }) { "Target user does not exist: $userId" }
-            val installer = getApkInstaller(userId)
-            RusticRestoreApkHelper(mContext.cacheDir, installer::install).restore(
+            RusticRestoreApkHelper(mContext.cacheDir) { name, apks, source -> installApks(userId, name, apks, source) }.restore(
                 repositoryPath = repositoryPath,
                 password = password,
                 snapshotId = snapshotId,
                 packageName = packageName,
                 apkPaths = apkPaths,
+                userId = userId,
             )
             check(mPackageManagerHidden.getPackageInfoAsUser(packageName, 0, userId).applicationInfo != null) {
                 "Package is not installed for user $userId: $packageName"
@@ -448,7 +468,8 @@ object RemoteRootService {
                 ArchiveRestorePaths.validatePackageName(packageName)
                 require(packageName != mContext.packageName) { "Cannot restore DataBackup while it is running" }
                 require(mUserManager.users.any { it.id == userId }) { "Target user does not exist" }
-                val isApkRestore = paths == listOf(PathHelper.getBackupAppsApkFilePath(archivePath, packageName))
+                ArchiveRestorePaths.validateAppSelection(archivePath, packageName, userId, paths)
+                val isApkRestore = paths == listOf(PathHelper.getBackupAppsApkFilePath(archivePath, packageName, userId))
                 val applicationInfo = if (isApkRestore) {
                     null
                 } else {
@@ -457,7 +478,7 @@ object RemoteRootService {
                 var seInfo: String? = null
                 if (applicationInfo != null) {
                     check(applicationInfo.flags and ApplicationInfo.FLAG_PERSISTENT == 0) { "Cannot safely stop persistent package" }
-                    val isDeviceProtectedDataOnly = paths == listOf(PathHelper.getBackupAppsUserDeFilePath(archivePath, packageName))
+                    val isDeviceProtectedDataOnly = paths == listOf(PathHelper.getBackupAppsUserDeFilePath(archivePath, packageName, userId))
                     check(isDeviceProtectedDataOnly || mUserManager.isUserUnlocked(userId)) { "Target user storage is locked" }
                     val applicationInfoHidden: ApplicationInfoHidden = applicationInfo.castTo()
                     seInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -478,10 +499,11 @@ object RemoteRootService {
                     ArchiveRestoreAppHelper(mContext.cacheDir).restore(
                         archivePath = archivePath,
                         packageName = packageName,
+                        userId = userId,
                         paths = paths,
                         app = applicationInfo,
                         seInfo = seInfo,
-                        installApks = { appPackageName, apks -> getApkInstaller(userId).install(appPackageName, apks) },
+                        installApks = { appPackageName, apks, source -> installApks(userId, appPackageName, apks, source) },
                     ) { mActivityManager.forceStopPackageAsUser(packageName, userId) }
                 }
                 check(mPackageManagerHidden.getPackageInfoAsUser(packageName, 0, userId).applicationInfo != null) {
@@ -499,8 +521,13 @@ object RemoteRootService {
             archivePath: String, networkIds: List<String>, callback: IRestoreCallback,
         ): List<String> = synchronized(mLock) {
             runCatching {
+                val metadataPath = ArchiveRecordPaths.getFilePath(
+                    parent = archivePath,
+                    metadataPath = PathHelper.getBackupNetworksConfigFileRelativePath(),
+                    userId = UserHandleHidden.getUserId(getCallingUid()),
+                )
                 RestoreNetworksHelper(mWifiManager).restore(
-                    File(PathHelper.getBackupNetworksConfigFilePath(archivePath)).readText(), networkIds, callback.asProgressCallback(),
+                    File(metadataPath).readText(), networkIds, callback.asProgressCallback(),
                 )
             }.getOrElse { error ->
                 if (error is CancellationException || error !is Exception) throw error
@@ -512,10 +539,12 @@ object RemoteRootService {
             archivePath: String, messageIds: List<String>, callback: IRestoreCallback,
         ): List<String> = synchronized(mLock) {
             runCatching {
+                // Capture the app user before clearing Binder identity to root.
+                val recordUserId = UserHandleHidden.getUserId(getCallingUid())
                 val identity = clearCallingIdentity()
                 try {
                     ArchiveRestoreMessagesHelper(mSystemContext, mContext.cacheDir).restore(
-                        archivePath, messageIds, callback.asProgressCallback(),
+                        archivePath, recordUserId, messageIds, callback.asProgressCallback(),
                     )
                 } finally {
                     restoreCallingIdentity(identity)
@@ -884,6 +913,9 @@ object RemoteRootService {
     suspend fun calculateTreeSize(path: String): Long {
         return getService()?.calculateTreeSize(path) ?: 0
     }
+
+    suspend fun getApkInstallSource(packageName: String, userId: Int): ApkInstallSource =
+        ApkInstallSource.deserialize(checkNotNull(getService()).getApkInstallSource(packageName, userId))
 
     suspend fun getPackageSourceDir(packageName: String, userId: Int): List<String> {
         return getService()?.getPackageSourceDir(packageName, userId) ?: listOf()

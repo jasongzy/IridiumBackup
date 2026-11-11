@@ -3,6 +3,7 @@ package com.xayah.databackup.service.restore.archive
 import android.content.pm.ApplicationInfo
 import android.system.Os
 import android.system.OsConstants
+import com.xayah.databackup.entity.backup.ApkInstallSource
 import com.xayah.databackup.entity.backup.BackupSourceCategory
 import com.xayah.databackup.service.restore.RestoreExternalDataHelper
 import com.xayah.databackup.service.restore.RestoreInternalDataHelper
@@ -25,16 +26,15 @@ internal class ArchiveRestoreAppHelper(private val mCacheDir: File) {
     suspend fun restore(
         archivePath: String,
         packageName: String,
+        userId: Int,
         paths: List<String>,
         app: ApplicationInfo?,
         seInfo: String?,
-        installApks: (String, List<File>) -> Unit,
+        installApks: (String, List<File>, ApkInstallSource?) -> Unit,
         stopApp: () -> Unit,
     ) {
-        val categoryByArchivePath = ArchiveRestorePaths.getAppArchivePaths(archivePath, packageName)
-        require(paths.isNotEmpty() && paths.distinct().size == paths.size && categoryByArchivePath.keys.containsAll(paths)) {
-            "Invalid app archive selection"
-        }
+        ArchiveRestorePaths.validateAppSelection(archivePath, packageName, userId, paths)
+        val categoryByArchivePath = ArchiveRestorePaths.getAppArchivePaths(archivePath, packageName, userId)
         val categories = paths.map { categoryByArchivePath.getValue(it) }.toSet()
         require(categories.size == 1) { "Restore one app part at a time" }
         val category = categories.single()
@@ -65,12 +65,19 @@ internal class ArchiveRestoreAppHelper(private val mCacheDir: File) {
                     val apkExtractDir = File(stagingDir, "apk")
                     check(apkExtractDir.mkdir())
                     tarHelperByArchivePath.values.single().extract(apkExtractDir)
-                    installApks(packageName, checkNotNull(apkExtractDir.listFiles()).toList())
+                    val metadataFile = File(apkExtractDir, ApkInstallSource.FILE_NAME)
+                    val installSource = if (metadataFile.exists()) {
+                        ApkInstallSource.deserialize(metadataFile.readText())
+                    } else {
+                        null
+                    }
+                    val apks = checkNotNull(apkExtractDir.listFiles()).filter { it.name.endsWith(PathHelper.APK_FILE_SUFFIX) }
+                    installApks(packageName, apks, installSource)
                 }
                 BackupSourceCategory.InternalData -> {
                     val archivePathByIsCe = mapOf(
-                        true to PathHelper.getBackupAppsUserFilePath(archivePath, packageName),
-                        false to PathHelper.getBackupAppsUserDeFilePath(archivePath, packageName),
+                        true to PathHelper.getBackupAppsUserFilePath(archivePath, packageName, userId),
+                        false to PathHelper.getBackupAppsUserDeFilePath(archivePath, packageName, userId),
                     ).filterValues { it in tarHelperByArchivePath }
                     RestoreInternalDataHelper().restore(
                         checkNotNull(app), checkNotNull(seInfo), archivePathByIsCe,
@@ -81,9 +88,9 @@ internal class ArchiveRestoreAppHelper(private val mCacheDir: File) {
                 }
                 BackupSourceCategory.ExternalData, BackupSourceCategory.AdditionalData -> {
                     val archivePathByDataDirName = mapOf(
-                        PathHelper.EXTERNAL_DATA_DIR_NAME to PathHelper.getBackupAppsDataFilePath(archivePath, packageName),
-                        PathHelper.EXTERNAL_OBB_DIR_NAME to PathHelper.getBackupAppsObbFilePath(archivePath, packageName),
-                        PathHelper.EXTERNAL_MEDIA_DIR_NAME to PathHelper.getBackupAppsMediaFilePath(archivePath, packageName),
+                        PathHelper.EXTERNAL_DATA_DIR_NAME to PathHelper.getBackupAppsDataFilePath(archivePath, packageName, userId),
+                        PathHelper.EXTERNAL_OBB_DIR_NAME to PathHelper.getBackupAppsObbFilePath(archivePath, packageName, userId),
+                        PathHelper.EXTERNAL_MEDIA_DIR_NAME to PathHelper.getBackupAppsMediaFilePath(archivePath, packageName, userId),
                     ).filterValues { it in tarHelperByArchivePath }
                     RestoreExternalDataHelper().restore(
                         archivePath, checkNotNull(app), archivePathByDataDirName,
