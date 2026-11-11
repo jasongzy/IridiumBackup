@@ -63,19 +63,13 @@ fun PageWebDAVSetup() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var name by rememberSaveable { mutableStateOf(uiState.currentName) }
-    var remote by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.remote ?: "") }
+    val remote = rememberSaveable(uiState.cloudEntity?.remote) { uiState.cloudEntity?.remote.orEmpty() }
     var url by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.host ?: "") }
     var username by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.user ?: "") }
     var password by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.pass ?: "") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
     var insecure by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<WebDAVExtra>()?.insecure ?: false) }
-    val allFilled by rememberSaveable(
-        name,
-        url,
-        username,
-        password,
-        insecure
-    ) { mutableStateOf(name.isNotEmpty() && url.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) }
+    val allFilled = name.isNotBlank() && url.isNotBlank() && username.isNotBlank() && password.isNotEmpty()
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,
@@ -173,7 +167,7 @@ fun PageWebDAVSetup() {
                     viewModel.launchOnIO {
                         viewModel.updateWebDAVEntity(name = name, remote = remote, url = url, username = username, password = password, insecure = insecure)
                         viewModel.emitIntent(IndexUiIntent.SetRemotePath(context = context))
-                        remote = uiState.cloudEntity!!.remote
+
                     }
                 }
 

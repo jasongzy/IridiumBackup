@@ -1,7 +1,8 @@
 package com.xayah.core.database.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
 import com.xayah.core.model.database.CloudEntity
@@ -9,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CloudDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(item: CloudEntity): Long
+
     @Upsert(entity = CloudEntity::class)
     suspend fun upsert(item: CloudEntity)
 
@@ -27,6 +31,6 @@ interface CloudDao {
     @Query("SELECT * FROM CloudEntity")
     suspend fun query(): List<CloudEntity>
 
-    @Delete(entity = CloudEntity::class)
-    suspend fun delete(item: CloudEntity)
+    @Query("DELETE FROM CloudEntity WHERE name = :name")
+    suspend fun delete(name: String)
 }

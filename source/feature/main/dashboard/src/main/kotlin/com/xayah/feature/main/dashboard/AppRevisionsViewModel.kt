@@ -13,7 +13,6 @@ import com.xayah.core.data.repository.PackageRequestStore
 import com.xayah.core.data.repository.DirectoryRepository
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.ifEmptyEncodeURLWithSpace
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
@@ -120,8 +119,8 @@ class AppRevisionsViewModel @Inject constructor(
         }
         requestStore.prepareRestore(listOf(app))
         return MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-            cloudName = app.indexInfo.cloud.ifEmptyEncodeURLWithSpace(),
-            backupDir = app.indexInfo.backupDir.ifEmptyEncodeURLWithSpace(),
+            cloudName = app.indexInfo.cloud,
+            backupDir = app.indexInfo.backupDir,
         )
     }
 }

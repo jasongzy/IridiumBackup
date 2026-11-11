@@ -38,6 +38,7 @@ class CloudRepository @Inject constructor(
     }
 
     fun getString(@StringRes resId: Int) = context.getString(resId)
+    suspend fun add(item: CloudEntity) = cloudDao.insert(item) != -1L
     suspend fun upsert(item: CloudEntity) = cloudDao.upsert(item)
     suspend fun upsert(items: List<CloudEntity>) = cloudDao.upsert(items)
     suspend fun queryByName(name: String) = cloudDao.queryByName(name)
@@ -45,7 +46,7 @@ class CloudRepository @Inject constructor(
 
     val clouds = cloudDao.queryFlow().distinctUntilChanged()
 
-    suspend fun delete(entity: CloudEntity) = cloudDao.delete(entity)
+    suspend fun delete(name: String) = cloudDao.delete(name)
 
     private suspend fun transfer(onProgress: (suspend (Long, Long) -> Unit)?, block: ((Long, Long) -> Unit) -> Unit) = withContext(Dispatchers.IO) {
         if (onProgress == null) return@withContext block { _, _ -> ensureActive() }

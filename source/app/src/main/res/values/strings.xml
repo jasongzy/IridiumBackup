@@ -121,6 +121,7 @@
     <string name="supported_format">Supported format</string>
     <string name="add">Add</string>
     <string name="custom_storage">Custom storage</string>
+    <string name="select_smb_share">Select a shared folder on the server</string>
     <string name="select_target_directory">Select target folder</string>
     <string name="confirm_delete">This will delete all the related files you selected</string>
     <string name="backup_dir_as_media_error">Cannot add backup directory as media</string>
@@ -139,6 +140,7 @@
     <string name="password">Password</string>
     <string name="public_key">Public key</string>
     <string name="private_key">Private key</string>
+    <string name="port_range">Port (1–65535)</string>
     <string name="port">Port</string>
     <string name="mount">Mount</string>
     <string name="set_remote">Set remote</string>
@@ -150,6 +152,8 @@
     <string name="edit">Edit</string>
     <string name="modify">Modify</string>
     <string name="cloud">Cloud</string>
+    <string name="cloud_account_name_invalid">Enter an account name without a colon</string>
+    <string name="cloud_account_name_taken">An account with this name already exists</string>
     <string name="cloud_accounts">Cloud accounts</string>
     <string name="cloud_accounts_desc">Manage cloud accounts</string>
     <string name="settings">Settings</string>

@@ -49,16 +49,15 @@ import com.xayah.core.ui.component.confirm
 import com.xayah.core.ui.component.paddingHorizontal
 import com.xayah.core.ui.component.paddingStart
 import com.xayah.core.ui.component.paddingTop
-import com.xayah.core.ui.material3.SnackbarType
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
 import com.xayah.core.ui.theme.value
 import com.xayah.core.ui.theme.withState
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.util.joinOf
-import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.feature.main.cloud.AccountSetupScaffold
 import com.xayah.feature.main.cloud.R
+import com.xayah.feature.main.cloud.PortField
 import com.xayah.feature.main.cloud.SetupTextField
 
 @ExperimentalLayoutApi
@@ -73,7 +72,7 @@ fun PageSMBSetup() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var name by rememberSaveable { mutableStateOf(uiState.currentName) }
-    var remote by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.remote ?: "") }
+    val remote = rememberSaveable(uiState.cloudEntity?.remote) { uiState.cloudEntity?.remote.orEmpty() }
     var url by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.host ?: "") }
     var port by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<SMBExtra>()?.port?.toString() ?: "445") }
     var domain by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<SMBExtra>()?.domain ?: "") }
@@ -83,14 +82,10 @@ fun PageSMBSetup() {
     var modeIndex by rememberSaveable(uiState.cloudEntity) { mutableIntStateOf(uiState.cloudEntity?.getExtraEntity<SMBExtra>()?.mode?.ordinal ?: 0) }
     var password by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.pass ?: "") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    val allFilled by rememberSaveable(
-        name,
-        url,
-        port,
-        username,
-        password,
-        modeIndex
-    ) { mutableStateOf(name.isNotEmpty() && url.isNotEmpty() && port.isNotEmpty() && (username.isNotEmpty() || modeIndex != 0) && (password.isNotEmpty() || modeIndex != 0)) }
+    val portNumber = port.toIntOrNull() ?: 0
+    val validPort = portNumber in 1..65535
+    val allFilled = name.isNotBlank() && url.isNotBlank() && validPort &&
+        (modeIndex != SmbAuthMode.PASSWORD.ordinal || (username.isNotBlank() && password.isNotEmpty()))
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,
@@ -108,7 +103,7 @@ fun PageSMBSetup() {
                             username = username,
                             password = password,
                             share = share,
-                            port = port,
+                            port = portNumber,
                             domain = domain,
                             mode = SmbAuthMode.indexOf(modeIndex)
                         )
@@ -128,7 +123,7 @@ fun PageSMBSetup() {
                         username = username,
                         password = password,
                         share = share,
-                        port = port,
+                        port = portNumber,
                         domain = domain,
                         mode = SmbAuthMode.indexOf(modeIndex)
                     )
@@ -167,17 +162,7 @@ fun PageSMBSetup() {
                     label = stringResource(id = R.string.url)
                 )
 
-                SetupTextField(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .paddingHorizontal(SizeTokens.Level24),
-                    enabled = uiState.isProcessing.not(),
-                    value = port,
-                    leadingIcon = ImageVector.vectorResource(id = R.drawable.ic_rounded_lan),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    onValueChange = { port = it },
-                    label = stringResource(id = R.string.port)
-                )
+                PortField(port, validPort, !uiState.isProcessing) { port = it }
 
                 SetupTextField(
                     modifier = Modifier
@@ -295,16 +280,12 @@ fun PageSMBSetup() {
                             username = username,
                             password = password,
                             share = share,
-                            port = port,
+                            port = portNumber,
                             domain = domain,
                             mode = SmbAuthMode.indexOf(modeIndex)
                         )
                         viewModel.emitIntent(IndexUiIntent.SetRemotePath(context = context))
-                        remote = uiState.cloudEntity!!.remote
-                        share = uiState.cloudEntity!!.getExtraEntity<SMBExtra>()!!.share
-                        if (remote.isEmpty()) {
-                            viewModel.emitEffect(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = context.getString(R.string.no_root_directory)))
-                        }
+
                     }
                 }
 

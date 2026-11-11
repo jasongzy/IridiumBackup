@@ -53,6 +53,7 @@ import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.feature.main.cloud.AccountSetupScaffold
 import com.xayah.feature.main.cloud.R
+import com.xayah.feature.main.cloud.PortField
 import com.xayah.feature.main.cloud.SetupTextField
 
 @ExperimentalLayoutApi
@@ -67,7 +68,7 @@ fun PageFTPSetup() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var name by rememberSaveable { mutableStateOf(uiState.currentName) }
-    var remote by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.remote ?: "") }
+    val remote = rememberSaveable(uiState.cloudEntity?.remote) { uiState.cloudEntity?.remote.orEmpty() }
     var url by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.host ?: "") }
     var port by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<FTPExtra>()?.port?.toString() ?: "21") }
     var username by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.user ?: "") }
@@ -75,13 +76,9 @@ fun PageFTPSetup() {
     var modeIndex by rememberSaveable(uiState.cloudEntity) { mutableIntStateOf(if ((uiState.cloudEntity?.user ?: "") == ConstantUtil.FTP_ANONYMOUS_USERNAME) 1 else 0) }
     var password by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.pass ?: "") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    val allFilled by rememberSaveable(
-        name,
-        url,
-        port,
-        username,
-        password
-    ) { mutableStateOf(name.isNotEmpty() && url.isNotEmpty() && port.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()) }
+    val portNumber = port.toIntOrNull() ?: 0
+    val validPort = portNumber in 1..65535
+    val allFilled = name.isNotBlank() && url.isNotBlank() && validPort && username.isNotBlank() && password.isNotEmpty()
 
     AccountSetupScaffold(
         scrollBehavior = scrollBehavior,
@@ -92,7 +89,7 @@ fun PageFTPSetup() {
                 enabled = allFilled && uiState.isProcessing.not(),
                 onClick = {
                     viewModel.launchOnIO {
-                        viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = port)
+                        viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = portNumber)
                         viewModel.emitIntent(IndexUiIntent.TestConnection)
                     }
                 }
@@ -102,7 +99,7 @@ fun PageFTPSetup() {
 
             Button(enabled = allFilled && remote.isNotEmpty() && uiState.isProcessing.not(), onClick = {
                 viewModel.launchOnIO {
-                    viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = port)
+                    viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = portNumber)
                     viewModel.emitIntent(IndexUiIntent.CreateAccount(navController = navController))
                 }
             }) {
@@ -138,17 +135,7 @@ fun PageFTPSetup() {
                     label = stringResource(id = R.string.url)
                 )
 
-                SetupTextField(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .paddingHorizontal(SizeTokens.Level24),
-                    enabled = uiState.isProcessing.not(),
-                    value = port,
-                    leadingIcon = ImageVector.vectorResource(id = R.drawable.ic_rounded_lan),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    onValueChange = { port = it },
-                    label = stringResource(id = R.string.port)
-                )
+                PortField(port, validPort, !uiState.isProcessing) { port = it }
             }
 
             Title(enabled = uiState.isProcessing.not(), title = stringResource(id = R.string.account), verticalArrangement = Arrangement.spacedBy(SizeTokens.Level24)) {
@@ -220,9 +207,9 @@ fun PageFTPSetup() {
                     desc = stringResource(id = R.string.remote_path_desc),
                 ) {
                     viewModel.launchOnIO {
-                        viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = port)
+                        viewModel.updateFTPEntity(name = name, remote = remote, url = url, username = username, password = password, port = portNumber)
                         viewModel.emitIntent(IndexUiIntent.SetRemotePath(context = context))
-                        remote = uiState.cloudEntity!!.remote
+
                     }
                 }
 

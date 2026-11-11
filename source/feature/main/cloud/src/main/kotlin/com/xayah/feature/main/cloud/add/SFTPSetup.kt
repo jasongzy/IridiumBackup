@@ -72,6 +72,7 @@ import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.util.joinOf
 import com.xayah.feature.main.cloud.AccountSetupScaffold
 import com.xayah.feature.main.cloud.R
+import com.xayah.feature.main.cloud.PortField
 import com.xayah.feature.main.cloud.SetupTextField
 import kotlinx.coroutines.launch
 
@@ -87,7 +88,7 @@ fun PageSFTPSetup() {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
     var name by rememberSaveable { mutableStateOf(uiState.currentName) }
-    var remote by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.remote ?: "") }
+    val remote = rememberSaveable(uiState.cloudEntity?.remote) { uiState.cloudEntity?.remote.orEmpty() }
     var url by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.host ?: "") }
     var port by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<SFTPExtra>()?.port?.toString() ?: "22") }
     var username by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.user ?: "") }
@@ -96,22 +97,10 @@ fun PageSFTPSetup() {
     var password by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.pass ?: "") }
     var privateKey by rememberSaveable(uiState.cloudEntity) { mutableStateOf(uiState.cloudEntity?.getExtraEntity<SFTPExtra>()?.privateKey ?: "") }
     var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    val allFilled by rememberSaveable(
-        name,
-        url,
-        port,
-        username,
-        password,
-        privateKey,
-        modeIndex
-    ) { mutableStateOf(
-        name.isNotEmpty() &&
-                url.isNotEmpty() &&
-                port.isNotEmpty() &&
-                username.isNotEmpty() &&
-                ((modeIndex == 0 && password.isNotEmpty()) || modeIndex == 1) &&
-                ((modeIndex == 1 && privateKey.isNotEmpty()) || modeIndex == 0)
-    ) }
+    val portNumber = port.toIntOrNull() ?: 0
+    val validPort = portNumber in 1..65535
+    val allFilled = name.isNotBlank() && url.isNotBlank() && validPort && username.isNotBlank() &&
+        (if (modeIndex == SFTPAuthMode.PASSWORD.index) password.isNotEmpty() else privateKey.isNotBlank())
     val scope = rememberCoroutineScope()
 
     AccountSetupScaffold(
@@ -129,7 +118,7 @@ fun PageSFTPSetup() {
                             url = url,
                             username = username,
                             password = password,
-                            port = port,
+                            port = portNumber,
                             mode = SFTPAuthMode.indexOf(modeIndex),
                             privateKey = privateKey,
                         )
@@ -148,7 +137,7 @@ fun PageSFTPSetup() {
                         url = url,
                         username = username,
                         password = password,
-                        port = port,
+                        port = portNumber,
                         mode = SFTPAuthMode.indexOf(modeIndex),
                         privateKey = privateKey,
                     )
@@ -187,17 +176,7 @@ fun PageSFTPSetup() {
                     label = stringResource(id = R.string.url)
                 )
 
-                SetupTextField(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .paddingHorizontal(SizeTokens.Level24),
-                    enabled = uiState.isProcessing.not(),
-                    value = port,
-                    leadingIcon = ImageVector.vectorResource(id = R.drawable.ic_rounded_lan),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    onValueChange = { port = it },
-                    label = stringResource(id = R.string.port)
-                )
+                PortField(port, validPort, !uiState.isProcessing) { port = it }
             }
 
             Title(enabled = uiState.isProcessing.not(), title = stringResource(id = R.string.account), verticalArrangement = Arrangement.spacedBy(SizeTokens.Level24)) {
@@ -211,8 +190,10 @@ fun PageSFTPSetup() {
                             enabled = uiState.isProcessing.not(),
                             shape = SegmentedButtonDefaults.itemShape(index = index, count = modeOptions.size),
                             onClick = {
-                                password = ""
-                                modeIndex = index
+                                if (index != modeIndex) {
+                                    password = ""
+                                    modeIndex = index
+                                }
                             },
                             selected = index == modeIndex
                         ) {
@@ -351,12 +332,12 @@ fun PageSFTPSetup() {
                             url = url,
                             username = username,
                             password = password,
-                            port = port,
+                            port = portNumber,
                             mode = SFTPAuthMode.indexOf(modeIndex),
                             privateKey = privateKey,
                         )
                         viewModel.emitIntent(IndexUiIntent.SetRemotePath(context = context))
-                        remote = uiState.cloudEntity!!.remote
+
                     }
                 }
 

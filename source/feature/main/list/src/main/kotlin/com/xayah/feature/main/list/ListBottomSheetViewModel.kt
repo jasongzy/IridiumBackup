@@ -21,7 +21,6 @@ import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.database.PackageDataStates
 import com.xayah.core.model.util.of
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.feature.main.list.ListBottomSheetUiState.Loading
 import com.xayah.feature.main.list.ListBottomSheetUiState.Success
@@ -41,9 +40,9 @@ class ListBottomSheetViewModel @Inject constructor(
     private val labelsRepo: LabelsRepo
 ) : ViewModel() {
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.let { Target.valueOf(it.decodeURL().trim()) }
+        ?.let { Target.valueOf(it) }
         ?: Target.Apps
-    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE)?.decodeURL()?.trim())
+    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE))
 
     val uiState: StateFlow<ListBottomSheetUiState> = when (target) {
         Target.Apps -> combine(

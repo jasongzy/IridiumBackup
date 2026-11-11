@@ -14,8 +14,8 @@ import com.xayah.core.model.database.FTPExtra
 import com.xayah.core.model.database.SFTPExtra
 import com.xayah.core.model.database.SMBExtra
 import com.xayah.core.model.database.WebDAVExtra
+import com.xayah.core.model.database.isValidCloudAccountName
 import com.xayah.core.network.client.getCloud
-import com.xayah.core.ui.material3.SnackbarDuration
 import com.xayah.core.ui.material3.SnackbarType
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.viewmodel.BaseViewModel
@@ -23,8 +23,8 @@ import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
 import com.xayah.core.util.GsonUtil
-import com.xayah.core.util.decodeURL
 import com.xayah.feature.main.cloud.R
+import com.xayah.feature.main.cloud.runCloudOperation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 
@@ -59,7 +59,7 @@ class IndexViewModel @Inject constructor(
     args: SavedStateHandle,
 ) : BaseViewModel<IndexUiState, IndexUiIntent, IndexUiEffect>(
     IndexUiState(
-        currentName = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: "",
+        currentName = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: "",
         cloudEntity = null,
         isProcessing = false,
     )
@@ -73,8 +73,8 @@ class IndexViewModel @Inject constructor(
         }
     }
 
-    suspend fun updateFTPEntity(name: String, remote: String, url: String, username: String, password: String, port: String) {
-        val extra = GsonUtil().toJson(FTPExtra(port = port.toIntOrNull() ?: 21))
+    suspend fun updateFTPEntity(name: String, remote: String, url: String, username: String, password: String, port: Int) {
+        val extra = GsonUtil().toJson(FTPExtra(port = port))
         emitIntent(
             IndexUiIntent.UpdateEntity(
                 name = name,
@@ -88,11 +88,11 @@ class IndexViewModel @Inject constructor(
         )
     }
 
-    suspend fun updateSFTPEntity(name: String, remote: String, url: String, username: String, password: String, port: String, mode: SFTPAuthMode, privateKey: String) {
+    suspend fun updateSFTPEntity(name: String, remote: String, url: String, username: String, password: String, port: Int, mode: SFTPAuthMode, privateKey: String) {
         val extra = GsonUtil().toJson(
             SFTPExtra(
-                port = port.toIntOrNull() ?: 22,
-                privateKey = privateKey,
+                port = port,
+                privateKey = if (mode == SFTPAuthMode.PUBLIC_KEY) privateKey else "",
                 mode = mode,
             )
         )
@@ -124,11 +124,11 @@ class IndexViewModel @Inject constructor(
         )
     }
 
-    suspend fun updateSMBEntity(name: String, remote: String, url: String, username: String, password: String, share: String, port: String, domain: String, mode: SmbAuthMode) {
+    suspend fun updateSMBEntity(name: String, remote: String, url: String, username: String, password: String, share: String, port: Int, domain: String, mode: SmbAuthMode) {
         val extra = GsonUtil().toJson(
             SMBExtra(
                 share = share,
-                port = port.toIntOrNull() ?: 445,
+                port = port,
                 domain = domain,
                 version = listOf(SmbVersion.SMB_2_0_2, SmbVersion.SMB_2_1, SmbVersion.SMB_3_0, SmbVersion.SMB_3_0_2, SmbVersion.SMB_3_1_1),
                 mode = mode,
@@ -150,7 +150,20 @@ class IndexViewModel @Inject constructor(
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
             is IndexUiIntent.CreateAccount -> {
-                cloudRepo.upsert(state.cloudEntity!!)
+                val account = checkNotNull(state.cloudEntity)
+                if (state.currentName.isEmpty()) {
+                    val error = when {
+                        !isValidCloudAccountName(account.name) -> R.string.cloud_account_name_invalid
+                        !cloudRepo.add(account) -> R.string.cloud_account_name_taken
+                        else -> null
+                    }
+                    if (error != null) {
+                        emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = cloudRepo.getString(error)))
+                        return
+                    }
+                } else {
+                    cloudRepo.upsert(account)
+                }
                 withMainContext {
                     intent.navController.popBackStack()
                     if (state.currentName.isEmpty()) {
@@ -177,61 +190,32 @@ class IndexViewModel @Inject constructor(
             }
 
             is IndexUiIntent.TestConnection -> {
-                emitState(state.copy(isProcessing = true))
-                emitEffect(IndexUiEffect.DismissSnackbar)
-                emitEffectOnIO(
-                    IndexUiEffect.ShowSnackbar(
-                        type = SnackbarType.Loading,
-                        message = cloudRepo.getString(R.string.processing),
-                        duration = SnackbarDuration.Indefinite,
-                    )
-                )
-                runCatching {
-                    val client = state.cloudEntity!!.getCloud()
-                    client.testConnection()
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = cloudRepo.getString(R.string.connection_established)))
-                }.onFailure {
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    if (it.localizedMessage != null)
-                        emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = it.localizedMessage!!, duration = SnackbarDuration.Long))
+                runCloudOperation(
+                    processing = cloudRepo.getString(R.string.processing),
+                    setProcessing = { busy -> updateState { it.copy(isProcessing = busy) } },
+                    success = cloudRepo.getString(R.string.connection_established),
+                ) {
+                    checkNotNull(state.cloudEntity).getCloud().testConnection()
                 }
-                emitState(state.copy(isProcessing = false))
             }
 
             is IndexUiIntent.DeleteAccount -> {
-                cloudRepo.delete(cloudRepo.queryByName(uiState.value.currentName)!!)
+                cloudRepo.delete(state.currentName)
                 withMainContext {
                     intent.navController.popBackStack()
                 }
             }
 
             is IndexUiIntent.SetRemotePath -> {
-                emitState(uiState.value.copy(isProcessing = true))
-                val context = intent.context
-                emitEffect(IndexUiEffect.DismissSnackbar)
-                emitEffectOnIO(
-                    IndexUiEffect.ShowSnackbar(
-                        message = cloudRepo.getString(R.string.processing),
-                        duration = SnackbarDuration.Indefinite,
-                        type = SnackbarType.Loading,
-                    )
-                )
-                runCatching {
-                    val client = uiState.value.cloudEntity!!.getCloud()
-                    client.setRemote(
-                        context = context,
-                        onSet = { remote, extraString ->
-                            emitState(uiState.value.copy(cloudEntity = uiState.value.cloudEntity!!.copy(remote = remote, extra = extraString)))
-                            emitEffect(IndexUiEffect.DismissSnackbar)
-                        }
-                    )
-                }.onFailure {
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    if (it.localizedMessage != null)
-                        emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = it.localizedMessage!!, duration = SnackbarDuration.Long))
+                runCloudOperation(
+                    processing = cloudRepo.getString(R.string.processing),
+                    setProcessing = { busy -> updateState { it.copy(isProcessing = busy) } },
+                ) {
+                    val account = checkNotNull(state.cloudEntity)
+                    account.getCloud().setRemote(intent.context) { remote, extra ->
+                        updateState { it.copy(cloudEntity = account.copy(remote = remote, extra = extra)) }
+                    }
                 }
-                emitState(uiState.value.copy(isProcessing = false))
             }
         }
     }

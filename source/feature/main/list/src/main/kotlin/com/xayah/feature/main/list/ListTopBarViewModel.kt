@@ -12,7 +12,6 @@ import com.xayah.core.model.Target
 import com.xayah.core.model.UserInfo
 import com.xayah.core.model.util.of
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.feature.main.list.ListTopBarUiState.Loading
 import com.xayah.feature.main.list.ListTopBarUiState.Success
@@ -31,9 +30,9 @@ class ListTopBarViewModel @Inject constructor(
     private val workRepo: WorkRepo,
 ) : ViewModel() {
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.let { Target.valueOf(it.decodeURL().trim()) }
+        ?.let { Target.valueOf(it) }
         ?: Target.Apps
-    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE)?.decodeURL()?.trim())
+    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE))
 
     val uiState: StateFlow<ListTopBarUiState> = when (target) {
         Target.Apps -> combine(listDataRepo.getListData(), workRepo.getAppRefreshProgress()) { data, refreshProgress ->

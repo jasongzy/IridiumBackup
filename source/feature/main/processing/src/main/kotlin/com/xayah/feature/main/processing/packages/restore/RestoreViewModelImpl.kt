@@ -17,7 +17,6 @@ import com.xayah.core.service.packages.restore.ProcessingServiceProxyCloudImpl
 import com.xayah.core.service.packages.restore.ProcessingServiceProxyLocalImpl
 import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.AbstractPackagesProcessingViewModel
 import com.xayah.feature.main.processing.FinishSetup
@@ -62,8 +61,8 @@ class RestoreViewModelImpl @Inject constructor(
             }
 
             is SetCloudEntity -> {
-                val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: ""
-                val backupDir = args.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.decodeURL()?.takeIf { it.isNotBlank() }
+                val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: ""
+                val backupDir = args.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.takeIf { it.isNotBlank() }
                 if (name.isNotEmpty()) {
                     emitState(state.copy(storageIndex = 1, storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name), backupDir = backupDir))
                 } else {

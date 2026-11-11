@@ -1,8 +1,8 @@
 package com.xayah.core.ui.route
 
+import android.net.Uri
 import com.xayah.core.model.OpType
 import com.xayah.core.model.Target
-import com.xayah.core.util.encodedURLWithSpace
 
 sealed class MainRoutes(val route: String) {
     companion object {
@@ -15,25 +15,33 @@ sealed class MainRoutes(val route: String) {
         const val ARG_TARGET = "target"
         const val ARG_OP_TYPE = "opType"
         const val ARG_ID = "id"
+
+        private const val ACCOUNT_QUERY = "?$ARG_ACCOUNT_NAME={$ARG_ACCOUNT_NAME}"
+        private const val LOCATION_QUERY = "$ACCOUNT_QUERY&$ARG_ACCOUNT_REMOTE={$ARG_ACCOUNT_REMOTE}"
+
+        private fun cloudRoute(path: String, name: String, directory: String = "") = Uri.parse(path).buildUpon().apply {
+            if (name.isNotEmpty()) appendQueryParameter(ARG_ACCOUNT_NAME, name)
+            if (directory.isNotEmpty()) appendQueryParameter(ARG_ACCOUNT_REMOTE, directory)
+        }.build().toString()
     }
 
     data object Dashboard : MainRoutes(route = "main_dashboard")
     data object Cloud : MainRoutes(route = "main_cloud")
     data object CloudAddAccount : MainRoutes(route = "main_cloud_add_account")
-    data object FTPSetup : MainRoutes(route = "main_ftp_setup/{$ARG_ACCOUNT_NAME}") {
-        fun getRoute(name: String) = "main_ftp_setup/$name"
+    data object FTPSetup : MainRoutes(route = "main_ftp_setup$ACCOUNT_QUERY") {
+        fun getRoute(name: String = "") = cloudRoute("main_ftp_setup", name)
     }
 
-    data object SFTPSetup : MainRoutes(route = "main_sftp_setup/{$ARG_ACCOUNT_NAME}") {
-        fun getRoute(name: String) = "main_sftp_setup/$name"
+    data object SFTPSetup : MainRoutes(route = "main_sftp_setup$ACCOUNT_QUERY") {
+        fun getRoute(name: String = "") = cloudRoute("main_sftp_setup", name)
     }
 
-    data object WebDAVSetup : MainRoutes(route = "main_webdav_setup/{$ARG_ACCOUNT_NAME}") {
-        fun getRoute(name: String) = "main_webdav_setup/$name"
+    data object WebDAVSetup : MainRoutes(route = "main_webdav_setup$ACCOUNT_QUERY") {
+        fun getRoute(name: String = "") = cloudRoute("main_webdav_setup", name)
     }
 
-    data object SMBSetup : MainRoutes(route = "main_smb_setup/{$ARG_ACCOUNT_NAME}") {
-        fun getRoute(name: String) = "main_smb_setup/$name"
+    data object SMBSetup : MainRoutes(route = "main_smb_setup$ACCOUNT_QUERY") {
+        fun getRoute(name: String = "") = cloudRoute("main_smb_setup", name)
     }
     data object Settings : MainRoutes(route = "main_settings")
     data object Restore : MainRoutes(route = "main_restore")
@@ -49,9 +57,9 @@ sealed class MainRoutes(val route: String) {
     data object About : MainRoutes(route = "main_about")
     data object Translators : MainRoutes(route = "main_translators")
 
-    data object List : MainRoutes(route = "main_list/{$ARG_TARGET}/{$ARG_OP_TYPE}/{$ARG_ACCOUNT_NAME}/{$ARG_ACCOUNT_REMOTE}") {
-        fun getRoute(target: Target, opType: OpType, cloudName: String = encodedURLWithSpace, backupDir: String = encodedURLWithSpace) =
-            "main_list/${target}/${opType}/${cloudName}/${backupDir}"
+    data object List : MainRoutes(route = "main_list/{$ARG_TARGET}/{$ARG_OP_TYPE}$LOCATION_QUERY") {
+        fun getRoute(target: Target, opType: OpType, cloudName: String = "", backupDir: String = "") =
+            cloudRoute("main_list/$target/$opType", cloudName, backupDir)
     }
 
     data object Details : MainRoutes(route = "main_details/{$ARG_TARGET}/{$ARG_OP_TYPE}/{$ARG_ID}") {
@@ -78,8 +86,8 @@ sealed class MainRoutes(val route: String) {
 
     data object PackagesRestoreProcessing : MainRoutes(route = "main_packages_restore_processing")
     data object PackagesRestoreProcessingSetup : MainRoutes(route = "main_packages_restore_processing_setup")
-    data object PackagesRestoreProcessingGraph : MainRoutes(route = "main_packages_restore_processing_graph/{$ARG_ACCOUNT_NAME}/{$ARG_ACCOUNT_REMOTE}") {
-        fun getRoute(cloudName: String = encodedURLWithSpace, backupDir: String = encodedURLWithSpace) = "main_packages_restore_processing_graph/${cloudName}/${backupDir}"
+    data object PackagesRestoreProcessingGraph : MainRoutes(route = "main_packages_restore_processing_graph$LOCATION_QUERY") {
+        fun getRoute(cloudName: String = "", backupDir: String = "") = cloudRoute("main_packages_restore_processing_graph", cloudName, backupDir)
     }
 
     data object MediumBackupProcessing : MainRoutes(route = "main_medium_backup_processing")
@@ -88,7 +96,7 @@ sealed class MainRoutes(val route: String) {
 
     data object MediumRestoreProcessing : MainRoutes(route = "main_medium_restore_processing")
     data object MediumRestoreProcessingSetup : MainRoutes(route = "main_medium_restore_processing_setup")
-    data object MediumRestoreProcessingGraph : MainRoutes(route = "main_medium_restore_processing_graph/{$ARG_ACCOUNT_NAME}/{$ARG_ACCOUNT_REMOTE}") {
-        fun getRoute(cloudName: String = encodedURLWithSpace, backupDir: String = encodedURLWithSpace) = "main_medium_restore_processing_graph/${cloudName}/${backupDir}"
+    data object MediumRestoreProcessingGraph : MainRoutes(route = "main_medium_restore_processing_graph$LOCATION_QUERY") {
+        fun getRoute(cloudName: String = "", backupDir: String = "") = cloudRoute("main_medium_restore_processing_graph", cloudName, backupDir)
     }
 }

@@ -1,4 +1,5 @@
 <resources>
     <item name="cloud" type="string" />
+    <item name="select_smb_share" type="string" />
     <item name="select_target_directory" type="string" />
 </resources>

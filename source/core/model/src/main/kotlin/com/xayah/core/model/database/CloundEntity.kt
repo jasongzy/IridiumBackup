@@ -29,6 +29,8 @@ data class WebDAVExtra(
     val insecure: Boolean,
 )
 
+fun isValidCloudAccountName(name: String) = name.isNotBlank() && ':' !in name
+
 @Entity
 data class CloudEntity(
     @PrimaryKey var name: String,

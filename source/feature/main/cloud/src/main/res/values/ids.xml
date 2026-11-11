@@ -11,6 +11,7 @@
     <item name="shared_dir" type="string"/>
     <item name="allow_empty" type="string"/>
     <item name="domain" type="string"/>
+    <item name="port_range" type="string"/>
     <item name="port" type="string"/>
     <item name="version" type="string"/>
     <item name="name" type="string"/>
@@ -32,7 +33,7 @@
     <item name="not_selected" type="string"/>
     <item name="remote_path_desc" type="string"/>
     <item name="insecure_server_connection_desc" type="string"/>
-    <item name="no_root_directory" type="string"/>
+
     <item name="confirm" type="string"/>
     <item name="settings" type="string"/>
     <item name="toggle_password_visibility" type="string"/>
@@ -48,4 +49,6 @@
     <item name="ic_rounded_person" type="drawable"/>
     <item name="ic_rounded_deployed_code" type="drawable"/>
     <item name="ic_rounded_badge" type="drawable"/>
+    <item name="cloud_account_name_invalid" type="string" />
+    <item name="cloud_account_name_taken" type="string" />
 </resources>

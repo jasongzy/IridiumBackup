@@ -51,7 +51,6 @@ import com.xayah.core.model.database.PackageInfo
 import com.xayah.core.model.database.PackageStorageStats
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.sharedFileUri
@@ -101,7 +100,7 @@ class DetailsViewModel @Inject constructor(
     private val packageName = savedStateHandle.get<String>(MainRoutes.ARG_PACKAGE_NAME)
     private val userId = savedStateHandle.get<String>(MainRoutes.ARG_USER_ID)?.toIntOrNull() ?: 0
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.let { Target.valueOf(it.decodeURL().trim()) }
+        ?.let { Target.valueOf(it) }
         ?: Target.Apps
     private val isRefreshing: MutableStateFlow<Boolean> = MutableStateFlow(false)
     private val appRuntimeInfo = MutableStateFlow(AppRuntimeInfo())

@@ -20,7 +20,6 @@ import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.util.icon
-import com.xayah.core.util.encodedURLWithSpace
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.cloud.CloudScaffold
 import com.xayah.feature.main.cloud.R
@@ -49,25 +48,25 @@ fun PageCloudAddAccount() {
                     icon = CloudType.FTP.icon,
                     title = CloudType.FTP.title,
                 ) {
-                    navController.navigateSingle(MainRoutes.FTPSetup.getRoute(encodedURLWithSpace))
+                    navController.navigateSingle(MainRoutes.FTPSetup.getRoute())
                 }
                 Clickable(
                     icon = CloudType.WEBDAV.icon,
                     title = CloudType.WEBDAV.title,
                 ) {
-                    navController.navigateSingle(MainRoutes.WebDAVSetup.getRoute(encodedURLWithSpace))
+                    navController.navigateSingle(MainRoutes.WebDAVSetup.getRoute())
                 }
                 Clickable(
                     icon = CloudType.SMB.icon,
                     title = CloudType.SMB.title,
                 ) {
-                    navController.navigateSingle(MainRoutes.SMBSetup.getRoute(encodedURLWithSpace))
+                    navController.navigateSingle(MainRoutes.SMBSetup.getRoute())
                 }
                 Clickable(
                     icon = CloudType.SFTP.icon,
                     title = CloudType.SFTP.title,
                 ) {
-                    navController.navigateSingle(MainRoutes.SFTPSetup.getRoute(encodedURLWithSpace))
+                    navController.navigateSingle(MainRoutes.SFTPSetup.getRoute())
                 }
             }
         }

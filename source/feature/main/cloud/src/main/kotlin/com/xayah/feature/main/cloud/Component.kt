@@ -37,6 +37,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntSize
 import com.xayah.core.ui.component.Divider
@@ -158,10 +161,25 @@ fun AccountSetupScaffold(
 }
 
 @Composable
+internal fun PortField(value: String, valid: Boolean, enabled: Boolean, onValueChange: (String) -> Unit) {
+    SetupTextField(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = SizeTokens.Level24),
+        value = value,
+        enabled = enabled,
+        isError = !valid,
+        leadingIcon = ImageVector.vectorResource(R.drawable.ic_rounded_lan),
+        label = stringResource(if (valid) R.string.port else R.string.port_range),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        onValueChange = onValueChange,
+    )
+}
+
+@Composable
 fun SetupTextField(
     modifier: Modifier,
     enabled: Boolean = true,
     readOnly: Boolean = false,
+    isError: Boolean = false,
     value: String,
     leadingIcon: ImageVector,
     trailingIcon: ImageVector? = null,
@@ -192,6 +210,7 @@ fun SetupTextField(
         modifier = modifier,
         enabled = enabled,
         readOnly = readOnly,
+        isError = isError,
         value = value,
         singleLine = singleLine,
         leadingIcon = {

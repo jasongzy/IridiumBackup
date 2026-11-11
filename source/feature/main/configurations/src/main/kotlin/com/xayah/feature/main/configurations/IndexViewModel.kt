@@ -17,6 +17,7 @@ import com.xayah.core.datastore.saveConfigurationSettings
 import com.xayah.core.model.Configurations
 import com.xayah.core.model.OpType
 import com.xayah.core.model.database.CloudEntity
+import com.xayah.core.model.database.isValidCloudAccountName
 import com.xayah.core.model.database.LabelAppCrossRefEntity
 import com.xayah.core.model.database.LabelEntity
 import com.xayah.core.model.database.LabelFileCrossRefEntity
@@ -125,6 +126,9 @@ class IndexViewModel @Inject constructor(
                     val selected = items.filterIndexed { index, _ -> selection[index] }.map { it.enum }
                     val settings = config.settings?.takeIf { ConstantUtil.CONFIGURATIONS_KEY_SETTINGS in selected }
                     settings?.validatePreferences()
+                    if (ConstantUtil.CONFIGURATIONS_KEY_CLOUD in selected) {
+                        require(config.cloud.all { isValidCloudAccountName(it.name) }) { context.getString(R.string.config_file_may_be_broken) }
+                    }
                     val labelColors = if (ConstantUtil.CONFIGURATIONS_KEY_LABEL in selected) {
                         val labelNames = config.labels.mapTo(mutableSetOf(), LabelEntity::label)
                         require(labelNames.none(String::isBlank) && config.labelAppRefs.all { it.label in labelNames } && config.labelFileRefs.all { it.label in labelNames }) {

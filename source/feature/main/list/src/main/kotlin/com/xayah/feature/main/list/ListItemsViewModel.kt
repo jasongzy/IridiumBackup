@@ -24,7 +24,6 @@ import com.xayah.core.model.database.PackageEntity
 import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.util.of
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.feature.main.list.ListItemsUiState.Loading
 import com.xayah.feature.main.list.ListItemsUiState.Success
@@ -50,8 +49,8 @@ class ListItemsViewModel @Inject constructor(
     @Dispatcher(Default) defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.decodeURL()?.trim()?.let(Target::valueOf) ?: Target.Apps
-    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE)?.decodeURL()?.trim())
+        ?.let(Target::valueOf) ?: Target.Apps
+    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE))
 
     val uiState: StateFlow<ListItemsUiState> = when (target) {
         Target.Apps -> combine(

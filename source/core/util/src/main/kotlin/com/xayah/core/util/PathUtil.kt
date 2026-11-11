@@ -109,12 +109,12 @@ class PathUtil @Inject constructor(
 
     fun newCloudTmpDir(): String = "${context.cacheDir}/cloud-${UUID.randomUUID()}"
     fun getPackageIconPath(packageName: String, adaptive: Boolean): String = getPackageIconPath(context, packageName, adaptive)
-    private fun getConfigsDir(parent: String): String = "${parent}/${getConfigsRelativeDir()}"
+    private fun getConfigsDir(parent: String): String = "${parent.trimEnd('/')}/${getConfigsRelativeDir()}"
     fun getLocalBackupConfigsDir(): String = getConfigsDir(parent = context.localBackupSaveDir())
     fun getCloudRemoteConfigsDir(remote: String): String = getConfigsDir(parent = remote)
 
-    private fun getAppsDir(parent: String): String = "${parent}/${getAppsRelativeDir()}"
-    private fun getFilesDir(parent: String): String = "${parent}/${getFilesRelativeDir()}"
+    private fun getAppsDir(parent: String): String = "${parent.trimEnd('/')}/${getAppsRelativeDir()}"
+    private fun getFilesDir(parent: String): String = "${parent.trimEnd('/')}/${getFilesRelativeDir()}"
     fun getLocalBackupAppsDir(backupDir: String = context.localBackupSaveDir()): String = getAppsDir(parent = backupDir)
     fun getLocalBackupAppIconPath(packageName: String): String = getAppIconPath(getLocalBackupAppsDir(), packageName)
     fun getCloudRemoteAppsDir(remote: String): String = getAppsDir(parent = remote)

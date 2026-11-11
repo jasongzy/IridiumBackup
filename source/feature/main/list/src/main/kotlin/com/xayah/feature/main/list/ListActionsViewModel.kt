@@ -20,7 +20,6 @@ import com.xayah.core.model.ColoredLabel
 import com.xayah.core.model.database.LabelAppCrossRefEntity
 import com.xayah.core.model.util.of
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.work.WorkManagerInitializer
 import com.xayah.feature.main.list.ListActionsUiState.Loading
@@ -45,11 +44,11 @@ class ListActionsViewModel @Inject constructor(
     private val labelsRepo: LabelsRepo,
 ) : ViewModel() {
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.let { Target.valueOf(it.decodeURL().trim()) }
+        ?.let { Target.valueOf(it) }
         ?: Target.Apps
-    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE)?.decodeURL()?.trim())
-    private val cloudName: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: ""
-    private val backupDir: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.decodeURL()?.trim() ?: ""
+    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE))
+    private val cloudName: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: ""
+    private val backupDir: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE) ?: ""
 
     val uiState: StateFlow<ListActionsUiState> = when (target) {
         Target.Apps -> combine(

@@ -1,23 +1,15 @@
 package com.xayah.core.network.client
 
 import android.content.Context
-import com.xayah.core.common.util.toPathString
 import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.model.database.FTPExtra
-import com.xayah.core.network.R
 import com.xayah.core.network.io.CountingInputStreamImpl
 import com.xayah.core.network.io.CountingOutputStreamImpl
-import com.xayah.core.network.util.getExtraEntity
 import com.xayah.core.rootservice.parcelables.PathParcelable
-import com.xayah.core.util.GsonUtil
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.toPathList
-import com.xayah.core.util.withMainContext
-import com.xayah.libpickyou.PickYouLauncher
 import com.xayah.libpickyou.parcelables.DirChildrenParcelable
 import com.xayah.libpickyou.parcelables.FileParcelable
-import com.xayah.libpickyou.ui.model.PickerType
 import org.apache.commons.net.ftp.FTP
 import org.apache.commons.net.ftp.FTPClient
 import org.apache.commons.net.ftp.FTPFile
@@ -195,7 +187,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         withClient { client ->
             val clientFiles = client.listDirectory(src)
             for (file in clientFiles) {
-                val creationTime = file.timestamp.timeInMillis
+                val creationTime = file.timestamp?.timeInMillis ?: 0L
                 val fileParcelable = FileParcelable(file.name, creationTime)
                 if (file.isSymbolicLink) {
                     fileParcelable.link = file.link
@@ -228,40 +220,8 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
 
     override fun exists(src: String): Boolean = findFile(src) != null
 
-    override suspend fun testConnection() {
-        connect()
-        disconnect()
-    }
-
-    private fun handleOriginalPath(path: String): String = run {
-        val pathSplit = path.toPathList().toMutableList()
-        // Remove “$Cloud:”
-        pathSplit.removeFirstOrNull()
-        pathSplit.toPathString()
-    }
-
     override suspend fun setRemote(context: Context, onSet: suspend (remote: String, extra: String) -> Unit) {
-        val extra = entity.getExtraEntity<FTPExtra>()!!
-        connect()
-        val prefix = "${context.getString(R.string.cloud)}:"
-        val pickYou = PickYouLauncher(
-            checkPermission = false,
-            traverseBackend = { listFiles(it.replaceFirst(prefix, "")) },
-            mkdirsBackend = { parent, child ->
-                runCatching { mkdirRecursively(handleOriginalPath("$parent/$child")) }.isSuccess
-            },
-            title = context.getString(R.string.select_target_directory),
-            pickerType = PickerType.DIRECTORY,
-            rootPathList = listOf(prefix),
-            defaultPathList = listOf(prefix),
-        )
-        try {
-            withMainContext {
-                val pathString = pickYou.awaitLaunch(context)
-                onSet(handleOriginalPath(pathString), GsonUtil().toJson(extra))
-            }
-        } finally {
-            disconnect()
-        }
+        val remote = pickDirectory(context, remotePath = { it.ifEmpty { "." } })
+        onSet(remote, entity.extra)
     }
 }

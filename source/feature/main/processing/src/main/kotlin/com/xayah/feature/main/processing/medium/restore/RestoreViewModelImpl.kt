@@ -20,7 +20,6 @@ import com.xayah.core.ui.model.DialogRadioItem
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.util.LogUtil
-import com.xayah.core.util.decodeURL
 import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.navigateSingle
 import com.xayah.feature.main.processing.AbstractMediumProcessingViewModel
@@ -76,7 +75,7 @@ class RestoreViewModelImpl @Inject constructor(
             }
 
             is SetCloudEntity -> {
-                val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: ""
+                val name = args.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: ""
                 if (name.isNotEmpty()) {
                     emitState(state.copy(storageIndex = 1, storageType = StorageMode.Cloud, cloudEntity = mCloudRepo.queryByName(name)))
                 } else {

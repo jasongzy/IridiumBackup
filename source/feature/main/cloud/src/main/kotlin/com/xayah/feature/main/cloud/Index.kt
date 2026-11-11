@@ -36,7 +36,6 @@ import com.xayah.core.ui.theme.withState
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.util.LocalNavController
 import com.xayah.core.ui.util.icon
-import com.xayah.core.util.encodeURL
 import com.xayah.core.util.navigateSingle
 
 @ExperimentalLayoutApi
@@ -89,10 +88,10 @@ fun PageCloud() {
                                 onClick = {
                                     navController.navigateSingle(
                                         when (it.type) {
-                                            CloudType.FTP -> MainRoutes.FTPSetup.getRoute(it.name.encodeURL())
-                                            CloudType.WEBDAV -> MainRoutes.WebDAVSetup.getRoute(it.name.encodeURL())
-                                            CloudType.SMB -> MainRoutes.SMBSetup.getRoute(it.name.encodeURL())
-                                            CloudType.SFTP -> MainRoutes.SFTPSetup.getRoute(it.name.encodeURL())
+                                            CloudType.FTP -> MainRoutes.FTPSetup.getRoute(it.name)
+                                            CloudType.WEBDAV -> MainRoutes.WebDAVSetup.getRoute(it.name)
+                                            CloudType.SMB -> MainRoutes.SMBSetup.getRoute(it.name)
+                                            CloudType.SFTP -> MainRoutes.SFTPSetup.getRoute(it.name)
                                         }
                                     )
                                 }

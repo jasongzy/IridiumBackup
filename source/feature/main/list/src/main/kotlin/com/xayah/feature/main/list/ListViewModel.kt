@@ -18,8 +18,6 @@ import com.xayah.core.model.OpType
 import com.xayah.core.model.Target
 import com.xayah.core.model.util.of
 import com.xayah.core.ui.route.MainRoutes
-import com.xayah.core.util.decodeURL
-import com.xayah.core.util.ifEmptyEncodeURLWithSpace
 import com.xayah.core.util.launchOnDefault
 import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.work.WorkManagerInitializer
@@ -48,11 +46,11 @@ class ListViewModel @Inject constructor(
     private var initialRefreshRequested = false
     private val isPreparing = MutableStateFlow(false)
     private val target: Target = savedStateHandle.get<String>(MainRoutes.ARG_TARGET)
-        ?.let { Target.valueOf(it.decodeURL().trim()) }
+        ?.let { Target.valueOf(it) }
         ?: Target.Apps
-    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE)?.decodeURL()?.trim())
-    private val cloudName: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_NAME)?.decodeURL()?.trim() ?: ""
-    private val backupDir: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE)?.decodeURL()?.trim()?.ifEmpty { context.localBackupSaveDir() } ?: context.localBackupSaveDir()
+    private val opType: OpType = OpType.of(savedStateHandle.get<String>(MainRoutes.ARG_OP_TYPE))
+    private val cloudName: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_NAME) ?: ""
+    private val backupDir: String = savedStateHandle.get<String>(MainRoutes.ARG_ACCOUNT_REMOTE) ?: context.localBackupSaveDir()
 
     init {
         listDataRepo.initialize(target, opType, cloudName, backupDir)
@@ -144,7 +142,7 @@ class ListViewModel @Inject constructor(
         Target.Files -> when (opType) {
             OpType.BACKUP -> MainRoutes.MediumBackupProcessingGraph.route
             OpType.RESTORE -> MainRoutes.MediumRestoreProcessingGraph.getRoute(
-                cloudName = cloudName.ifEmptyEncodeURLWithSpace(), backupDir = backupDir.ifEmptyEncodeURLWithSpace(),
+                cloudName = cloudName, backupDir = backupDir,
             )
         }
     }
@@ -161,7 +159,7 @@ class ListViewModel @Inject constructor(
     }
 
     private fun restoreRoute(cloud: String, directory: String) = MainRoutes.PackagesRestoreProcessingGraph.getRoute(
-        cloudName = cloud.ifEmptyEncodeURLWithSpace(), backupDir = directory.ifEmptyEncodeURLWithSpace(),
+        cloudName = cloud, backupDir = directory,
     )
 
     override fun onCleared() {

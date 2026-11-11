@@ -4,8 +4,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import com.xayah.core.data.repository.CloudRepository
 import com.xayah.core.model.database.CloudEntity
 import com.xayah.core.network.client.getCloud
-import com.xayah.core.ui.material3.SnackbarDuration
-import com.xayah.core.ui.material3.SnackbarType
 import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
@@ -31,26 +29,13 @@ class IndexViewModel @Inject constructor(
     override suspend fun onEvent(state: IndexUiState, intent: IndexUiIntent) {
         when (intent) {
             is IndexUiIntent.TestConnection -> {
-                emitState(state.copy(isProcessing = true))
-                emitEffect(IndexUiEffect.DismissSnackbar)
-                emitEffectOnIO(
-                    IndexUiEffect.ShowSnackbar(
-                        type = SnackbarType.Loading,
-                        message = cloudRepo.getString(R.string.processing),
-                        duration = SnackbarDuration.Indefinite,
-                    )
-                )
-                runCatching {
-                    val client = intent.entity.getCloud()
-                    client.testConnection()
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Success, message = cloudRepo.getString(R.string.connection_established)))
-                }.onFailure {
-                    emitEffect(IndexUiEffect.DismissSnackbar)
-                    if (it.localizedMessage != null)
-                        emitEffectOnIO(IndexUiEffect.ShowSnackbar(type = SnackbarType.Error, message = it.localizedMessage!!, duration = SnackbarDuration.Long))
+                runCloudOperation(
+                    processing = cloudRepo.getString(R.string.processing),
+                    setProcessing = { busy -> updateState { it.copy(isProcessing = busy) } },
+                    success = cloudRepo.getString(R.string.connection_established),
+                ) {
+                    intent.entity.getCloud().testConnection()
                 }
-                emitState(state.copy(isProcessing = false))
             }
         }
     }

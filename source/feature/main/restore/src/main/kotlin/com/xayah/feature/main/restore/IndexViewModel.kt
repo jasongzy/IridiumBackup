@@ -20,8 +20,6 @@ import com.xayah.core.ui.viewmodel.BaseViewModel
 import com.xayah.core.ui.viewmodel.IndexUiEffect
 import com.xayah.core.ui.viewmodel.UiIntent
 import com.xayah.core.ui.viewmodel.UiState
-import com.xayah.core.util.encodeURL
-import com.xayah.core.util.encodedURLWithSpace
 import com.xayah.core.util.localBackupSaveDir
 import com.xayah.core.util.navigateSingle
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -121,7 +119,7 @@ class IndexViewModel @Inject constructor(
                                 MainRoutes.List.getRoute(
                                     target = Target.Apps,
                                     opType = OpType.RESTORE,
-                                    backupDir = context.localBackupSaveDir().encodeURL()
+                                    backupDir = context.localBackupSaveDir()
                                 )
                             )
                         }
@@ -132,8 +130,8 @@ class IndexViewModel @Inject constructor(
                                     MainRoutes.List.getRoute(
                                         target = Target.Apps,
                                         opType = OpType.RESTORE,
-                                        cloudName = state.cloudEntity.name.encodeURL(),
-                                        backupDir = state.cloudEntity.remote.encodeURL()
+                                        cloudName = state.cloudEntity.name,
+                                        backupDir = state.cloudEntity.remote
                                     )
                                 )
                             }
@@ -150,7 +148,7 @@ class IndexViewModel @Inject constructor(
                                 MainRoutes.List.getRoute(
                                     target = Target.Files,
                                     opType = OpType.RESTORE,
-                                    backupDir = context.localBackupSaveDir().encodeURL()
+                                    backupDir = context.localBackupSaveDir()
                                 )
                             )
                         }
@@ -161,8 +159,8 @@ class IndexViewModel @Inject constructor(
                                     MainRoutes.List.getRoute(
                                         target = Target.Files,
                                         opType = OpType.RESTORE,
-                                        cloudName = state.cloudEntity.name.encodeURL(),
-                                        backupDir = state.cloudEntity.remote.encodeURL()
+                                        cloudName = state.cloudEntity.name,
+                                        backupDir = state.cloudEntity.remote
                                     )
                                 )
                             }
