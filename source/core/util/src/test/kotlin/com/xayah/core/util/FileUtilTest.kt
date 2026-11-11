@@ -19,7 +19,7 @@ class FileUtilTest {
         assertEquals("/storage/emulated/0", FileUtil.normalizeAbsolutePath("/storage//emulated/0/."))
         assertEquals(null, FileUtil.normalizeAbsolutePath("relative/path"))
         assertEquals(null, FileUtil.normalizeAbsolutePath("/../../storage"))
-        assertEquals(null, FileUtil.normalizeAbsolutePath("/storage\\emulated\\0"))
+        assertEquals("/data/app/name\\part", FileUtil.normalizeAbsolutePath("/data/app/name\\part"))
     }
 
     @Test

@@ -51,7 +51,7 @@ object TarHeaderInspector {
                     if (requiredPrefix.isEmpty() && listed.add(entry.name.trimEnd('/'))) onApprovedEntry(entry.name)
                     continue
                 }
-                val normalized = normalize(entry.name) ?: error("Unsafe archive path: ${entry.name}")
+                val normalized = normalizeEntryPath(entry.name) ?: error("Unsafe archive path: ${entry.name}")
                 if (root.isNotEmpty()) {
                     check(normalized.substringBefore('/') == root) { "Unexpected archive root: ${entry.name}" }
                     if (normalized == root && requiredPrefix.endsWith('/')) {
@@ -79,7 +79,7 @@ object TarHeaderInspector {
 
         // GNU tar selects by name, so a listed name must not select a deferred entry too.
         if (withheld.isNotEmpty()) for (name in listed) {
-            check(normalize(name) !in withheld) { "Conflicting tar entries: $name" }
+            check(normalizeEntryPath(name) !in withheld) { "Conflicting tar entries: $name" }
         }
         val symbolicLinks = links.asSequence()
             .filter { it.type == LinkType.SYMBOLIC }
@@ -108,7 +108,7 @@ object TarHeaderInspector {
         }
     }
 
-    private fun normalize(entry: String): String? {
+    fun normalizeEntryPath(entry: String): String? {
         if (entry.startsWith('/') || '\u0000' in entry || entry.toByteArray(StandardCharsets.UTF_8).size > MAX_PATH_BYTES) return null
         val segments = entry.split('/').filter { it.isNotEmpty() && it != "." }
         if (segments.isEmpty() || ".." in segments) return null

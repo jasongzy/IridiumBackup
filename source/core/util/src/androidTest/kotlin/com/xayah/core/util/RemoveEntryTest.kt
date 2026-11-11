@@ -24,6 +24,8 @@ class RemoveEntryTest {
             Os.symlink(root.path, alias.path)
             assertFalse(FileUtil.removeEntry(alias.resolve("revision").path, directory = true))
             assertTrue(FileUtil.removeEntry(revision.path, directory = true))
+            assertTrue(FileUtil.removeEntry(link.path, directory = false))
+            assertTrue(FileUtil.deleteRecursively(link.path))
         } finally {
             check(FileUtil.deleteRecursively(root.path))
         }

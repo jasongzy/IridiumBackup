@@ -91,18 +91,17 @@ object FileUtil {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 deleteRecursivelyApi26(Paths.get(normalized))
             } else {
-                deleteRecursivelyApi24(File(normalized))
+                val file = File(normalized)
+                removeWithCheckedParents(file) { deleteEntryApi24(file) }
             }
         }.getOrElse { false }
     }
 
     fun removeEntry(path: String, directory: Boolean): Boolean {
         val normalized = normalizeAbsolutePath(path)?.takeUnless(::isProtectedDeletionPath) ?: return false
-        if (hasSymbolicLinkParentApi24(File(normalized))) return false
-        return try {
-            OsConstants.S_ISDIR(Os.lstat(normalized).st_mode) == directory && File(normalized).delete()
-        } catch (error: ErrnoException) {
-            error.errno == OsConstants.ENOENT
+        val file = File(normalized)
+        return removeWithCheckedParents(file) {
+            OsConstants.S_ISDIR(Os.lstat(normalized).st_mode) == directory && file.delete()
         }
     }
 
@@ -113,7 +112,7 @@ object FileUtil {
     }
 
     fun normalizeAbsolutePath(path: String): String? {
-        if (!path.startsWith('/') || '\u0000' in path || '\\' in path) return null
+        if (!path.startsWith('/') || '\u0000' in path) return null
         val segments = ArrayDeque<String>()
         path.split('/').forEach { segment ->
             when (segment) {
@@ -153,11 +152,6 @@ object FileUtil {
         return deleted && Files.notExists(path, LinkOption.NOFOLLOW_LINKS)
     }
 
-    private fun deleteRecursivelyApi24(file: File): Boolean {
-        if (hasSymbolicLinkParentApi24(file)) return false
-        return deleteEntryApi24(file)
-    }
-
     private fun deleteEntryApi24(file: File): Boolean {
         val mode = try {
             Os.lstat(file.path).st_mode
@@ -181,15 +175,11 @@ object FileUtil {
         return false
     }
 
-    private fun hasSymbolicLinkParentApi24(file: File): Boolean {
+    private inline fun removeWithCheckedParents(file: File, remove: () -> Boolean): Boolean = try {
         val parents = generateSequence(file.parentFile, File::getParentFile).toList().asReversed()
-        return parents.any { parent ->
-            try {
-                OsConstants.S_ISLNK(Os.lstat(parent.path).st_mode)
-            } catch (_: ErrnoException) {
-                true
-            }
-        }
+        parents.none { OsConstants.S_ISLNK(Os.lstat(it.path).st_mode) } && remove()
+    } catch (error: ErrnoException) {
+        error.errno == OsConstants.ENOENT
     }
 
     private fun pathExists(path: String): Boolean = try {

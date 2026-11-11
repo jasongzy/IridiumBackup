@@ -25,7 +25,6 @@ import android.os.StatFs
 import android.os.UserHandle
 import android.os.UserHandleHidden
 import android.os.UserManagerHidden
-import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import android.view.SurfaceControlHidden
@@ -45,8 +44,6 @@ import com.xayah.core.rootservice.util.SsaidUtil
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.HashUtil
 import com.xayah.core.util.PathUtil
-import com.xayah.core.util.archive.TarHeaderInspector.Link
-import com.xayah.core.util.archive.TarHeaderInspector.LinkType
 import com.xayah.libnative.NativeLib
 import java.io.File
 import java.io.IOException
@@ -236,85 +233,6 @@ internal class RemoteRootServiceImpl(private val context: Context) : IRemoteRoot
             preservePermissions = preservePermissions,
             ignoreModificationTime = ignoreModificationTime,
         )
-    }
-
-    private fun restoreArchiveLink(link: Link, root: String): Boolean {
-        val destination = resolveArchiveEntry(root, link.path) ?: return false
-        if (!prepareLinkDestination(root, destination)) return false
-        return when (link.type) {
-            LinkType.SYMBOLIC -> runCatching {
-                Os.symlink(link.target, destination)
-                true
-            }.getOrDefault(false)
-            LinkType.HARD -> {
-                val target = resolveHardLinkTarget(root, link.target) ?: return false
-                if (!isRegularFile(target)) return false
-                runCatching {
-                    Os.link(target, destination)
-                    true
-                }.getOrDefault(false)
-            }
-        }
-    }
-
-    private fun prepareLinkDestination(root: String, path: String): Boolean {
-        val parent = File(path).parent ?: return false
-        if (!ensureDirectories(root, parent)) return false
-        val mode = lstatMode(path)
-        return when {
-            mode == null -> true
-            OsConstants.S_ISLNK(mode) -> File(path).delete()
-            else -> false
-        }
-    }
-
-    private fun ensureDirectories(root: String, path: String): Boolean {
-        val normalizedRoot = FileUtil.normalizeAbsolutePath(root) ?: return false
-        val normalizedPath = FileUtil.normalizeAbsolutePath(path) ?: return false
-        if (normalizedPath != normalizedRoot && !FileUtil.isDescendant(normalizedRoot, normalizedPath)) return false
-        val relative = normalizedPath.removePrefix(normalizedRoot).trimStart('/')
-        var current = normalizedRoot
-        if (lstatMode(current) == null && !File(current).mkdirs()) return false
-        if (!isDirectory(current)) return false
-        relative.split('/').filter(String::isNotEmpty).forEach { segment ->
-            current = "$current/$segment"
-            val mode = lstatMode(current)
-            if (mode == null) {
-                if (runCatching { Os.mkdir(current, 493) }.isFailure) return false
-            } else if (!OsConstants.S_ISDIR(mode)) {
-                return false
-            }
-        }
-        return true
-    }
-
-    private fun resolveArchiveEntry(root: String, entry: String): String? {
-        val relative = normalizeArchiveEntry(entry) ?: return null
-        val resolved = FileUtil.normalizeAbsolutePath("$root/$relative") ?: return null
-        return resolved.takeIf { FileUtil.isDescendant(root, it) }
-    }
-
-    private fun resolveHardLinkTarget(root: String, target: String): String? {
-        if ('\u0000' in target) return null
-        val path = if (target.startsWith('/')) target else "$root/$target"
-        return FileUtil.normalizeAbsolutePath(path)
-    }
-
-    private fun normalizeArchiveEntry(entry: String): String? {
-        if (entry.startsWith('/') || '\u0000' in entry) return null
-        val segments = entry.split('/').filter { it.isNotEmpty() && it != "." }
-        if (segments.isEmpty() || ".." in segments) return null
-        return segments.joinToString("/")
-    }
-
-    private fun isDirectory(path: String): Boolean = lstatMode(path)?.let(OsConstants::S_ISDIR) == true
-
-    private fun isRegularFile(path: String): Boolean = lstatMode(path)?.let(OsConstants::S_ISREG) == true
-
-    private fun lstatMode(path: String): Int? = try {
-        Os.lstat(path).st_mode
-    } catch (_: ErrnoException) {
-        null
     }
 
     private fun writeToParcel(block: (Parcel) -> Unit): ParcelFileDescriptor {

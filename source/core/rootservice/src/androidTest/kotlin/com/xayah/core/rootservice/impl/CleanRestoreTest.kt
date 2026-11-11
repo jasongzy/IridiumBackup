@@ -55,5 +55,13 @@ class CleanRestoreTest {
             assertNotEquals(0, result.code)
             assertEquals("keep", data.readText())
         }
+        source.writeText("not gzip")
+        val invalidGzip = ArchiveExtractor(context).extract(
+            source.path, userDir.path, "gzip", workspace.path, app.path, "${app.name}/",
+            emptyArray(), emptyArray(), true, true,
+        )
+        assertNotEquals(0, invalidGzip.code)
+        assertEquals("keep", data.readText())
+        assertEquals(0, java.io.File("/proc/self/fd").listFiles()!!.count { it.canonicalPath == source.canonicalPath })
     }
 }

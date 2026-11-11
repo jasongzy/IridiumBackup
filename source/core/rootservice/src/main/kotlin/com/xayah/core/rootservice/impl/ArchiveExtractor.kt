@@ -3,6 +3,9 @@ package com.xayah.core.rootservice.impl
 import android.content.Context
 import android.os.ParcelFileDescriptor
 import android.os.Process as AndroidProcess
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
 import com.xayah.core.rootservice.parcelables.ArchiveExtractionParcelable
 import com.xayah.core.util.FileUtil
 import com.xayah.core.util.archive.TarHeaderInspector
@@ -19,6 +22,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 
 internal class ArchiveExtractor(private val context: Context) {
     fun extract(
@@ -93,18 +97,17 @@ internal class ArchiveExtractor(private val context: Context) {
         cleanRestore: Boolean,
     ): Inspection {
         val entriesFile = File(workspace, ENTRIES_FILE)
-        openArchive(source, compression, workspace).use { archive ->
+        return withArchive(source, compression, workspace) { stream ->
             BufferedOutputStream(FileOutputStream(entriesFile)).use { entries ->
                 val inspection = TarHeaderInspector.inspect(
-                    input = archive.stream,
+                    input = stream,
                     requiredPrefix = requiredPrefix,
                     excludedPathPrefixes = excludedPathPrefixes.toSet(),
                     excludedNamePrefixes = excludedNamePrefixes.toSet(),
                     cleanRestore = cleanRestore,
                 ) { entry -> writeEntry(entries, entry) }
                 ArchiveLinkStore.write(File(workspace, LINKS_FILE), inspection.links)
-                check(archive.finish()) { archive.error() }
-                return Inspection(entriesFile, inspection.skippedEntries, inspection.links.size)
+                Inspection(entriesFile, inspection.skippedEntries, inspection.links.size)
             }
         }
     }
@@ -150,25 +153,27 @@ internal class ArchiveExtractor(private val context: Context) {
         }
     }
 
-    private fun openArchive(source: String, compression: String, workspace: String): ArchiveInput {
-        return when (compression) {
-            "" -> ArchiveInput(FileInputStream(source))
-            "gzip" -> ArchiveInput(
-                GzipCompressorInputStream.builder()
-                    .setInputStream(FileInputStream(source))
-                    .setDecompressConcatenated(true)
-                    .get(),
-            )
+    private fun <T> withArchive(source: String, compression: String, workspace: String, read: (InputStream) -> T): T =
+        when (compression) {
+            "" -> FileInputStream(source).use(read)
+            "gzip" -> FileInputStream(source).use { file ->
+                GzipCompressorInputStream.builder().setInputStream(file).setDecompressConcatenated(true).get().use(read)
+            }
             "zstd" -> {
-                val errorFile = File(workspace, "zstd-${System.nanoTime()}.log")
+                val errors = File(workspace, "zstd.log")
                 val process = ProcessBuilder("${context.binDir()}/zstd", "-d", "-f", "-c", "--", source)
-                    .redirectError(errorFile)
-                    .start()
-                ArchiveInput(process.inputStream, process, errorFile)
+                    .redirectError(errors).start()
+                try {
+                    process.inputStream.use(read).also {
+                        check(process.waitFor() == 0) { errors.readText().trim().ifBlank { "Unable to decompress archive" } }
+                    }
+                } finally {
+                    process.destroy()
+                    errors.delete()
+                }
             }
             else -> error("Unsupported archive compression: $compression")
         }
-    }
 
     private fun writeEntry(output: BufferedOutputStream, entry: String) {
         output.write(entry.toByteArray(StandardCharsets.UTF_8))
@@ -181,26 +186,65 @@ internal class ArchiveExtractor(private val context: Context) {
         val pendingLinks: Int,
     )
 
-    private class ArchiveInput(
-        val stream: InputStream,
-        private val process: Process? = null,
-        private val errorFile: File? = null,
-    ) : AutoCloseable {
-        fun finish(): Boolean = process?.waitFor()?.let { it == 0 } ?: true
-
-        fun error(): String = errorFile?.readText()?.trim().orEmpty().ifBlank { "Unable to decompress archive" }
-
-        override fun close() {
-            stream.close()
-            process?.destroy()
-            errorFile?.delete()
-        }
-    }
-
     companion object {
         const val LINKS_FILE = "links.bin"
         private const val ENTRIES_FILE = "entries"
     }
+}
+
+internal fun restoreArchiveLink(link: Link, root: String): Boolean {
+    val relative = TarHeaderInspector.normalizeEntryPath(link.path) ?: return false
+    val destination = File(root, relative)
+    val hard = link.type == LinkType.HARD
+    val target = if (hard && !link.target.startsWith('/')) File(root, link.target).path else link.target
+    if (hard && lstatMode(target)?.let(OsConstants::S_ISREG) != true) return false
+    val parent = destination.parentFile!!
+    if (!ensureDirectories(root, parent.path)) return false
+    val mode = lstatMode(destination.path)
+    if (mode != null && !OsConstants.S_ISLNK(mode)) return false
+    val output = if (mode == null) destination else File(parent, ".restore-link-${UUID.randomUUID()}")
+    return try {
+        when (link.type) {
+            LinkType.SYMBOLIC -> Os.symlink(target, output.path)
+            LinkType.HARD -> Os.link(target, output.path)
+        }
+        if (output != destination) try {
+            Os.rename(output.path, destination.path)
+        } finally {
+            output.delete()
+        }
+        true
+    } catch (_: ErrnoException) {
+        false
+    }
+}
+
+internal fun ensureDirectories(root: String, path: String): Boolean {
+    val normalizedRoot = FileUtil.normalizeAbsolutePath(root) ?: return false
+    val normalizedPath = FileUtil.normalizeAbsolutePath(path) ?: return false
+    if (normalizedPath != normalizedRoot && !FileUtil.isDescendant(normalizedRoot, normalizedPath)) return false
+    val relative = normalizedPath.removePrefix(normalizedRoot).trimStart('/')
+    var current = normalizedRoot
+    if (lstatMode(current) == null && !File(current).mkdirs()) return false
+    if (!isDirectory(current)) return false
+    relative.split('/').filter(String::isNotEmpty).forEach { segment ->
+        current = "$current/$segment"
+        val mode = lstatMode(current)
+        if (mode == null) {
+            if (runCatching { Os.mkdir(current, 493) }.isFailure) return false
+        } else if (!OsConstants.S_ISDIR(mode)) {
+            return false
+        }
+    }
+    return true
+}
+
+private fun isDirectory(path: String): Boolean = lstatMode(path)?.let(OsConstants::S_ISDIR) == true
+
+private fun lstatMode(path: String): Int? = try {
+    Os.lstat(path).st_mode
+} catch (_: ErrnoException) {
+    null
 }
 
 internal object ArchiveLinkStore {
