@@ -47,6 +47,7 @@ import java.io.File
 import java.io.IOException
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -219,6 +220,28 @@ class ProcessingFailureTest {
         val state = withTimeout(5_000) { model.uiState.first { it.state == OperationState.ERROR } }
         assertEquals(context.getString(com.xayah.core.service.R.string.processing_service_bind_failed), state.failure)
         assertEquals(1, binding.unbindCount)
+    }
+
+    @Test
+    fun serviceCancellationIsReportedWithoutCancellingTheScreen() = runBlocking {
+        val message = context.getString(com.xayah.core.service.R.string.processing_service_time_limit)
+        var unbound = false
+        val binding = object : ContextWrapper(context) {
+            override fun bindService(service: Intent, connection: ServiceConnection, flags: Int): Boolean {
+                throw CancellationException(message)
+            }
+
+            override fun unbindService(connection: ServiceConnection) {
+                unbound = true
+            }
+        }
+        val model = create(binding)
+        model.startTask()
+        val state = withTimeout(5_000) { model.uiState.first { it.state == OperationState.ERROR } }
+        assertEquals(message, state.failure)
+        assertTrue(unbound)
+        model.emitIntent(ProcessingUiIntent.Exit)
+        assertEquals(AbstractProcessingViewModel.ExitState.COMPLETE, model.exitState.value)
     }
 
     @Test

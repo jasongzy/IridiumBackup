@@ -34,6 +34,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -153,20 +156,23 @@ abstract class AbstractProcessingViewModel(
         val storage = confirmedStorage ?: return fail(IllegalStateException(mContext.getString(com.xayah.core.service.R.string.package_request_expired)))
         val service = if (storage.cloud.isEmpty()) mLocalService else mCloudService
         try {
-            try {
-                _taskId.value = service.initialize(storage, confirmedRequest)
-                if (!autoStart) startRequested.await()
-                val screenOffAt = if (mContext.readAutoScreenOff().first()) SystemClock.elapsedRealtime() + 3_000 else null
-                emitState(uiState.value.copy(state = OperationState.PROCESSING, screenOffAt = screenOffAt))
-                service.preprocessing()
-                service.processing()
-                service.postProcessing()
-            } finally {
-                releaseService(service)
+            coroutineScope {
+                try {
+                    _taskId.value = service.initialize(storage, confirmedRequest)
+                    if (!autoStart) startRequested.await()
+                    val screenOffAt = if (mContext.readAutoScreenOff().first()) SystemClock.elapsedRealtime() + 3_000 else null
+                    emitState(uiState.value.copy(state = OperationState.PROCESSING, screenOffAt = screenOffAt))
+                    service.preprocessing()
+                    service.processing()
+                    service.postProcessing()
+                } finally {
+                    releaseService(service)
+                }
             }
             emitState(uiState.value.copy(state = OperationState.DONE))
         } catch (e: CancellationException) {
-            throw e
+            currentCoroutineContext().ensureActive()
+            fail(e)
         } catch (e: Exception) {
             fail(e)
         }

@@ -35,10 +35,12 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -50,6 +52,7 @@ internal abstract class AbstractProcessingService : Service() {
     }
 
     var onServiceDestroyed: (() -> Unit)? = null
+    @Volatile private var taskJob: Job? = null
 
     override fun onBind(intent: Intent): IBinder {
         NotificationUtil.cancel(this, NotificationUtil.RESULT_ID)
@@ -65,6 +68,14 @@ internal abstract class AbstractProcessingService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
         onServiceDestroyed?.invoke()
+    }
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        val message = mContext.getString(R.string.processing_service_time_limit)
+        taskJob?.cancel(CancellationException(message))
+        stopSelf()
+        NotificationUtil.notifyResult(mContext, mContext.getString(R.string.failed), message)
     }
 
     protected suspend fun completeNotification(title: String, content: String) = withMainContext {
@@ -159,6 +170,7 @@ internal abstract class AbstractProcessingService : Service() {
 
     @SuppressLint("StringFormatInvalid")
     suspend fun initialize(storage: TaskStorage, request: PackageTaskRequest?): Long {
+        taskJob = currentCoroutineContext().job
         mMutex.withLock {
             this.storage = storage
             packageRequest = request

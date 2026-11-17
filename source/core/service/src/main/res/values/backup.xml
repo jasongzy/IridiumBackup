@@ -12,6 +12,7 @@
     <string name="processing_service_bind_failed">Unable to connect to the task service</string>
     <string name="processing_service_disconnected">The task service disconnected</string>
     <string name="processing_service_timeout">Timed out connecting to the task service</string>
+    <string name="processing_service_time_limit">The system’s background time limit was reached. Start a new task to continue.</string>
     <string name="backup_package_unavailable">Couldn’t read %1$s for Android user %2$d. Refresh the app list and try again.</string>
     <string name="processing_task_busy">A backup or restore task is already running. Try again when it finishes.</string>
 </resources>
