@@ -155,6 +155,7 @@ class VerificationRefreshTest {
                 context, database,
                 PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), interleaved, paths),
                 AppIconRepository(context, root), XposedModuleDetector(context, root), root,
+                CloudRepository(context, root, database.cloudDao()),
             )
             val revision = BackupRevisionEntity(config.packageName, 0, 1234, "1.0", 1, BackupEngine.LEGACY, ":${directory.path}", restore.archivesRelativeDir, 1)
             root.writeJson(config, PathUtil.getPackageRestoreConfigDst(revisionDir.path))

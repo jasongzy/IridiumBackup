@@ -17,6 +17,7 @@ import org.apache.commons.net.ftp.FTPReply
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.time.Duration
 import javax.security.auth.login.LoginException
 
@@ -89,7 +90,7 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         }
     }
 
-    override fun renameTo(src: String, dst: String) = withClient { client ->
+    override fun renameTo(src: String, dst: String, replace: Boolean) = withClient { client ->
         log { "renameTo: from $src to $dst" }
         if (client.rename(src, dst).not()) throw IOException("Failed to rename file from $src to $dst.")
     }
@@ -108,13 +109,9 @@ class FTPClientImpl(private val entity: CloudEntity, private val extra: FTPExtra
         onUploading(bytes, bytes)
     }
 
-    override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
-        val name = PathUtil.getFileName(src)
-        val dstPath = "$dst/$name"
-        log { "download: $src to $dstPath" }
-        val dstFile = File(dstPath)
+    override fun read(src: String, output: OutputStream, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
         val size = client.getSize(src)?.trim()?.toLongOrNull() ?: -1L
-        val bytes = CountingOutputStreamImpl(dstFile.outputStream(), size, onDownloading).use { stream ->
+        val bytes = CountingOutputStreamImpl(output, size, onDownloading).use { stream ->
             if (!client.retrieveFile(src, stream)) throw IOException("FTP download failed (${client.replyCode}): $src")
             checkTransferSize(src, size, stream.byteCount)
             stream.byteCount

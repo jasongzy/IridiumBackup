@@ -53,10 +53,11 @@ class TitaniumLabelScanTest {
                 javaClass.getDeclaredField("mService").apply { isAccessible = true }.set(this, remote)
             }
             val paths = PathUtil(context)
-            val packages = PackageRepository(context, root, CloudRepository(context, root, database.cloudDao()), database.packageDao(), paths)
+            val clouds = CloudRepository(context, root, database.cloudDao())
+            val packages = PackageRepository(context, root, clouds, database.packageDao(), paths)
             val icons = AppIconRepository(context, root)
             val modules = XposedModuleDetector(context, root)
-            val backups = AppBackupRepository(context, database, packages, icons, modules, root)
+            val backups = AppBackupRepository(context, database, packages, icons, modules, root, clouds)
             val labels = LabelsRepo(context, Dispatchers.Default, database)
             val repository = TitaniumImportRepository(context, root, paths, backups, icons, labels)
             val otherRefs = listOf(

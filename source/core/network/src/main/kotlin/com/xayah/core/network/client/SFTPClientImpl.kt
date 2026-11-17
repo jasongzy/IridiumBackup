@@ -14,6 +14,7 @@ import net.schmizz.sshj.SSHClient
 import net.schmizz.sshj.sftp.FileAttributes
 import net.schmizz.sshj.sftp.FileMode
 import net.schmizz.sshj.sftp.OpenMode
+import net.schmizz.sshj.sftp.RenameFlags
 import net.schmizz.sshj.sftp.Response.StatusCode
 import net.schmizz.sshj.sftp.SFTPClient
 import net.schmizz.sshj.sftp.SFTPException
@@ -21,6 +22,7 @@ import net.schmizz.sshj.transport.verification.PromiscuousVerifier
 import net.schmizz.sshj.userauth.password.PasswordFinder
 import net.schmizz.sshj.userauth.password.Resource
 import java.io.File
+import java.io.OutputStream
 
 
 class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExtra) : CloudClient {
@@ -96,9 +98,12 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         withSFTPClient { it.mkdirs(dst) }
     }
 
-    override fun renameTo(src: String, dst: String) {
+    override fun renameTo(src: String, dst: String, replace: Boolean) {
         log { "Rename $src to $dst" }
-        withSFTPClient { it.rename(src, dst) }
+        withSFTPClient {
+            val flags = if (replace) setOf(RenameFlags.OVERWRITE) else emptySet()
+            it.rename(src, dst, flags)
+        }
     }
 
     override fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit) {
@@ -118,15 +123,12 @@ class SFTPClientImpl(private val entity: CloudEntity, private val extra: SFTPExt
         onUploading(bytes, bytes)
     }
 
-    override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) {
-        val name = PathUtil.getFileName(src)
-        val dstPath = "${dst}/$name"
-        log { "download: $src to $dstPath" }
+    override fun read(src: String, output: OutputStream, onDownloading: (written: Long, total: Long) -> Unit) {
         val bytes = withSFTPClient { it.open(src, setOf(OpenMode.READ)) }.use { remote ->
             val attributes = remote.fetchAttributes()
             val size = if (attributes.has(FileAttributes.Flag.SIZE)) attributes.size else -1L
             remote.RemoteFileInputStream().use { input ->
-                CountingOutputStreamImpl(File(dstPath).outputStream(), size, onDownloading).use { output ->
+                CountingOutputStreamImpl(output, size, onDownloading).use { output ->
                     input.copyTo(output).also { checkTransferSize(src, size, it) }
                 }
             }

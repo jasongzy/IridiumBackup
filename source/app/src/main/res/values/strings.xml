@@ -312,7 +312,7 @@
     <string name="verification_file_missing">File is missing</string>
     <string name="verification_file_size_mismatch">File size does not match</string>
     <string name="verification_file_checksum_mismatch">File checksum does not match</string>
-    <string name="verification_not_local">This backup cannot be verified as a local backup</string>
+    <string name="verification_unsupported">This backup format cannot be verified</string>
     <string name="verification_item_details">%1$s (%2$d) · %3$s</string>
     <string name="all_backups_verified">All backups passed verification</string>
     <string name="verify_again">Verify again</string>

@@ -66,6 +66,7 @@ import com.xayah.core.model.isProtectedByNote
 import com.xayah.core.ui.component.DataChips
 import com.xayah.core.ui.component.PackageDataStatesSaver
 import com.xayah.core.ui.component.TooltipIconButton
+import com.xayah.core.ui.component.LinearProgressIndicator
 import com.xayah.core.ui.route.MainRoutes
 import com.xayah.core.ui.token.SizeTokens
 import com.xayah.core.ui.theme.ThemedColorSchemeKeyTokens
@@ -86,7 +87,8 @@ fun AppRevisionsRoute(
     val revisions by viewModel.revisions.collectAsStateWithLifecycle()
     val installedApp by viewModel.installedApp.collectAsStateWithLifecycle()
     val verificationResults by viewModel.verificationResults.collectAsStateWithLifecycle()
-    val verifyingRevisionIds by viewModel.verifyingRevisionIds.collectAsStateWithLifecycle()
+    val verificationProgress by viewModel.verificationProgress.collectAsStateWithLifecycle()
+    val noteSaveStates by viewModel.noteSaveStates.collectAsStateWithLifecycle()
     val detailsState by detailsViewModel.uiState.collectAsStateWithLifecycle()
     val furtherOperations by detailsViewModel.furtherOperations.collectAsStateWithLifecycle()
     val navController = LocalNavController.current!!
@@ -102,6 +104,13 @@ fun AppRevisionsRoute(
 
     LaunchedEffect(Unit) {
         detailsViewModel.refresh(initial = true)
+    }
+
+    LaunchedEffect(noteCandidate, noteSaveStates) {
+        noteCandidate?.takeIf { noteSaveStates[it] == AppRevisionsViewModel.NoteSaveState.SAVED }?.let {
+            noteCandidate = null
+            viewModel.dismissSavedNote(it)
+        }
     }
 
     Scaffold(
@@ -312,8 +321,12 @@ fun AppRevisionsRoute(
         RevisionDetailsDialog(
             revision = revision,
             verificationResult = verificationResults[revision.id],
-            isVerifying = revision.id in verifyingRevisionIds,
-            onDismiss = { selectedRevision = null },
+            isVerifying = revision.id in verificationProgress,
+            progress = verificationProgress[revision.id],
+            onDismiss = {
+                viewModel.cancelVerification(revision)
+                selectedRevision = null
+            },
             onRestore = {
                 selectedRevision = null
                 restoreCandidate = revision.id
@@ -333,10 +346,10 @@ fun AppRevisionsRoute(
     revisions.firstOrNull { it.id == noteCandidate }?.let { revision ->
         NoteEditorDialog(
             note = revision.note,
+            saving = noteSaveStates[revision.id] == AppRevisionsViewModel.NoteSaveState.SAVING,
             onDismiss = { noteCandidate = null },
             onConfirm = {
                 viewModel.updateRevisionNote(revision, it)
-                noteCandidate = null
             },
         )
     }
@@ -523,13 +536,14 @@ private fun RevisionDetailsDialog(
     revision: BackupRevisionEntity,
     verificationResult: AppBackupRepository.VerificationResult?,
     isVerifying: Boolean,
+    progress: AppRevisionsViewModel.VerificationProgress?,
     onDismiss: () -> Unit,
     onRestore: () -> Unit,
     onDelete: () -> Unit,
     onVerify: () -> Unit,
     onEditNote: () -> Unit,
 ) {
-    val localFiles = revision.engine == BackupEngine.LEGACY && revision.repositoryId.startsWith(':')
+    val hasManifest = revision.engine == BackupEngine.LEGACY
     val contents = buildList {
         if (revision.contentMask and 1 != 0) add(stringResource(R.string.apk))
         if (revision.contentMask and 2 != 0) add("USER")
@@ -560,8 +574,8 @@ private fun RevisionDetailsDialog(
                         text = revision.note.ifEmpty { stringResource(R.string.no_note) },
                         color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value,
                     )
-                    if (localFiles) {
-                        TooltipIconButton(tooltip = stringResource(R.string.edit_note), onClick = onEditNote) {
+                    if (hasManifest) {
+                        TooltipIconButton(tooltip = stringResource(R.string.edit_note), enabled = !isVerifying, onClick = onEditNote) {
                             Icon(Icons.Rounded.Edit, contentDescription = null)
                         }
                     }
@@ -588,12 +602,22 @@ private fun RevisionDetailsDialog(
                         text = stringResource(R.string.verifying),
                         color = ThemedColorSchemeKeyTokens.OnSurfaceVariant.value,
                     )
+                    if (progress != null) {
+                        Text(progress.file, style = MaterialTheme.typography.bodySmall)
+                        LinearProgressIndicator(
+                            progress = if (progress.total > 0) (progress.bytes.toDouble() / progress.total).toFloat().coerceIn(0f, 1f) else 0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("${progress.bytes.toDouble().formatSize()} / ${progress.total.toDouble().formatSize()}", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
         },
         confirmButton = {
             androidx.compose.foundation.layout.Row {
-                if (localFiles) {
+                if (hasManifest) {
                     androidx.compose.material3.TextButton(enabled = !isVerifying, onClick = onVerify) {
                         Text(stringResource(if (isVerifying) R.string.verifying else R.string.verify))
                     }
@@ -605,7 +629,7 @@ private fun RevisionDetailsDialog(
                     Text(stringResource(R.string.restore))
                 }
                 androidx.compose.material3.TextButton(
-                    enabled = revision.engine == BackupEngine.LEGACY,
+                    enabled = revision.engine == BackupEngine.LEGACY && !isVerifying,
                     onClick = onDelete,
                 ) {
                     Text(stringResource(R.string.delete_revision), color = MaterialTheme.colorScheme.error)
@@ -658,7 +682,7 @@ private fun AppBackupRepository.VerificationIssue.description(): String {
             AppBackupRepository.VerificationIssueType.FILE_SIZE_MISMATCH -> R.string.verification_file_size_mismatch
             AppBackupRepository.VerificationIssueType.FILE_CHECKSUM_MISMATCH -> R.string.verification_file_checksum_mismatch
             AppBackupRepository.VerificationIssueType.UNREADABLE -> com.xayah.core.data.R.string.verification_unreadable
-            AppBackupRepository.VerificationIssueType.NOT_LOCAL -> R.string.verification_not_local
+            AppBackupRepository.VerificationIssueType.UNSUPPORTED -> R.string.verification_unsupported
         }
     )
     return fileName?.let { "$it: $message" } ?: message

@@ -98,4 +98,5 @@
 
     <item name="ic_rounded_person" type="drawable" />
     <item name="ic_rounded_acute" type="drawable" />
+    <item name="loading" type="string" />
 </resources>

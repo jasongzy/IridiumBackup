@@ -15,7 +15,7 @@ Iridium Backup is a modern, native Android backup tool that carries forward the 
 - Organize apps and backups with colored labels, notes, filters, search, and sorting
 - Import backups, notes, and user labels directly from Titanium Backup
 - Batch-delete older backups beyond a chosen retention count while keeping protected backups
-- Verify local backup integrity and rebuild the index from the backup directory
+- Verify local and cloud backup integrity and rebuild the index from the backup directory
 - Store backups locally or through supported cloud services
 - Support multiple Android users and system apps
 

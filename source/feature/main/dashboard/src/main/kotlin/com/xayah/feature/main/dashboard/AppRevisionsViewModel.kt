@@ -16,11 +16,14 @@ import com.xayah.core.ui.route.MainRoutes
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -55,8 +58,13 @@ class AppRevisionsViewModel @Inject constructor(
     )
 
     val verificationResults = repository.verificationResults
-    private val _verifyingRevisionIds = MutableStateFlow<Set<String>>(emptySet())
-    val verifyingRevisionIds = _verifyingRevisionIds.asStateFlow()
+    data class VerificationProgress(val file: String, val bytes: Long, val total: Long)
+    private val _verificationProgress = MutableStateFlow<Map<String, VerificationProgress?>>(emptyMap())
+    val verificationProgress = _verificationProgress.asStateFlow()
+    private val verificationJobs = mutableMapOf<String, Job>()
+    enum class NoteSaveState { SAVING, SAVED }
+    private val _noteSaveStates = MutableStateFlow<Map<String, NoteSaveState>>(emptyMap())
+    val noteSaveStates = _noteSaveStates.asStateFlow()
 
     suspend fun prepareBackup(appId: Long, dataStates: PackageDataStates): String? {
         val hasDirectory = directoryRepository.querySelectedByDirectoryTypeFlow().first() != null
@@ -74,8 +82,8 @@ class AppRevisionsViewModel @Inject constructor(
         }
     }
 
-    private suspend fun inspect(revision: BackupRevisionEntity) = try {
-        repository.inspectRevision(revision)
+    private suspend fun inspect(revision: BackupRevisionEntity, onProgress: suspend (String, Long, Long) -> Unit = { _, _, _ -> }) = try {
+        repository.inspectRevision(revision, onProgress)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -84,11 +92,13 @@ class AppRevisionsViewModel @Inject constructor(
     }
 
     fun verifyRevision(revision: BackupRevisionEntity) {
-        if (revision.id in _verifyingRevisionIds.value) return
-        viewModelScope.launch {
-            _verifyingRevisionIds.value += revision.id
+        if (revision.id in verificationJobs) return
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            _verificationProgress.update { it + (revision.id to null) }
             try {
-                val result = inspect(revision) ?: return@launch
+                val result = inspect(revision) { file, bytes, total ->
+                    _verificationProgress.update { it + (revision.id to VerificationProgress(file, bytes, total)) }
+                } ?: return@launch
                 Toast.makeText(
                     context,
                     when (result.status) {
@@ -99,15 +109,37 @@ class AppRevisionsViewModel @Inject constructor(
                     Toast.LENGTH_SHORT,
                 ).show()
             } finally {
-                _verifyingRevisionIds.value -= revision.id
+                _verificationProgress.update { it - revision.id }
+                verificationJobs.remove(revision.id)
             }
         }
+        verificationJobs[revision.id] = job
+        job.start()
+    }
+
+    fun cancelVerification(revision: BackupRevisionEntity) {
+        verificationJobs[revision.id]?.cancel()
+    }
+
+    fun dismissSavedNote(id: String) {
+        if (_noteSaveStates.value[id] == NoteSaveState.SAVED) _noteSaveStates.value -= id
     }
 
     fun updateRevisionNote(revision: BackupRevisionEntity, note: String) {
+        if (revision.id in _noteSaveStates.value) return
+        _noteSaveStates.value += revision.id to NoteSaveState.SAVING
         viewModelScope.launch {
-            val message = if (repository.updateRevisionNote(revision, note)) R.string.note_saved else R.string.backup_note_save_failed
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            try {
+                val saved = repository.updateRevisionNote(revision, note)
+                Toast.makeText(context, if (saved) R.string.note_saved else R.string.backup_note_save_failed, Toast.LENGTH_SHORT).show()
+                if (saved) _noteSaveStates.value += revision.id to NoteSaveState.SAVED
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Toast.makeText(context, "${context.getString(R.string.backup_note_save_failed)}\n${e.localizedMessage.orEmpty()}", Toast.LENGTH_LONG).show()
+            } finally {
+                if (_noteSaveStates.value[revision.id] == NoteSaveState.SAVING) _noteSaveStates.value -= revision.id
+            }
         }
     }
 

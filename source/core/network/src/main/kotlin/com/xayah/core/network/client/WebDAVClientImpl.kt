@@ -27,6 +27,7 @@ import org.xmlpull.v1.XmlPullParserException
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.File
 import java.io.IOException
+import java.io.OutputStream
 import java.net.ProtocolException
 import java.util.concurrent.TimeUnit
 import java.security.SecureRandom
@@ -186,9 +187,9 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         }
     }
 
-    override fun renameTo(src: String, dst: String) = withClient { client ->
+    override fun renameTo(src: String, dst: String, replace: Boolean) = withClient { client ->
         log { "renameTo: from $src to $dst" }
-        client.move(getPath(src), getPath(dst), false)
+        client.move(getPath(src), getPath(dst), replace)
     }
 
     override fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit) = withClient { client ->
@@ -205,12 +206,9 @@ class WebDAVClientImpl(private val entity: CloudEntity, private val extra: WebDA
         }
     }
 
-    override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
-        val name = PathUtil.getFileName(src)
-        val dstPath = "${dst}/$name"
-        log { "download: $src to $dstPath" }
+    override fun read(src: String, output: OutputStream, onDownloading: (written: Long, total: Long) -> Unit) = withClient { client ->
         val bytes = client.get(getPath(src)).use { input ->
-            CountingOutputStreamImpl(File(dstPath).outputStream(), -1, onDownloading).use { output ->
+            CountingOutputStreamImpl(output, -1, onDownloading).use { output ->
                 input.copyTo(output)
             }
         }

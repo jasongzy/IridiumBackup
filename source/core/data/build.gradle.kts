@@ -41,4 +41,5 @@ dependencies {
 
     implementation(libs.androidx.room.ktx)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.okhttp.mockwebserver)
 }

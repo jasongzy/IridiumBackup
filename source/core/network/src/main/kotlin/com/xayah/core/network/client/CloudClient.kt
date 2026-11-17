@@ -15,6 +15,8 @@ import com.xayah.libpickyou.PickYouLauncher
 import com.xayah.libpickyou.parcelables.DirChildrenParcelable
 import com.xayah.libpickyou.ui.model.PickerType
 import java.io.IOException
+import java.io.File
+import java.io.OutputStream
 
 internal const val CONNECT_TIMEOUT_MS = 15_000
 internal const val IO_TIMEOUT_MS = 120_000
@@ -28,9 +30,12 @@ interface CloudClient {
     fun disconnect()
     fun mkdir(dst: String)
     fun mkdirRecursively(dst: String)
-    fun renameTo(src: String, dst: String)
+    fun renameTo(src: String, dst: String, replace: Boolean = false)
     fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit)
-    fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit)
+    fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) {
+        File(dst, src.substringAfterLast('/')).outputStream().use { read(src, it, onDownloading) }
+    }
+    fun read(src: String, output: OutputStream, onDownloading: (written: Long, total: Long) -> Unit)
     fun deleteFile(src: String)
     fun removeEmptyDirectory(src: String)
     fun deleteRecursively(src: String)

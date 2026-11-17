@@ -18,13 +18,10 @@ import com.xayah.core.hiddenapi.castTo
 import com.xayah.core.model.App
 import com.xayah.core.model.AppKey
 import com.xayah.core.model.BlacklistAppItem
-import com.xayah.core.model.ConfigsPackageRestoreName
 import com.xayah.core.model.DataState
 import com.xayah.core.model.DataType
 import com.xayah.core.model.DefaultPreserveId
 import com.xayah.core.model.OpType
-import com.xayah.core.model.PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION
-import com.xayah.core.model.PackageRestoreConfig
 import com.xayah.core.model.SettingsData
 import com.xayah.core.model.UserInfo
 import com.xayah.core.model.database.LabelAppCrossRefEntity
@@ -41,7 +38,6 @@ import com.xayah.core.model.database.PackageInfo
 import com.xayah.core.model.database.PackageStorageStats
 import com.xayah.core.model.database.PackageUpdateEntity
 import com.xayah.core.model.database.asExternalModel
-import com.xayah.core.model.toPackageEntity
 import com.xayah.core.model.toRestoreConfig
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.DateUtil
@@ -449,26 +445,7 @@ class AppsRepo @Inject constructor(
             }
             return
         }
-        cloudRepo.withClient(cloudName) { client, _ ->
-            val root = pathUtil.getCloudRemoteAppsDir(backupDir)
-            if (!client.exists(root)) return@withClient
-            val existing = appsDao.queryPackages(OpType.RESTORE, cloudName, backupDir)
-            val known = existing.mapTo(hashSetOf()) { it.archivesRelativeDir }
-            val configs = client.walkFileTree(root).filter { it.pathList.lastOrNull() == ConfigsPackageRestoreName }
-            val additions = configs.mapIndexedNotNull { index, entry ->
-                onLoad(index, configs.size, entry.pathString)
-                val config = cloudRepo.readBackupConfig(client, entry.pathString, PackageRestoreConfig::class.java)
-                val relativeDir = PathUtil.getPackageArchiveRelativeDir(config.packageName, config.userId, config.createdAt)
-                check(config.schemaVersion == PACKAGE_RESTORE_CONFIG_SCHEMA_VERSION && relativeDir != null &&
-                    entry.pathString == "$root/$relativeDir/$ConfigsPackageRestoreName") { "Invalid backup config: ${entry.pathString}" }
-                if (relativeDir in known) null else config.toPackageEntity(cloudName, backupDir)
-            }
-            val missing = existing.filter {
-                val relativeDir = PathUtil.getPackageArchiveRelativeDir(it.packageName, it.userId, it.preserveId)
-                relativeDir != null && !client.exists("$root/$relativeDir")
-            }.map { it.id }
-            appsDao.applyRestoreScan(additions, missing)
-        }
+        appBackupRepository.loadCloudIndex(cloudName, backupDir, onLoad)
     }
 
     suspend fun calculateLocalAppSize(app: PackageEntity) {

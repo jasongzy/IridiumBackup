@@ -24,6 +24,38 @@ import org.junit.Test
 
 class CloudTransferTest {
     @Test
+    fun checksumCancellationDoesNotProduceAResultOrStageAnArchive() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
+        val started = CompletableDeferred<Unit>()
+        val resume = CountDownLatch(1)
+        var completed = false
+        try {
+            val repo = CloudRepository(context, RemoteRootService(context), database.cloudDao())
+            val client = Proxy.newProxyInstance(CloudClient::class.java.classLoader, arrayOf(CloudClient::class.java)) { _, method, args ->
+                check(method.name == "read")
+                started.complete(Unit)
+                check(resume.await(5, TimeUnit.SECONDS))
+                (args!![1] as java.io.OutputStream).write(byteArrayOf(1, 2, 3))
+                @Suppress("UNCHECKED_CAST")
+                (args[2] as (Long, Long) -> Unit)(3, 6)
+            } as CloudClient
+            val job = launch {
+                repo.inspectFile(client, "/backup/apk.tar") { _, _ -> }
+                completed = true
+            }
+            withTimeout(5_000) { started.await() }
+            job.cancel()
+            resume.countDown()
+            job.join()
+            assertFalse(completed)
+        } finally {
+            resume.countDown()
+            database.close()
+        }
+    }
+
+    @Test
     fun aStagedFileCleanupFailureDoesNotUndoACompletedUpload() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()

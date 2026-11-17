@@ -32,6 +32,7 @@ import com.xayah.core.util.PathUtil
 import com.xayah.libpickyou.parcelables.DirChildrenParcelable
 import com.xayah.libpickyou.parcelables.FileParcelable
 import java.io.File
+import java.io.OutputStream
 import java.io.IOException
 
 
@@ -153,9 +154,9 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         )
     }
 
-    override fun renameTo(src: String, dst: String) {
+    override fun renameTo(src: String, dst: String, replace: Boolean) {
         log { "renameTo: from $src to $dst" }
-        openOnRename(src).use { it.rename(dst.replace('/', '\\'), false) }
+        openOnRename(src).use { it.rename(dst.replace('/', '\\'), replace) }
     }
 
     override fun upload(src: String, dst: String, onUploading: (read: Long, total: Long) -> Unit) = run {
@@ -175,13 +176,10 @@ class SMBClientImpl(private val entity: CloudEntity, private val extra: SMBExtra
         onUploading(bytes, bytes)
     }
 
-    override fun download(src: String, dst: String, onDownloading: (written: Long, total: Long) -> Unit) = run {
-        val name = PathUtil.getFileName(src)
-        val dstPath = "$dst/$name"
-        log { "download: $src to $dstPath" }
+    override fun read(src: String, output: OutputStream, onDownloading: (written: Long, total: Long) -> Unit) = run {
         val bytes = openFileOnRead(src).use { remote ->
             val size = remote.getFileInformation(FileStandardInformation::class.java).endOfFile
-            CountingOutputStreamImpl(File(dstPath).outputStream(), size, onDownloading).use { output ->
+            CountingOutputStreamImpl(output, size, onDownloading).use { output ->
                 remote.read(output)
                 checkTransferSize(src, size, output.byteCount)
                 output.byteCount

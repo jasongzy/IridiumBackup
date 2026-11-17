@@ -1106,14 +1106,15 @@ private fun NoteRow(note: String, onEdit: () -> Unit) {
 }
 
 @Composable
-fun NoteEditorDialog(note: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun NoteEditorDialog(note: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit, saving: Boolean = false) {
     var value by rememberSaveable(note) { mutableStateOf(note) }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!saving) onDismiss() },
         title = { Text(stringResource(R.string.edit_note)) },
         text = {
             OutlinedTextField(
                 value = value,
+                enabled = !saving,
                 onValueChange = { value = it },
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 3,
@@ -1122,12 +1123,12 @@ fun NoteEditorDialog(note: String, onDismiss: () -> Unit, onConfirm: (String) ->
             )
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = { onConfirm(value) }) {
-                Text(stringResource(R.string.save))
+            androidx.compose.material3.TextButton(enabled = !saving, onClick = { onConfirm(value) }) {
+                Text(stringResource(if (saving) R.string.loading else R.string.save))
             }
         },
         dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
+            androidx.compose.material3.TextButton(enabled = !saving, onClick = onDismiss) {
                 Text(stringResource(R.string.cancel))
             }
         },

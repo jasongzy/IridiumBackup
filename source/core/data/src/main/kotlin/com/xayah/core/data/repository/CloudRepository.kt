@@ -4,12 +4,14 @@ import android.content.Context
 import androidx.annotation.StringRes
 import com.xayah.core.database.dao.CloudDao
 import com.xayah.core.model.database.CloudEntity
+import com.xayah.core.model.BackupManifestFile
 import com.xayah.core.network.client.CloudClient
 import com.xayah.core.network.client.getCloud
 import com.xayah.core.rootservice.service.RemoteRootService
 import com.xayah.core.util.LogUtil
 import com.xayah.core.util.PathUtil
 import com.xayah.core.util.model.ShellResult
+import com.xayah.core.util.archive.finishArchiveStep
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +24,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.OutputStream
+import java.security.MessageDigest
 import java.util.UUID
 import javax.inject.Inject
 
@@ -108,13 +112,54 @@ class CloudRepository @Inject constructor(
         }
     }
 
-    suspend fun <T : Any> readBackupConfig(client: CloudClient, path: String, type: Class<T>): T {
-        var config: T? = null
+    suspend fun readText(client: CloudClient, path: String): String {
+        var text: String? = null
         val result = download(client, path) { file ->
-            config = rootService.gsonUtil.fromJson(File(file).readText(), type)
+            text = File(file).readText()
         }
         check(result.isSuccess) { result.outString }
-        return checkNotNull(config) { "Invalid backup config: $path" }
+        return checkNotNull(text)
+    }
+
+    suspend fun <T : Any> readBackupConfig(client: CloudClient, path: String, type: Class<T>): T =
+        checkNotNull(rootService.gsonUtil.fromJson(readText(client, path), type)) { "Invalid backup config: $path" }
+
+    suspend fun inspectFile(client: CloudClient, path: String, onProgress: suspend (Long, Long) -> Unit): BackupManifestFile {
+        val digest = MessageDigest.getInstance("SHA-256")
+        var size = 0L
+        val output = object : OutputStream() {
+            override fun write(value: Int) {
+                digest.update(value.toByte())
+                size++
+            }
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                digest.update(bytes, offset, length)
+                size += length
+            }
+        }
+        transfer(onProgress) { client.read(path, output, it) }
+        return BackupManifestFile(PathUtil.getFileName(path), size, digest.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    suspend fun replaceText(client: CloudClient, path: String, text: String, onReplaced: suspend () -> Unit) {
+        val dir = File(context.cacheDir, "cloud-${UUID.randomUUID()}")
+        check(dir.mkdir()) { "Unable to stage upload: $path" }
+        val file = File(dir, ".${PathUtil.getFileName(path)}.${UUID.randomUUID()}.tmp")
+        val parent = PathUtil.getParentPath(path)
+        val temporary = "$parent/${file.name}"
+        try {
+            file.writeText(text)
+            transfer(null) { client.upload(file.path, parent, it) }
+            finishArchiveStep {
+                client.renameTo(temporary, path, replace = true)
+                onReplaced()
+            }
+        } finally {
+            runCatching { if (client.exists(temporary)) client.deleteFile(temporary) }
+                .onFailure { log { "Unable to release staged metadata: $temporary" } }
+            file.delete()
+            dir.delete()
+        }
     }
 
     suspend fun getClient(name: String): Pair<CloudClient, CloudEntity> {
@@ -123,7 +168,7 @@ class CloudRepository @Inject constructor(
         return entity.getCloud().apply { connect() } to entity
     }
 
-    suspend fun withClient(name: String, block: suspend (client: CloudClient, entity: CloudEntity) -> Unit) = run {
+    suspend fun <T> withClient(name: String, block: suspend (client: CloudClient, entity: CloudEntity) -> T): T = run {
         val (client, entity) = getClient(name)
         try {
             block(client, entity)
